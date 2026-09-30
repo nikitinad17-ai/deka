@@ -36,16 +36,27 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
+    env:
+      # Если шаг падает, последние строки его вывода попадают в аннотации сборки.
+      REPORT: bash scripts/ci-report.sh
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      - name: Android SDK и NDK (уже есть на машине GitHub)
+        run: |
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          ndk="${ANDROID_NDK_LATEST_HOME:-}"
+          if [ -z "$ndk" ]; then ndk=$(ls -d "$sdk"/ndk/* 2>/dev/null | sort -V | tail -n 1); fi
+          echo "SDK: $sdk"; echo "NDK: $ndk"
+          test -d "$sdk" && test -d "$ndk" || { echo "::error::Не найден Android SDK/NDK (SDK=$sdk NDK=$ndk)"; exit 1; }
+          echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ndk" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
@@ -54,20 +65,16 @@ jobs:
           workspaces: src-tauri
       - run: npm install
       - name: Android-проект Tauri
-        env:
-          NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
         run: |
-          npx tauri android init --ci
-          npx tauri icon app-icon.png
-          node scripts/android-sign.js
+          $REPORT npx tauri android init --ci
+          $REPORT npx tauri icon app-icon.png
+          $REPORT node scripts/android-sign.js
       - name: Сборка .apk
-        env:
-          NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
         run: |
-          npx tauri android build --apk --target aarch64 --ci
+          $REPORT npx tauri android build --apk --target aarch64 --ci
           apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -n 1)
           echo "APK: $apk"
-          test -n "$apk"
+          test -n "$apk" || { echo "::error::Файл .apk не найден после сборки"; exit 1; }
           cp "$apk" Deka.apk
       - uses: actions/upload-artifact@v4
         with:
