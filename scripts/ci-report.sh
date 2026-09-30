@@ -6,9 +6,10 @@ log=$(mktemp)
 code=${PIPESTATUS[0]}
 if [ "$code" -ne 0 ]; then
   echo "::error::Команда «$*» завершилась с кодом $code"
+  sed 's/\x1b\[[0-9;]*m//g' "$log" > "$log.clean" && mv "$log.clean" "$log"
   { grep -E "^e: |^w: .*deprecated|What went wrong" -A2 "$log" | head -n 12
     grep -iE "error|failed|exception|cannot|could not|not found|unresolved" "$log" | tail -n 6; } | head -n 16 | while IFS= read -r line; do
-    echo "::error::$(printf %s "${line:0:600}" | sed "s/\x1b\[[0-9;]*m//g")"
+    echo "::error::${line:0:600}"
   done
 fi
 exit "$code"
