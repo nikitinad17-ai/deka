@@ -1,0 +1,101 @@
+name: Build
+
+# Каждый push в main собирает Деку для Windows и Android и выкладывает файлы в Releases.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm install
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deka-windows
+          path: |
+            Deka.exe
+            Deka-setup.exe
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm install
+      - name: Android-проект Tauri
+        env:
+          NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        run: |
+          npx tauri android init --ci
+          npx tauri icon app-icon.png
+          node scripts/android-sign.js
+      - name: Сборка .apk
+        env:
+          NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        run: |
+          npx tauri android build --apk --target aarch64 --ci
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -n 1)
+          echo "APK: $apk"
+          test -n "$apk"
+          cp "$apk" Deka.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deka-android
+          path: Deka.apk
+
+  release:
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Версия из package.json
+        id: ver
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Дека ${{ steps.ver.outputs.version }}
+          body: |
+            Сборка из коммита ${{ github.sha }}.
+            Deka-setup.exe — установщик для Windows, Deka.exe — плеер без установки.
+            Deka.apk — версия для Android (arm64).
+          files: |
+            out/Deka.exe
+            out/Deka-setup.exe
+            out/Deka.apk
+          make_latest: true
