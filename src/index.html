@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Дека</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=VT323&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    color-scheme: dark;
+    --desk:#101216;
+    --chassis:#1b1e24;
+    --chassis-hi:#262a32;
+    --edge:#353a44;
+    --lcd:#0a100d;
+    --lcd-edge:#1d2a23;
+    --amber:#ffb347;
+    --amber-dim:#6b4a1d;
+    --cyan:#72d6e8;
+    --ink:#d6dae2;
+    --ink-2:#8d94a3;
+    --hot:#ff5d4a;
+    --radius:10px;
+    --f-brand:"Unbounded", "Arial Black", system-ui, sans-serif;
+    --f-lcd:"VT323", "Consolas", ui-monospace, monospace;
+    --f-ui:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --f-mono:"IBM Plex Mono", "Consolas", ui-monospace, monospace;
+  }
+  html,body{background:var(--desk);color:var(--ink)}
+  body{font-family:var(--f-ui);font-size:14px;padding-inline:16px;padding-block:24px 40px;
+    background:
+      radial-gradient(1200px 500px at 20% -10%, #1c2029 0%, transparent 60%),
+      var(--desk);
+    min-height:100%;}
+  .wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px;
+    grid-template-columns: minmax(0,1.05fr) minmax(0,.95fr);
+    grid-template-areas:"main list" "eq list";align-items:start}
+  @media (max-width:820px){.wrap{grid-template-columns:minmax(0,1fr);grid-template-areas:"main" "eq" "list"}}
+
+  .win{background:linear-gradient(180deg,var(--chassis-hi),var(--chassis) 38px);
+    border:1px solid var(--edge);border-radius:var(--radius);
+    box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 18px 40px -18px rgba(0,0,0,.7);}
+  .win-main{grid-area:main}.win-eq{grid-area:eq}.win-list{grid-area:list}
+  .bar{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid #0000004d;}
+  .bar h2{margin:0;font:600 11px/1 var(--f-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2)}
+  .brand{font:700 13px/1 var(--f-brand);letter-spacing:.06em;color:var(--ink)}
+  .brand b{color:var(--amber);font-weight:700}
+  .bar .spacer{flex:1}
+  .reels{width:44px;height:18px;color:var(--amber-dim);flex:none}
+  .reels.spin{color:var(--amber)}
+  .reels.spin .reel{animation:reel 1.6s linear infinite}
+  @keyframes reel{to{transform:rotate(360deg)}}
+  .body{padding:14px}
+
+  /* LCD */
+  .lcd{background:var(--lcd);border:1px solid var(--lcd-edge);border-radius:6px;
+    box-shadow:inset 0 0 0 1px #000,inset 0 8px 24px rgba(0,0,0,.55);
+    display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;padding:10px 12px;position:relative;overflow:hidden}
+  .lcd::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(180deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px)}
+  .clock{font:48px/0.9 var(--f-lcd);color:var(--amber);text-shadow:0 0 12px rgba(255,179,71,.35);
+    cursor:pointer;user-select:none;min-width:5ch;font-variant-numeric:tabular-nums;background:none;border:0;padding:0;text-align:left}
+  .clock:focus-visible{outline:1px dashed var(--amber);outline-offset:2px}
+  .state{font:18px/1 var(--f-lcd);color:var(--amber);display:flex;gap:8px;align-items:center;margin-top:4px}
+  .state .led{width:7px;height:7px;border-radius:50%;background:var(--amber-dim)}
+  .state .led.on{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+  .meta{min-width:0;display:grid;gap:6px;align-content:start}
+  .marquee{font:24px/1 var(--f-lcd);color:var(--amber);white-space:pre;overflow:hidden;text-shadow:0 0 10px rgba(255,179,71,.3)}
+  .tags{display:flex;gap:10px;font:17px/1 var(--f-lcd);color:var(--amber-dim);flex-wrap:wrap}
+  .tags span.on{color:var(--cyan);text-shadow:0 0 8px rgba(114,214,232,.4)}
+  canvas.viz{grid-column:1 / -1;width:100%;height:78px;display:block;cursor:pointer;margin-top:6px}
+
+  /* sliders */
+  .row{display:flex;align-items:center;gap:12px;margin-top:14px}
+  .row label{font:500 11px/1 var(--f-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);min-width:52px}
+  input[type=range]{appearance:none;-webkit-appearance:none;background:transparent;width:100%;height:22px;margin:0}
+  input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--amber) var(--p,0%),#0b0d10 var(--p,0%));box-shadow:inset 0 1px 2px #000}
+  input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:#0b0d10;box-shadow:inset 0 1px 2px #000}
+  input[type=range]::-moz-range-progress{height:6px;border-radius:3px;background:var(--amber)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:14px;border-radius:3px;margin-top:-4px;
+    background:linear-gradient(180deg,#5a606c,#333842);border:1px solid #11141a;box-shadow:0 1px 0 rgba(255,255,255,.15) inset}
+  input[type=range]::-moz-range-thumb{width:18px;height:14px;border-radius:3px;background:linear-gradient(180deg,#5a606c,#333842);border:1px solid #11141a}
+  input[type=range]:focus-visible{outline:1px dashed var(--amber);outline-offset:3px}
+  .seek{margin-top:12px}
+  .mini-row{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px}
+  @media (max-width:420px){.mini-row{grid-template-columns:1fr}}
+
+  /* transport */
+  .transport{display:flex;align-items:center;gap:6px;margin-top:14px;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid #0f1115;border-radius:6px;cursor:pointer;color:var(--ink);
+    background:linear-gradient(180deg,#3a3f49,#262a31);box-shadow:0 1px 0 rgba(255,255,255,.08) inset,0 2px 0 #0c0e11;
+    height:38px;min-width:44px;display:inline-grid;place-items:center;font:600 12px/1 var(--f-ui);padding:0 10px}
+  .btn:hover{background:linear-gradient(180deg,#444a55,#2c3038)}
+  .btn:active{transform:translateY(1px);box-shadow:0 1px 0 #0c0e11}
+  .btn:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  .btn svg{width:16px;height:16px;fill:currentColor}
+  .btn.play{min-width:56px;color:var(--amber)}
+  .btn.toggle[aria-pressed=true]{color:var(--cyan);box-shadow:0 0 0 1px rgba(114,214,232,.35) inset,0 2px 0 #0c0e11}
+  .transport .spacer{flex:1}
+  .btn.open{color:var(--desk);background:linear-gradient(180deg,#ffc56f,#e99a2c);border-color:#7a4e12}
+  .btn.open:hover{background:linear-gradient(180deg,#ffd08a,#f2a63b)}
+
+  /* EQ */
+  .eq-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  select{font:500 12px var(--f-ui);color:var(--ink);background:#0f1115;border:1px solid var(--edge);border-radius:6px;height:32px;padding:0 8px}
+  .eq-graph{width:100%;height:46px;display:block;background:var(--lcd);border:1px solid var(--lcd-edge);border-radius:6px;margin-bottom:10px}
+  .bands{display:grid;grid-template-columns:auto 1px repeat(10,minmax(0,1fr));gap:4px;align-items:end}
+  .band{display:grid;justify-items:center;gap:6px}
+  .band input[type=range]{writing-mode:vertical-lr;direction:rtl;width:22px;height:120px}
+  .band input[type=range]::-webkit-slider-runnable-track{width:6px;height:auto;background:#0b0d10}
+  .band input[type=range]::-webkit-slider-thumb{margin-top:0;margin-left:-6px;width:18px;height:12px}
+  .band span{font:500 10px/1 var(--f-mono);color:var(--ink-2);font-variant-numeric:tabular-nums}
+  .band span.v{color:var(--amber)}
+  .sep{width:1px;height:130px;background:var(--edge);align-self:center}
+
+  /* playlist */
+  .tabs{display:flex;gap:4px;padding:10px 14px 0}
+  .tab{appearance:none;border:1px solid transparent;border-bottom:0;background:none;color:var(--ink-2);cursor:pointer;
+    font:600 12px/1 var(--f-ui);padding:9px 12px;border-radius:6px 6px 0 0}
+  .tab[aria-selected=true]{color:var(--ink);background:#12151a;border-color:var(--edge)}
+  .tab:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
+  .pane{background:#12151a;border-top:1px solid var(--edge);}
+  .drop{margin:12px;border:1px dashed var(--edge);border-radius:8px;padding:12px;color:var(--ink-2);font-size:13px;text-align:center}
+  .drop.over{border-color:var(--amber);color:var(--amber);background:rgba(255,179,71,.05)}
+  ol.list{list-style:none;margin:0;padding:0 6px 6px;max-height:430px;overflow:auto}
+  .item{display:grid;grid-template-columns:28px minmax(0,1fr) auto 28px;gap:8px;align-items:center;
+    padding:8px 8px;border-radius:6px;cursor:pointer;font-family:var(--f-mono);font-size:12.5px}
+  .item:hover{background:#1a1e25}
+  .item .n{color:var(--ink-2);text-align:right;font-variant-numeric:tabular-nums}
+  .item .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .item .t small{display:block;color:var(--ink-2);font-size:11px;margin-top:2px}
+  .item .d{color:var(--ink-2);font-variant-numeric:tabular-nums}
+  .item.cur{background:#1f1a12;color:var(--amber)}
+  .item.cur .n,.item.cur .d{color:var(--amber)}
+  .item .x{appearance:none;border:0;background:none;color:var(--ink-2);cursor:pointer;width:28px;height:28px;border-radius:4px;font-size:16px}
+  .item .x:hover{color:var(--hot);background:#261616}
+  .item:focus-visible,.item .x:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
+  .foot{display:flex;justify-content:space-between;gap:10px;padding:10px 14px;border-top:1px solid var(--edge);
+    font:500 12px var(--f-mono);color:var(--ink-2);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+  .badge{font:600 10px/1 var(--f-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--cyan);border:1px solid rgba(114,214,232,.35);border-radius:4px;padding:3px 5px;margin-left:6px;vertical-align:1px}
+
+  .vk{padding:18px 16px 20px;display:grid;gap:14px;line-height:1.55;color:var(--ink)}
+  .vk h3{margin:0;font:700 15px/1.3 var(--f-brand);letter-spacing:.02em;text-wrap:balance}
+  .vk p{margin:0;max-width:62ch;color:var(--ink-2)}
+  .flow{display:grid;gap:8px;margin:0;padding:0;list-style:none;counter-reset:s}
+  .flow li{display:grid;grid-template-columns:26px 1fr;gap:10px;align-items:start;color:var(--ink)}
+  .flow li::before{counter-increment:s;content:counter(s);font:22px/1 var(--f-lcd);color:var(--amber);text-align:center;
+    background:var(--lcd);border:1px solid var(--lcd-edge);border-radius:4px;padding:2px 0}
+  .note{border-left:2px solid var(--cyan);padding-left:10px;color:var(--ink-2);font-size:13px}
+  .vk a{color:var(--cyan)}
+  .vk-bar{display:flex;gap:6px;align-items:center;padding:10px 12px 0;flex-wrap:wrap}
+  .vk-bar .btn{height:30px}
+  .vk-bar .spacer{flex:1}
+  .vk-status{font:500 12px var(--f-mono);color:var(--ink-2)}
+  .vk-status.ok{color:var(--cyan)}
+  #vkSection{height:30px;max-width:220px}
+  .vk-link{display:flex;gap:6px;flex:1 1 100%;min-width:0}
+  .vk-link input{flex:1;min-width:0;height:30px;font:500 12px var(--f-mono);color:var(--ink);background:#0f1115;border:1px solid var(--edge);border-radius:6px;padding:0 8px}
+  .vk-link input:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+  .vkapp .list{margin-top:10px}
+  .keys{font:12px var(--f-mono);color:var(--ink-2);max-width:1080px;margin:18px auto 0;display:flex;gap:14px;flex-wrap:wrap}
+  .keys kbd{font:500 11px var(--f-mono);border:1px solid var(--edge);border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--ink);background:var(--chassis)}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}.reels.spin .reel{animation:none}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <!-- MAIN -->
+  <section class="win win-main" aria-label="Плеер">
+    <div class="bar"><div class="brand">ДЕ<b>КА</b></div><svg class="reels" id="reels" viewBox="0 0 44 18" aria-hidden="true"><g class="reel" style="transform-origin:9px 9px"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9" r="2.2" fill="currentColor"/><path d="M9 4.2v2.2M9 11.6v2.2M4.2 9h2.2M11.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><g class="reel" style="transform-origin:35px 9px"><circle cx="35" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="35" cy="9" r="2.2" fill="currentColor"/><path d="M35 4.2v2.2M35 11.6v2.2M30.2 9h2.2M37.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><path d="M9 16h26" stroke="var(--cyan)" stroke-width="1.2"/></svg><div class="spacer"></div><h2>ретро-дека · v0.2.0</h2></div>
+    <div class="body">
+      <div class="lcd">
+        <div>
+          <button class="clock" id="clock" title="Прошло / осталось">00:00</button>
+          <div class="state"><span class="led" id="led"></span><span id="stateTxt">СТОП</span></div>
+        </div>
+        <div class="meta">
+          <div class="marquee" id="marquee">ДЕКА — ОТКРОЙТЕ ФАЙЛЫ ИЛИ НАЖМИТЕ PLAY</div>
+          <div class="tags"><span id="tKbps">— KBPS</span><span id="tKhz">44 KHZ</span><span id="tSt" class="on">STEREO</span><span id="tEq" class="on">EQ</span></div>
+        </div>
+        <canvas class="viz" id="viz" title="Нажмите, чтобы сменить режим"></canvas>
+      </div>
+
+      <input type="range" id="seek" class="seek" min="0" max="1000" value="0" aria-label="Позиция в треке">
+
+      <div class="transport">
+        <button class="btn" id="bPrev" aria-label="Предыдущий"><svg viewBox="0 0 16 16"><path d="M3 2h2v12H3zM14 2v12L6 8z"/></svg></button>
+        <button class="btn play" id="bPlay" aria-label="Играть / пауза"><svg viewBox="0 0 16 16" id="playIco"><path d="M4 2l10 6-10 6z"/></svg></button>
+        <button class="btn" id="bStop" aria-label="Стоп"><svg viewBox="0 0 16 16"><path d="M3 3h10v10H3z"/></svg></button>
+        <button class="btn" id="bNext" aria-label="Следующий"><svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg></button>
+        <span class="spacer"></span>
+        <button class="btn toggle" id="bShuf" aria-pressed="false" title="Перемешать">SHUF</button>
+        <button class="btn toggle" id="bRep" aria-pressed="true" title="Повтор плейлиста">REP</button>
+        <button class="btn open" id="bOpen">Открыть</button>
+        <input type="file" id="file" accept="audio/*" multiple hidden>
+      </div>
+
+      <div class="mini-row">
+        <div class="row"><label for="vol">Громк.</label><input type="range" id="vol" min="0" max="100" value="80"></div>
+        <div class="row"><label for="bal">Баланс</label><input type="range" id="bal" min="-100" max="100" value="0"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- EQ -->
+  <section class="win win-eq" aria-label="Эквалайзер">
+    <div class="bar"><h2>Эквалайзер</h2><div class="spacer"></div>
+      <button class="btn toggle" id="bEqOn" aria-pressed="true" style="height:28px">ВКЛ</button>
+    </div>
+    <div class="body">
+      <div class="eq-top">
+        <select id="preset" aria-label="Пресет">
+          <option value="flat">Ровно</option><option value="bass">Больше баса</option><option value="rock">Рок</option>
+          <option value="vocal">Вокал</option><option value="pop">Поп</option><option value="club">Клуб</option>
+        </select>
+        <button class="btn" id="bReset" style="height:32px">Сброс</button>
+      </div>
+      <canvas class="eq-graph" id="eqGraph" aria-hidden="true"></canvas>
+      <div class="bands" id="bands"></div>
+    </div>
+  </section>
+
+  <!-- PLAYLIST -->
+  <section class="win win-list" aria-label="Плейлист">
+    <div class="bar"><h2>Медиатека</h2></div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tabFiles" aria-selected="true" aria-controls="paneFiles">Мои файлы</button>
+      <button class="tab" role="tab" id="tabVk" aria-selected="false" aria-controls="paneVk">VK Музыка</button>
+    </div>
+    <div class="pane" id="paneFiles" role="tabpanel">
+      <div class="drop" id="drop">Перетащите сюда MP3, FLAC, OGG, WAV или нажмите «Открыть»</div>
+      <ol class="list" id="list"></ol>
+      <div class="foot"><span id="count">0 треков</span><span id="total">00:00</span></div>
+    </div>
+    <div class="pane" id="paneVk" role="tabpanel" hidden>
+      <div class="vkapp" id="vkApp" hidden>
+        <div class="vk-bar">
+          <span class="vk-status" id="vkStatus">Ожидаю страницу ВК…</span>
+          <span class="spacer"></span>
+          <button class="btn" id="vkShow">Окно ВК</button>
+          <button class="btn" id="vkRefresh" title="Перечитать список со страницы">Обновить</button>
+          <button class="btn" id="vkReload" title="Перезагрузить страницу ВК, если трек завис">Перезапустить ВК</button>
+        </div>
+        <div class="vk-bar">
+          <button class="btn toggle" id="vkMy" aria-pressed="false">Моя музыка</button>
+          <form class="vk-link" id="vkLinkForm">
+            <input id="vkLink" type="url" placeholder="Ссылка на трек или плейлист ВК" aria-label="Ссылка на трек или плейлист ВК">
+            <button class="btn" type="submit">Добавить</button>
+          </form>
+          <select id="vkSection" aria-label="Раздел страницы ВК" title="Какой раздел страницы ВК показывать и экспортировать"></select>
+          <button class="btn" id="vkExport" title="Сохранить исполнителей и названия выбранного раздела в файл CSV">Экспорт списка</button>
+          <button class="btn" id="vkExportShow" hidden>Показать файл</button>
+          <span class="vk-status" id="vkFx">Эквалайзер ВК: включите трек</span>
+        </div>
+        <ol class="list" id="vkList"></ol>
+        <div class="foot"><span id="vkCount">0 треков</span><span id="vkPage">—</span></div>
+      </div>
+      <div class="vk" id="vkInfo">
+        <h3>VK Музыка через встроенное окно</h3>
+        <p>В приложении для Windows эта вкладка откроет vk.ru прямо внутри плеера. Вход в аккаунт происходит на странице ВК, пароль приложение не видит.</p>
+        <ol class="flow">
+          <li>Вы входите в ВК во встроенном окне и включаете свою музыку.</li>
+          <li>Плеер получает название трека, обложку и время через системное управление медиа.</li>
+          <li>Кнопки, горячие клавиши и визуализация «Деки» управляют воспроизведением ВК.</li>
+        </ol>
+        <p class="note">В браузерном прототипе это не работает: чужие сайты нельзя встроить в страницу. Сейчас можно открыть <a href="https://vk.ru/audio" target="_blank" rel="noopener">vk.ru/audio</a> в соседней вкладке.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="keys" aria-label="Горячие клавиши">
+  <span><kbd>Пробел</kbd> играть/пауза</span><span><kbd>←</kbd><kbd>→</kbd> ±5 с</span>
+  <span><kbd>↑</kbd><kbd>↓</kbd> громкость</span><span><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><kbd>B</kbd> назад · играть · пауза · стоп · вперёд</span>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const audio = new Audio(); audio.preload = "auto";
+  const FREQS = [60,170,310,600,1000,3000,6000,12000,14000,16000];
+  const PRESETS = {
+    flat:[0,0,0,0,0,0,0,0,0,0], bass:[7,6,4,1,0,-1,-1,0,0,0], rock:[5,3,-2,-4,-1,2,5,6,6,6],
+    vocal:[-2,-3,-1,2,5,5,3,1,0,-1], pop:[-1,2,4,5,3,0,-1,-1,-1,-1], club:[0,0,3,4,4,4,2,0,0,0]
+  };
+  const store = {
+    // Настройки хранятся под префиксом «deka:»; старые из «Волны» («volna:») подхватываются.
+    get(k,d){ try{ let v = localStorage.getItem("deka:"+k); if (v==null) v = localStorage.getItem("volna:"+k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
+    set(k,v){ try{ localStorage.setItem("deka:"+k, JSON.stringify(v)); }catch(e){} }
+  };
+
+  let ctx=null, src, preamp, filters=[], panner, gain, analyser, freqData, timeData;
+  let eqOn = store.get("eqOn", true);
+  let gains = store.get("gains", PRESETS.flat.slice());
+  let preGain = store.get("pre", 0);
+  let mode = "files", vkS = {paused:true,currentTime:0,duration:0}, vkAt = 0, vkSpec = null;
+  let tracks = [], cur = -1, showRemain = false, vizMode = 0, shuffle = false, repeat = true;
+
+  // ---------- audio graph ----------
+  function ensureCtx(){
+    if (ctx) return;
+    ctx = new (window.AudioContext||window.webkitAudioContext)();
+    src = ctx.createMediaElementSource(audio);
+    preamp = ctx.createGain();
+    filters = FREQS.map((f,i) => { const b = ctx.createBiquadFilter();
+      b.type = i===0?"lowshelf":(i===FREQS.length-1?"highshelf":"peaking"); b.frequency.value=f; b.Q.value=1.1; return b; });
+    panner = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+    gain = ctx.createGain();
+    analyser = ctx.createAnalyser(); analyser.fftSize = 2048; analyser.smoothingTimeConstant = .72;
+    freqData = new Uint8Array(analyser.frequencyBinCount); timeData = new Uint8Array(analyser.fftSize);
+    let n = src; n.connect(preamp); n = preamp;
+    filters.forEach(f => { n.connect(f); n = f; });
+    n.connect(panner); panner.connect(gain); gain.connect(analyser); analyser.connect(ctx.destination);
+    applyEq(); applyVol(); applyBal();
+    $("tKhz").textContent = Math.round(ctx.sampleRate/1000)+" KHZ";
+  }
+  // Настройки эквалайзера и баланса дублируются в окно ВК, где тот же набор фильтров
+  // стоит на звуке ВК. Отправляем с небольшой задержкой, чтобы не засыпать мост при движении ползунка.
+  let fxTimer=null;
+  function sendFx(){
+    clearTimeout(fxTimer);
+    fxTimer=setTimeout(()=>{ const t=window.__TAURI__; if (t) t.core.invoke("vk_cmd",{cmd:{type:"fx", on:eqOn, pre:preGain, gains, bal:$("bal").value/100}}).catch(()=>{}); },60);
+  }
+  function applyEq(){
+    sendFx();
+    if (!ctx) return;
+    filters.forEach((f,i)=> f.gain.setTargetAtTime(eqOn?gains[i]:0, ctx.currentTime, .02));
+    preamp.gain.setTargetAtTime(eqOn?Math.pow(10,preGain/20):1, ctx.currentTime, .02);
+  }
+  function applyVol(){ const v = $("vol").value/100; if (gain) gain.gain.setTargetAtTime(v*v, ctx.currentTime, .02); paint($("vol")); store.set("vol", +$("vol").value); if (mode==="vk") vk({type:"volume", value: v*v}); }
+  function applyBal(){ sendFx(); const b=$("bal").value/100; if (panner && panner.pan) panner.pan.setTargetAtTime(b, ctx.currentTime, .02); paint($("bal"),true); }
+
+  // ---------- demo tracks (synthesized locally) ----------
+  async function renderDemo(o){
+    const sr = 44100, len = o.sec*sr;
+    const oc = new OfflineAudioContext(2, len, sr);
+    const beat = 60/o.bpm, master = oc.createGain(); master.gain.value=.8;
+    const comp = oc.createDynamicsCompressor(); master.connect(comp); comp.connect(oc.destination);
+    const noiseBuf = oc.createBuffer(1, sr*.5, sr); const nd = noiseBuf.getChannelData(0);
+    for (let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
+    const hz = m => 440*Math.pow(2,(m-69)/12);
+    const beats = Math.floor(o.sec/beat);
+    for (let b=0;b<beats;b++){
+      const t=b*beat;
+      if (o.kick(b)) { const os=oc.createOscillator(), g=oc.createGain();
+        os.frequency.setValueAtTime(140,t); os.frequency.exponentialRampToValueAtTime(42,t+.18);
+        g.gain.setValueAtTime(1,t); g.gain.exponentialRampToValueAtTime(.001,t+.35);
+        os.connect(g); g.connect(master); os.start(t); os.stop(t+.4); }
+      for (const off of [0,.5]) { const th=t+off*beat; if (off===0 && !o.hatOn) continue;
+        const s=oc.createBufferSource(); s.buffer=noiseBuf; const hp=oc.createBiquadFilter(); hp.type="highpass"; hp.frequency.value=7000;
+        const g=oc.createGain(); g.gain.setValueAtTime(off? .22:.12,th); g.gain.exponentialRampToValueAtTime(.001,th+.06);
+        const p=oc.createStereoPanner(); p.pan.value = off? .35:-.35;
+        s.connect(hp); hp.connect(g); g.connect(p); p.connect(master); s.start(th); s.stop(th+.08); }
+      if (b%4===0){ const ch=o.chords[(b/4)%o.chords.length];
+        ch.forEach((m,k)=>{ const os=oc.createOscillator(); os.type="triangle"; os.frequency.value=hz(m);
+          os.detune.value=(k-1)*6; const g=oc.createGain(); const d=beat*4;
+          g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.07,t+.3); g.gain.linearRampToValueAtTime(0,t+d);
+          const p=oc.createStereoPanner(); p.pan.value=(k-1)*.5;
+          os.connect(g); g.connect(p); p.connect(master); os.start(t); os.stop(t+d); });
+        for (let s8=0;s8<8;s8++){ const tb=t+s8*beat/2; const m=ch[0]-12+(o.bassPat[s8]||0);
+          const os=oc.createOscillator(); os.type="sawtooth"; os.frequency.value=hz(m);
+          const lp=oc.createBiquadFilter(); lp.type="lowpass"; lp.frequency.setValueAtTime(900,tb); lp.frequency.exponentialRampToValueAtTime(160,tb+.2);
+          const g=oc.createGain(); g.gain.setValueAtTime(.16,tb); g.gain.exponentialRampToValueAtTime(.001,tb+beat/2);
+          os.connect(lp); lp.connect(g); g.connect(master); os.start(tb); os.stop(tb+beat/2); }
+        if (o.lead){ for (let s=0;s<8;s++){ if (Math.sin(b*3.1+s*1.7)>.25){ const tl=t+s*beat/2;
+          const m=ch[(s+b)%3]+12; const os=oc.createOscillator(); os.type="square"; os.frequency.value=hz(m);
+          const lp=oc.createBiquadFilter(); lp.frequency.value=2400;
+          const g=oc.createGain(); g.gain.setValueAtTime(.045,tl); g.gain.exponentialRampToValueAtTime(.001,tl+.25);
+          os.connect(lp); lp.connect(g); g.connect(master); os.start(tl); os.stop(tl+.3);} } }
+      }
+    }
+    const buf = await oc.startRendering();
+    return URL.createObjectURL(wav(buf));
+  }
+  function wav(buf){
+    const ch=buf.numberOfChannels, len=buf.length, sr=buf.sampleRate, bytes=len*ch*2;
+    const ab=new ArrayBuffer(44+bytes), v=new DataView(ab); let p=0;
+    const w=s=>{for(let i=0;i<s.length;i++)v.setUint8(p++,s.charCodeAt(i));}, u32=x=>{v.setUint32(p,x,true);p+=4}, u16=x=>{v.setUint16(p,x,true);p+=2};
+    w("RIFF");u32(36+bytes);w("WAVEfmt ");u32(16);u16(1);u16(ch);u32(sr);u32(sr*ch*2);u16(ch*2);u16(16);w("data");u32(bytes);
+    const d=[...Array(ch)].map((_,i)=>buf.getChannelData(i));
+    for(let i=0;i<len;i++)for(let c=0;c<ch;c++){const s=Math.max(-1,Math.min(1,d[c][i]));v.setInt16(p,s<0?s*0x8000:s*0x7fff,true);p+=2;}
+    return new Blob([ab],{type:"audio/wav"});
+  }
+  const DEMOS = [
+    {title:"Полночь на Литейном", artist:"Синт-демо", sec:32, bpm:112, hatOn:true, kick:b=>true, lead:true,
+     chords:[[57,60,64],[53,57,60],[55,59,62],[52,55,59]], bassPat:[0,0,12,0,0,12,0,7]},
+    {title:"Разводной мост", artist:"Синт-демо", sec:34, bpm:92, hatOn:false, kick:b=>b%2===0, lead:false,
+     chords:[[50,53,57],[46,50,53],[48,52,55],[45,48,52]], bassPat:[0,0,0,7,0,0,5,0]},
+    {title:"Дождь по стеклу", artist:"Синт-демо", sec:30, bpm:124, hatOn:true, kick:b=>true, lead:true,
+     chords:[[52,55,59],[48,52,55],[50,54,57],[47,50,54]], bassPat:[0,12,0,12,0,12,7,12]},
+  ];
+  DEMOS.forEach(d => tracks.push({title:d.title, artist:d.artist, url:null, demo:d, dur:d.sec, isDemo:true}));
+
+  // ---------- playlist ----------
+  const fmt = s => { if(!isFinite(s)||s<0) s=0; s=Math.floor(s); return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); };
+  function renderList(){
+    const ol=$("list"); ol.innerHTML="";
+    tracks.forEach((t,i)=>{
+      const li=document.createElement("li"); li.className="item"+(i===cur?" cur":""); li.tabIndex=0; li.setAttribute("role","button");
+      li.innerHTML=`<span class="n">${i+1}.</span><span class="t"></span><span class="d">${t.dur?fmt(t.dur):"--:--"}</span><button class="x" aria-label="Убрать из списка">×</button>`;
+      const tt=li.querySelector(".t"); tt.textContent=t.title; const sm=document.createElement("small"); sm.textContent=t.artist;
+      if (t.isDemo){ const bd=document.createElement("span"); bd.className="badge"; bd.textContent="пример"; sm.appendChild(bd);} tt.appendChild(sm);
+      li.addEventListener("click",e=>{ if(e.target.closest(".x")) return; play(i); });
+      li.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); play(i);} });
+      li.querySelector(".x").addEventListener("click",()=>remove(i));
+      ol.appendChild(li);
+    });
+    $("count").textContent = tracks.length+" "+plural(tracks.length,["трек","трека","треков"]);
+    $("total").textContent = "всего "+fmt(tracks.reduce((a,t)=>a+(t.dur||0),0));
+  }
+  const plural=(n,f)=>f[(n%10===1&&n%100!==11)?0:(n%10>=2&&n%10<=4&&(n%100<10||n%100>=20))?1:2];
+  function remove(i){
+    const t=tracks[i]; if (t.url && !t.isDemo) URL.revokeObjectURL(t.url);
+    tracks.splice(i,1);
+    if (i===cur){ stop(); cur=-1; } else if (i<cur) cur--;
+    renderList();
+  }
+  function addFiles(files){
+    const first = tracks.length;
+    [...files].filter(f=>f.type.startsWith("audio")||/\.(mp3|flac|ogg|oga|wav|m4a|aac|opus|webm)$/i.test(f.name)).forEach(f=>{
+      const base=f.name.replace(/\.[^.]+$/,""); let artist="", title=base;
+      const m=base.match(/^(.+?)\s+[-–—]\s+(.+)$/); if(m){artist=m[1];title=m[2];}
+      const t={title, artist: artist||"Мои файлы", url:URL.createObjectURL(f), dur:0, size:f.size};
+      tracks.push(t);
+      const probe=new Audio(); probe.preload="metadata"; probe.src=t.url;
+      probe.onloadedmetadata=()=>{ t.dur=probe.duration; renderList(); };
+    });
+    renderList();
+    if (tracks.length>first && (audio.paused)) play(first);
+  }
+
+  // ---------- transport ----------
+  async function play(i){
+    if (i==null || !tracks[i]) return;
+    if (mode==="vk") { vk({type:"pause"}); mode="files"; }
+    ensureCtx(); if (ctx.state==="suspended") await ctx.resume();
+    const t = tracks[i];
+    if (cur!==i || !audio.src){
+      cur=i;
+      if (!t.url){ setState("ЗАГРУЗКА"); setMarquee("СИНТЕЗ ДЕМО-ТРЕКА…"); t.url = await renderDemo(t.demo); }
+      if (cur!==i) return;
+      audio.src=t.url;
+      setMarquee(`${cur+1}. ${t.artist} — ${t.title} (${fmt(t.dur)})`);
+      const kb = t.size && t.dur ? Math.round(t.size*8/t.dur/1000) : (t.isDemo?1411:null);
+      $("tKbps").textContent = (kb||"—")+" KBPS";
+      renderList();
+    }
+    try { await audio.play(); } catch(e){ setState("ОШИБКА"); setMarquee("НЕ УДАЛОСЬ ВОСПРОИЗВЕСТИ ФАЙЛ — ФОРМАТ НЕ ПОДДЕРЖИВАЕТСЯ"); }
+  }
+  function toggle(){ if (mode==="vk") return vk({type:"toggle"}); if (cur<0) return play(0); audio.paused ? play(cur) : audio.pause(); }
+  function stop(){ if (mode==="vk") return vk({type:"stop"}); audio.pause(); try{audio.currentTime=0;}catch(e){} setState("СТОП"); }
+  function step(d){
+    if (mode==="vk") return vk({type: d>0?"next":"prev"});
+    if (!tracks.length) return;
+    let n;
+    if (shuffle && tracks.length>1){ do{ n=Math.floor(Math.random()*tracks.length);}while(n===cur); }
+    else { n=cur+d; if (n>=tracks.length) n = repeat?0:-1; if (n<0) n = repeat?tracks.length-1:-1; }
+    if (n<0) return stop();
+    play(n);
+  }
+  function setState(s){ $("stateTxt").textContent=s; $("led").classList.toggle("on", s==="ИГРАЕТ"); $("reels").classList.toggle("spin", s==="ИГРАЕТ"); }
+  audio.addEventListener("play",()=>{ setState("ИГРАЕТ"); $("playIco").innerHTML='<path d="M3 2h4v12H3zM9 2h4v12H9z"/>'; });
+  audio.addEventListener("pause",()=>{ if (audio.currentTime>0) setState("ПАУЗА"); $("playIco").innerHTML='<path d="M4 2l10 6-10 6z"/>'; });
+  audio.addEventListener("ended",()=>step(1));
+  audio.addEventListener("loadedmetadata",()=>{ const t=tracks[cur]; if(t && isFinite(audio.duration)){ t.dur=audio.duration; renderList(); } });
+
+  // ---------- marquee ----------
+  let mText="", mPos=0;
+  function setMarquee(s){ mText = s.toUpperCase()+"  ***  "; mPos=0; }
+  setMarquee("ДЕКА — ОТКРОЙТЕ СВОИ ФАЙЛЫ ИЛИ ВКЛЮЧИТЕ ДЕМО-ТРЕК");
+  setInterval(()=>{ const w=Math.max(10, Math.floor($("marquee").clientWidth/11));
+    const s=(mText+mText).slice(mPos, mPos+w); $("marquee").textContent=s; mPos=(mPos+1)%mText.length; }, 220);
+
+  // ---------- controls ----------
+  function paint(el, centered){
+    const min=+el.min, max=+el.max, v=+el.value; el.style.setProperty("--p", ((v-min)/(max-min)*100)+"%");
+  }
+  let seeking=false;
+  $("seek").addEventListener("input",()=>{ seeking=true; paint($("seek")); if(isFinite(audio.duration)) $("clock").textContent=fmt($("seek").value/1000*audio.duration); });
+  $("seek").addEventListener("change",()=>{ if (mode==="vk"){ vk({type:"seek", time:$("seek").value/1000*vkS.duration}); seeking=false; return; } if(isFinite(audio.duration)) audio.currentTime=$("seek").value/1000*audio.duration; seeking=false; });
+  $("clock").addEventListener("click",()=>showRemain=!showRemain);
+  $("vol").value = store.get("vol",80);
+  $("vol").addEventListener("input",applyVol); $("bal").addEventListener("input",applyBal);
+  $("bal").addEventListener("dblclick",()=>{ $("bal").value=0; applyBal(); });
+  paint($("vol")); paint($("bal")); paint($("seek"));
+  $("bPlay").onclick=toggle; $("bStop").onclick=stop; $("bNext").onclick=()=>step(1); $("bPrev").onclick=()=>{ if (mode==="vk") return vk({type:"prev"}); if(audio.currentTime>3) audio.currentTime=0; else step(-1); };
+  $("bShuf").onclick=()=>{ shuffle=!shuffle; $("bShuf").setAttribute("aria-pressed",shuffle); };
+  $("bRep").onclick=()=>{ repeat=!repeat; $("bRep").setAttribute("aria-pressed",repeat); };
+  $("bOpen").onclick=()=>$("file").click();
+  $("file").addEventListener("change",e=>{ addFiles(e.target.files); e.target.value=""; });
+  const drop=$("paneFiles");
+  ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault(); $("drop").classList.add("over");}));
+  ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault(); $("drop").classList.remove("over");}));
+  drop.addEventListener("drop",e=>addFiles(e.dataTransfer.files));
+  $("drop").addEventListener("click",()=>$("file").click());
+
+  // tabs
+  [["tabFiles","paneFiles"],["tabVk","paneVk"]].forEach(([t,p],_,all)=>$(t).addEventListener("click",()=>{
+    all.forEach(([t2,p2])=>{ $(t2).setAttribute("aria-selected", t2===t); $(p2).hidden = p2!==p; });
+  }));
+
+  // keys
+  document.addEventListener("keydown",e=>{
+    if (e.target.matches("input,select,textarea") && e.key!==" ") return;
+    const k=e.key.toLowerCase();
+    if (e.key===" "){ if(e.target.matches("button,.item")) return; e.preventDefault(); toggle(); }
+    else if (e.key==="ArrowRight"){ if (mode==="vk") return vk({type:"seek",time:vkNow()+5}); audio.currentTime=Math.min((audio.duration||0), audio.currentTime+5); }
+    else if (e.key==="ArrowLeft"){ if (mode==="vk") return vk({type:"seek",time:Math.max(0,vkNow()-5)}); audio.currentTime=Math.max(0, audio.currentTime-5); }
+    else if (e.key==="ArrowUp"){ e.preventDefault(); $("vol").value=Math.min(100,+$("vol").value+5); applyVol(); }
+    else if (e.key==="ArrowDown"){ e.preventDefault(); $("vol").value=Math.max(0,+$("vol").value-5); applyVol(); }
+    else if (k==="z"||k==="я") $("bPrev").click(); else if (k==="x"||k==="ч") play(cur<0?0:cur);
+    else if (k==="c"||k==="с") audio.pause(); else if (k==="v"||k==="м") stop(); else if (k==="b"||k==="и") step(1);
+  });
+
+  // ---------- EQ UI ----------
+  const lbl = f => f>=1000 ? (f/1000)+"K" : String(f);
+  function bandEl(label, val, min, max, on){
+    const d=document.createElement("div"); d.className="band";
+    const v=document.createElement("span"); v.className="v"; const i=document.createElement("input");
+    i.type="range"; i.min=min; i.max=max; i.step=.5; i.value=val; i.setAttribute("aria-label", label+" дБ");
+    const l=document.createElement("span"); l.textContent=label;
+    const upd=()=>{ v.textContent=(i.value>0?"+":"")+(+i.value).toFixed(0); };
+    i.addEventListener("input",()=>{ on(+i.value); upd(); drawEq(); });
+    i.addEventListener("dblclick",()=>{ i.value=0; on(0); upd(); drawEq(); });
+    upd(); d.append(v,i,l); return {d,i,upd};
+  }
+  const bandInputs=[];
+  const pre = bandEl("PRE", preGain, -12, 12, x=>{ preGain=x; store.set("pre",x); applyEq(); });
+  $("bands").appendChild(pre.d);
+  const sp=document.createElement("div"); sp.className="sep"; $("bands").appendChild(sp);
+  FREQS.forEach((f,idx)=>{ const b=bandEl(lbl(f), gains[idx], -12, 12, x=>{ gains[idx]=x; store.set("gains",gains); $("preset").value=""; applyEq(); });
+    bandInputs.push(b); $("bands").appendChild(b.d); });
+  function setGains(g){ gains=g.slice(); store.set("gains",gains); bandInputs.forEach((b,i)=>{ b.i.value=gains[i]; b.upd(); }); applyEq(); drawEq(); }
+  $("preset").addEventListener("change",e=>{ if(PRESETS[e.target.value]) setGains(PRESETS[e.target.value]); });
+  $("bReset").onclick=()=>{ $("preset").value="flat"; setGains(PRESETS.flat); pre.i.value=0; preGain=0; pre.upd(); store.set("pre",0); applyEq(); };
+  $("bEqOn").setAttribute("aria-pressed", eqOn);
+  $("bEqOn").onclick=()=>{ eqOn=!eqOn; store.set("eqOn",eqOn); $("bEqOn").setAttribute("aria-pressed",eqOn); $("tEq").classList.toggle("on",eqOn); applyEq(); drawEq(); };
+  $("tEq").classList.toggle("on",eqOn);
+
+  function fitCanvas(c){ const r=c.getBoundingClientRect(), dpr=Math.min(2,window.devicePixelRatio||1);
+    const w=Math.max(1,Math.round(r.width*dpr)), h=Math.max(1,Math.round(r.height*dpr));
+    if (c.width!==w||c.height!==h){ c.width=w; c.height=h; } return {w,h,dpr}; }
+  function drawEq(){
+    const c=$("eqGraph"), g=c.getContext("2d"), {w,h}=fitCanvas(c);
+    g.clearRect(0,0,w,h);
+    g.strokeStyle="rgba(255,179,71,.12)"; g.lineWidth=1; g.beginPath(); g.moveTo(0,h/2); g.lineTo(w,h/2); g.stroke();
+    const pts=gains.map((v,i)=>[ (i+.5)/gains.length*w, h/2 - (eqOn?v:0)/12*(h/2-5) ]);
+    g.strokeStyle= eqOn?"#ffb347":"#6b4a1d"; g.lineWidth=2*(w/c.clientWidth||1); g.beginPath();
+    g.moveTo(0,pts[0][1]);
+    for (let i=0;i<pts.length-1;i++){ const [x1,y1]=pts[i],[x2,y2]=pts[i+1]; const mx=(x1+x2)/2; g.bezierCurveTo(mx,y1,mx,y2,x2,y2); }
+    g.lineTo(w,pts[pts.length-1][1]); g.stroke();
+  }
+
+  // ---------- visualizer ----------
+  const peaks=new Array(40).fill(0), peakT=new Array(40).fill(0);
+  $("viz").addEventListener("click",()=>vizMode=(vizMode+1)%3);
+  function frame(){
+    const c=$("viz"), g=c.getContext("2d"), {w,h,dpr}=fitCanvas(c);
+    g.clearRect(0,0,w,h);
+    const isVk = mode==="vk";
+    const playing = isVk ? !vkS.paused : (analyser && !audio.paused);
+    if (vizMode===0){
+      const N=peaks.length, gap=2*dpr, bw=(w-gap*(N-1))/N;
+      if (analyser && !isVk) analyser.getByteFrequencyData(freqData);
+      const nyq = ctx?ctx.sampleRate/2:22050;
+      for (let i=0;i<N;i++){
+        const f0=40*Math.pow(16000/40,i/N), f1=40*Math.pow(16000/40,(i+1)/N);
+        let a=Math.floor(f0/nyq*freqData?.length||0), b=Math.max(a+1,Math.floor(f1/nyq*(freqData?.length||0)));
+        let v=0;
+        if (isVk) v = vkSpec ? vkSpec[i]||0 : 0;
+        else if (analyser){ for(let k=a;k<b;k++) v=Math.max(v,freqData[k]); }
+        v = playing? v/255 : 0;
+        const bh=Math.max(1*dpr, v*h), x=i*(bw+gap);
+        const grad=g.createLinearGradient(0,h,0,0); grad.addColorStop(0,"#b86b12"); grad.addColorStop(.65,"#ffb347"); grad.addColorStop(1,"#ff5d4a");
+        g.fillStyle=grad;
+        const cell=3*dpr; for (let y=h; y>h-bh; y-=cell+1*dpr) g.fillRect(x, y-cell, bw, cell);
+        if (v*h>peaks[i]){ peaks[i]=v*h; peakT[i]=18; } else if (peakT[i]>0) peakT[i]--; else peaks[i]=Math.max(0,peaks[i]-1.2*dpr);
+        g.fillStyle="#72d6e8"; g.fillRect(x, h-peaks[i]-2*dpr, bw, 2*dpr);
+      }
+    } else if (vizMode===1){
+      g.strokeStyle="#ffb347"; g.lineWidth=1.6*dpr; g.shadowColor="rgba(255,179,71,.6)"; g.shadowBlur=6*dpr; g.beginPath();
+      if (analyser) analyser.getByteTimeDomainData(timeData);
+      const L=timeData?timeData.length:0;
+      for (let i=0;i<w;i+=2){ const s= playing&&L ? (timeData[Math.floor(i/w*L)]-128)/128 : 0; const y=h/2+s*h*.45; i?g.lineTo(i,y):g.moveTo(i,y); }
+      g.stroke(); g.shadowBlur=0;
+    }
+    // time
+    if (!seeking){
+      const d = isVk ? vkS.duration : audio.duration, t = isVk ? vkNow() : audio.currentTime;
+      $("clock").textContent = (showRemain && isFinite(d)) ? "-"+fmt(d-t) : fmt(t);
+      if (isFinite(d)&&d>0){ $("seek").value=Math.round(t/d*1000); paint($("seek")); }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- VK Музыка (только в приложении) ----------
+  const T = window.__TAURI__;
+  function vk(cmd){ if (T) T.core.invoke("vk_cmd", {cmd}).catch(()=>{}); }
+  function vkNow(){ return vkS.paused ? vkS.currentTime : Math.min(vkS.duration||Infinity, vkS.currentTime + (performance.now()-vkAt)/1000); }
+  let vkItems = [], vkTitleKey = "", vkSection = store.get("vkSection", "");
+  const ALL = "__all__";
+  // Разделы страницы ВК в порядке появления. По умолчанию — ранее выбранный, иначе «Мои …».
+  function renderSections(){
+    const names = [...new Set(vkItems.map(t=>t.section||"Без названия"))];
+    if (vkLinks.length && !names.includes(LINKS)) names.push(LINKS);
+    const sel = $("vkSection");
+    if (!names.includes(vkSection) && vkSection!==ALL)
+      vkSection = names.find(n=>/^Мои|^My /i.test(n)) || names[0] || ALL;
+    const want = names.map(n=>n+"\u0000").join("") + ALL;
+    if (sel.dataset.sig !== want){
+      sel.dataset.sig = want; sel.innerHTML = "";
+      names.forEach(n=>{ const o=document.createElement("option"); o.value=n; o.textContent=n; sel.appendChild(o); });
+      const o=document.createElement("option"); o.value=ALL; o.textContent="Все разделы страницы"; sel.appendChild(o);
+    }
+    sel.value = vkSection;
+  }
+  const inSection = t => vkSection===ALL || (t.section||"Без названия")===vkSection;
+  // Треки, добавленные по ссылке, хранятся в плеере и видны как раздел «Добавлено по ссылке».
+  const LINKS = "Добавлено по ссылке";
+  let vkLinks = store.get("vkLinks", []);
+  let pendingLink = null;
+  function parseVkLink(str){
+    let raw = String(str).trim(); if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw;
+    let u; try { u = new URL(raw); } catch(e){ return null; }
+    if (!/^(m\.)?vk\.(ru|com)$/.test(u.hostname)) return null;
+    const m = u.pathname.match(/^\/audio(-?\d+_\d+)(_[0-9a-f]+)?$/i);
+    if (m) return { kind:"track", id:m[1], path:u.pathname };
+    if (/^\/(music|audio|audios|playlist)/i.test(u.pathname)) return { kind:"page", path:u.pathname + u.search };
+    return null;
+  }
+  function openLink(link){
+    if (!audio.paused) audio.pause();
+    mode="vk"; setState("ЗАГРУЗКА");
+    vk({type:"openPlay", path:link.path, id:link.id});
+  }
+  function renderVk(){
+    renderSections();
+    const ol=$("vkList"); ol.innerHTML="";
+    if (vkSection===LINKS){
+      vkLinks.forEach((t,i)=>{
+        const li=document.createElement("li"); li.className="item"; li.tabIndex=0; li.setAttribute("role","button");
+        li.innerHTML=`<span class="n">${i+1}.</span><span class="t"></span><span class="d">${t.duration?fmt(t.duration):"--:--"}</span><button class="x" aria-label="Убрать из списка">×</button>`;
+        const tt=li.querySelector(".t"); tt.textContent=t.title||"Трек по ссылке";
+        const sm=document.createElement("small"); sm.textContent=t.artist||t.path; tt.appendChild(sm);
+        const go=()=>{ pendingLink=t; openLink(t); };
+        li.addEventListener("click",e=>{ if(e.target.closest(".x")) return; go(); });
+        li.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); go(); } });
+        li.querySelector(".x").addEventListener("click",()=>{ vkLinks.splice(i,1); store.set("vkLinks",vkLinks); renderVk(); });
+        ol.appendChild(li);
+      });
+      $("vkCount").textContent = vkLinks.length+" "+plural(vkLinks.length,["трек","трека","треков"]);
+      return;
+    }
+    vkItems.filter(inSection).forEach((t,i)=>{
+      const cur = t.current || (vkS.title && t.title===vkS.title && t.artist===vkS.artist);
+      const li=document.createElement("li"); li.className="item"+(cur?" cur":""); li.tabIndex=0; li.setAttribute("role","button");
+      li.innerHTML=`<span class="n">${i+1}.</span><span class="t"></span><span class="d">${t.duration?fmt(t.duration):"--:--"}</span><span></span>`;
+      const tt=li.querySelector(".t"); tt.textContent=t.title; const sm=document.createElement("small"); sm.textContent=t.artist; tt.appendChild(sm);
+      const go=()=>{
+        if (!audio.paused) audio.pause();
+        mode="vk"; vkTitleKey=t.artist+"|"+t.title;
+        setMarquee(`VK · ${t.artist} — ${t.title} (${fmt(t.duration)})`); $("tKbps").textContent="VK";
+        setState("ЗАГРУЗКА"); vk({type:"playRow", key:t.key});
+      };
+      li.addEventListener("click",go); li.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); go(); } });
+      ol.appendChild(li);
+    });
+    const shown = vkItems.filter(inSection).length;
+    $("vkCount").textContent = shown+" "+plural(shown,["трек","трека","треков"]);
+  }
+  if (T){
+    $("vkApp").hidden = false; $("vkInfo").hidden = true;
+    $("vkShow").onclick = ()=>T.core.invoke("vk_show",{show:true});
+    $("vkRefresh").onclick = ()=>vk({type:"refresh"});
+    $("vkReload").onclick = ()=>{ T.core.invoke("vk_reload").catch(()=>{}); $("vkStatus").textContent="Перезапускаю ВК…"; $("vkStatus").classList.remove("ok"); setState("СТОП"); };
+    // Экспорт списка: мост листает страницу ВК и копит треки, затем сохраняем CSV в «Загрузки».
+    const csvCell = v => { v = String(v ?? ""); if (/^[=+\-@]/.test(v)) v = "'" + v;
+      return /[";\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    let exporting = false;
+    $("vkExport").onclick = ()=>{
+      if (exporting) return; exporting = true;
+      $("vkExport").disabled = true; $("vkExportShow").hidden = true;
+      $("vkStatus").textContent = "Собираю список со страницы ВК…"; $("vkStatus").classList.remove("ok");
+      vk({type:"collectAll"});
+    };
+    $("vkLinkForm").addEventListener("submit", e=>{
+      e.preventDefault();
+      const link = parseVkLink($("vkLink").value);
+      if (!link){ $("vkStatus").textContent="Не похоже на ссылку на трек или плейлист ВК"; $("vkStatus").classList.remove("ok"); return; }
+      $("vkLink").value="";
+      if (link.kind==="track"){
+        let saved = vkLinks.find(t=>t.id===link.id);
+        if (!saved){ saved = {id:link.id, path:link.path, title:"", artist:"", duration:0}; vkLinks.push(saved); store.set("vkLinks",vkLinks); }
+        pendingLink = saved;
+        vkSection = LINKS; store.set("vkSection", vkSection);
+        $("vkStatus").textContent="Открываю трек по ссылке…"; $("vkStatus").classList.add("ok");
+      } else {
+        pendingLink = null;
+        $("vkStatus").textContent="Открываю плейлист по ссылке…"; $("vkStatus").classList.add("ok");
+      }
+      openLink(link); renderVk();
+    });
+    T.event.listen("vk:linkfail", ()=>{ $("vkStatus").textContent="Не удалось найти трек на странице ВК. Откройте «Окно ВК» и проверьте ссылку"; $("vkStatus").classList.remove("ok"); });
+    $("vkSection").onchange = e=>{ vkSection = e.target.value; store.set("vkSection", vkSection); renderVk(); };
+    $("vkExportShow").onclick = ()=>T.core.invoke("show_export").catch(()=>{});
+    T.event.listen("vk:collect", async e=>{
+      const p = e.payload || {};
+      if (!p.done){ $("vkStatus").textContent = `Собираю список: ${p.count} ${plural(p.count,["трек","трека","треков"])}…`; return; }
+      exporting = false; $("vkExport").disabled = false;
+      const all = p.items || [];
+      const items = all.filter(t => vkSection===ALL || (t.section||"Без названия")===vkSection);
+      if (!items.length){ $("vkStatus").textContent = all.length
+        ? "В выбранном разделе нет треков. Выберите другой раздел в списке и повторите экспорт"
+        : "На этой странице ВК нет треков. Откройте свою музыку или плейлист в окне ВК"; return; }
+      const rows = [["№","Исполнитель","Название","Длительность","Раздел","Ссылка ВК"]];
+      items.forEach((t,i)=>rows.push([i+1, t.artist, t.title, t.duration ? fmt(t.duration) : "", t.section||"",
+        /^-?\d+_\d+$/.test(t.key) ? "https://vk.ru/audio" + t.key : ""]));
+      const csv = rows.map(r=>r.map(csvCell).join(";")).join("\r\n");
+      const d = new Date(), pad = n=>String(n).padStart(2,"0");
+      const name = `Deka-VK-${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
+      try {
+        const path = await T.core.invoke("save_export", {name, content: csv});
+        $("vkStatus").textContent = `Сохранено ${items.length} ${plural(items.length,["трек","трека","треков"])}: ${path}`;
+        $("vkStatus").classList.add("ok"); $("vkExportShow").hidden = false;
+      } catch(err){ $("vkStatus").textContent = "Не удалось сохранить файл: " + err; }
+    });
+    T.event.listen("vk:stall", e=>{ if (mode!=="vk") return; setState("ЗАВИС");
+      $("vkStatus").textContent = (e.payload&&e.payload.retried) ? "ВК не загружает трек. Нажмите «Перезапустить ВК»" : "ВК долго грузит трек, пробую ещё раз…";
+      $("vkStatus").classList.remove("ok"); });
+    $("vkMy").onclick = ()=>vk({type:"open", path:"/audio"});
+    T.event.listen("vk:state", e=>{
+      const s=e.payload||{}; const wasPaused=vkS.paused; vkS=s; vkAt=performance.now();
+      const st=$("vkStatus");
+      if (!s.loggedIn){ st.textContent="Войдите в ВК: кнопка «Окно ВК»"; st.classList.remove("ok"); }
+      else { st.textContent = s.hasMedia ? "ВК подключён" : "ВК подключён · включите трек"; st.classList.add("ok"); }
+      if (!s.paused && wasPaused){ if (!audio.paused) audio.pause(); mode="vk"; sendFx(); }
+      if (mode!=="vk") return;
+      setState(s.paused ? (s.currentTime>0?"ПАУЗА":"СТОП") : "ИГРАЕТ");
+      $("playIco").innerHTML = s.paused ? '<path d="M4 2l10 6-10 6z"/>' : '<path d="M3 2h4v12H3zM9 2h4v12H9z"/>';
+      if (pendingLink && s.title && !s.paused){
+        pendingLink.title = s.title; pendingLink.artist = s.artist; pendingLink.duration = s.duration || 0;
+        store.set("vkLinks", vkLinks); pendingLink = null; renderVk();
+      }
+      const key = s.artist+"|"+s.title;
+      if (key!==vkTitleKey && s.title){ vkTitleKey=key; setMarquee(`VK · ${s.artist} — ${s.title} (${fmt(s.duration)})`); $("tKbps").textContent="VK"; renderVk(); }
+    });
+    T.event.listen("vk:playlist", e=>{ vkItems = (e.payload&&e.payload.items)||[]; $("vkPage").textContent = (e.payload&&e.payload.page)||"—"; renderVk(); });
+    T.event.listen("vk:spectrum", e=>{ vkSpec = e.payload; });
+    T.event.listen("vk:fx", e=>{ const p=e.payload||{}, el=$("vkFx");
+      el.textContent = p.ok ? "Эквалайзер и спектр работают со звуком ВК" : "Эквалайзер ВК недоступен для этого трека";
+      el.classList.toggle("ok", !!p.ok);
+      if (p.ok) sendFx(); });
+  } else {
+    $("vkApp").hidden = true;
+  }
+
+  renderList(); drawEq(); requestAnimationFrame(frame);
+  window.addEventListener("resize",drawEq);
+})();
+</script>
+</body>
+</html>

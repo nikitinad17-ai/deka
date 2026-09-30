@@ -1,0 +1,13 @@
+{
+  "name": "deka",
+  "private": true,
+  "version": "0.2.0",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build && node scripts/copy-exe.js",
+    "icon": "tauri icon app-icon.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

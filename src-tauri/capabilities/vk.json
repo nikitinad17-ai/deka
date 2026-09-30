@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/remote-schema.json",
+  "identifier": "vk-remote",
+  "description": "Страница ВК может только отправлять события о треке и плейлисте в окно плеера",
+  "windows": [
+    "vk"
+  ],
+  "remote": {
+    "urls": [
+      "https://vk.ru/*",
+      "https://*.vk.ru/*",
+      "https://vk.com/*",
+      "https://*.vk.com/*"
+    ]
+  },
+  "permissions": [
+    "core:event:allow-emit",
+    "core:event:allow-emit-to"
+  ]
+}
