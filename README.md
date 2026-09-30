@@ -38,7 +38,15 @@ npm run build    # сборка, Deka.exe появляется в корне п�
 
 ## Сборка в облаке (GitHub Actions)
 
-`.github/workflows/build-windows.yml` собирает установщик на каждый push в `main` и по кнопке Actions → Build Windows → Run workflow. Готовый файл — артефакт `deka-windows`.
+`.github/workflows/build.yml` на каждый push в `main` собирает Деку для Windows и Android и выкладывает в Releases:
+`Deka-setup.exe`, `Deka.exe` и `Deka.apk`. Версия релиза берётся из `package.json`, поэтому для новой версии её нужно поднять.
+
+Ключ подписи Android лежит в `android/` (репозиторий приватный). Один и тот же ключ нужен, чтобы новые .apk ставились поверх старых.
+Если ключ потерять, придётся удалить приложение с телефона и поставить заново.
+
+## Android
+
+Первая версия: свои файлы, эквалайзер и спектр. VK Музыка на телефоне — в следующих версиях.
 
 ## Первый запуск
 

@@ -1,6 +1,11 @@
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+// На телефоне (Android) у приложения одно окно, поэтому окно ВК и всё, что с ним связано,
+// собирается только для компьютера (cfg(desktop)).
+use tauri::{Manager, WindowEvent};
+#[cfg(desktop)]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 /// Скрипт-мост, который встраивается в страницу vk.ru до загрузки её собственных скриптов.
+#[cfg(desktop)]
 const VK_BRIDGE: &str = include_str!("../../src/vk-bridge.js");
 const VK_URL: &str = "https://vk.ru/audio";
 #[cfg(windows)]
@@ -10,13 +15,18 @@ const BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreen
 #[tauri::command]
 fn vk_show(app: tauri::AppHandle, show: bool) -> Result<(), String> {
     let w = app.get_webview_window("vk").ok_or("окно ВК не создано")?;
-    if show {
-        w.show().map_err(|e| e.to_string())?;
-        let _ = w.unminimize();
-        let _ = w.set_focus();
-    } else {
-        w.hide().map_err(|e| e.to_string())?;
+    #[cfg(desktop)]
+    {
+        if show {
+            w.show().map_err(|e| e.to_string())?;
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+        } else {
+            w.hide().map_err(|e| e.to_string())?;
+        }
     }
+    #[cfg(mobile)]
+    let _ = (w, show);
     Ok(())
 }
 
@@ -87,7 +97,10 @@ fn show_export(window: tauri::WebviewWindow) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(|_app| {
+            #[cfg(desktop)]
+            {
+            let app = _app;
             let builder =
                 WebviewWindowBuilder::new(app, "vk", WebviewUrl::External(VK_URL.parse().unwrap()))
                     .title("ВКонтакте · Дека")
@@ -102,6 +115,7 @@ pub fn run() {
             #[cfg(windows)]
             let builder = builder.additional_browser_args(BROWSER_ARGS);
             builder.build()?;
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -109,6 +123,7 @@ pub fn run() {
                 if window.label() == "vk" {
                     // Окно ВК не закрываем, а прячем: музыка продолжает играть.
                     api.prevent_close();
+                    #[cfg(desktop)]
                     let _ = window.hide();
                 } else if window.label() == "main" {
                     window.app_handle().exit(0);

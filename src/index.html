@@ -162,6 +162,13 @@
   .vkapp .list{margin-top:10px}
   .keys{font:12px var(--f-mono);color:var(--ink-2);max-width:1080px;margin:18px auto 0;display:flex;gap:14px;flex-wrap:wrap}
   .keys kbd{font:500 11px var(--f-mono);border:1px solid var(--edge);border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--ink);background:var(--chassis)}
+  .android .keys{display:none}
+  @media (max-width:520px){
+    body{padding-block:12px 24px}
+    .bar h2{display:none}
+    .transport .btn{min-width:40px;padding:0 8px}
+    .band input[type=range]{height:100px}
+  }
   @media (prefers-reduced-motion:reduce){*{transition:none!important}.reels.spin .reel{animation:none}}
 </style>
 
@@ -170,7 +177,7 @@
 <div class="wrap">
   <!-- MAIN -->
   <section class="win win-main" aria-label="Плеер">
-    <div class="bar"><div class="brand">ДЕ<b>КА</b></div><svg class="reels" id="reels" viewBox="0 0 44 18" aria-hidden="true"><g class="reel" style="transform-origin:9px 9px"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9" r="2.2" fill="currentColor"/><path d="M9 4.2v2.2M9 11.6v2.2M4.2 9h2.2M11.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><g class="reel" style="transform-origin:35px 9px"><circle cx="35" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="35" cy="9" r="2.2" fill="currentColor"/><path d="M35 4.2v2.2M35 11.6v2.2M30.2 9h2.2M37.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><path d="M9 16h26" stroke="var(--cyan)" stroke-width="1.2"/></svg><div class="spacer"></div><h2>ретро-дека · v0.2.0</h2></div>
+    <div class="bar"><div class="brand">ДЕ<b>КА</b></div><svg class="reels" id="reels" viewBox="0 0 44 18" aria-hidden="true"><g class="reel" style="transform-origin:9px 9px"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9" r="2.2" fill="currentColor"/><path d="M9 4.2v2.2M9 11.6v2.2M4.2 9h2.2M11.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><g class="reel" style="transform-origin:35px 9px"><circle cx="35" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="35" cy="9" r="2.2" fill="currentColor"/><path d="M35 4.2v2.2M35 11.6v2.2M30.2 9h2.2M37.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><path d="M9 16h26" stroke="var(--cyan)" stroke-width="1.2"/></svg><div class="spacer"></div><h2>ретро-дека · v0.3.0</h2></div>
     <div class="body">
       <div class="lcd">
         <div>
@@ -598,6 +605,9 @@
 
   // ---------- VK Музыка (только в приложении) ----------
   const T = window.__TAURI__;
+  // На телефоне окна ВК пока нет: вкладка «VK Музыка» показывает пояснение.
+  const IS_ANDROID = /Android/i.test(navigator.userAgent);
+  if (IS_ANDROID) document.documentElement.classList.add("android");
   function vk(cmd){ if (T) T.core.invoke("vk_cmd", {cmd}).catch(()=>{}); }
   function vkNow(){ return vkS.paused ? vkS.currentTime : Math.min(vkS.duration||Infinity, vkS.currentTime + (performance.now()-vkAt)/1000); }
   let vkItems = [], vkTitleKey = "", vkSection = store.get("vkSection", "");
@@ -671,7 +681,12 @@
     const shown = vkItems.filter(inSection).length;
     $("vkCount").textContent = shown+" "+plural(shown,["трек","трека","треков"]);
   }
-  if (T){
+  if (T && IS_ANDROID){
+    $("vkApp").hidden = true;
+    $("vkInfo").innerHTML = `<h3>VK Музыка на телефоне</h3>
+      <p>В этой версии на телефоне работают свои файлы, эквалайзер и спектр. Музыка ВК появится в следующих версиях Деки.</p>
+      <p class="note">Откройте файлы кнопкой «Открыть»: MP3, FLAC, OGG, M4A.</p>`;
+  } else if (T){
     $("vkApp").hidden = false; $("vkInfo").hidden = true;
     $("vkShow").onclick = ()=>T.core.invoke("vk_show",{show:true});
     $("vkRefresh").onclick = ()=>vk({type:"refresh"});
