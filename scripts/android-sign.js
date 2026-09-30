@@ -21,10 +21,11 @@ const gradle = path.join(androidDir, "app", "build.gradle.kts");
 let s = fs.readFileSync(gradle, "utf8");
 if (!s.includes("signingConfigs")) {
   if (!s.includes("import java.io.FileInputStream")) s = "import java.io.FileInputStream\n" + s;
+  if (!s.includes("import java.util.Properties")) s = "import java.util.Properties\n" + s;
   s = s.replace(/android\s*\{/, (m) => m + `
     signingConfigs {
         create("release") {
-            val props = java.util.Properties()
+            val props = Properties()
             props.load(FileInputStream(rootProject.file("keystore.properties")))
             keyAlias = props["keyAlias"] as String
             keyPassword = props["password"] as String
