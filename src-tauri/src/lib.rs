@@ -1,12 +1,12 @@
-// На телефоне (Android) у приложения одно окно, поэтому окно ВК и всё, что с ним связано,
-// собирается только для компьютера (cfg(desktop)).
-use tauri::{Manager, WindowEvent};
-#[cfg(desktop)]
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+// На компьютере у Деки два окна: плеер и скрытое окно ВК.
+// На телефоне (Android) окно одно: в нём открывается сам сайт ВК, а поверх кладётся
+// панель Деки (src/mobile-overlay.js). Своя страница с файлами открывается из панели.
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 /// Скрипт-мост, который встраивается в страницу vk.ru до загрузки её собственных скриптов.
-#[cfg(desktop)]
 const VK_BRIDGE: &str = include_str!("../../src/vk-bridge.js");
+#[cfg(mobile)]
+const MOBILE_OVERLAY: &str = include_str!("../../src/mobile-overlay.js");
 const VK_URL: &str = "https://vk.ru/audio";
 #[cfg(windows)]
 const BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion,IntensiveWakeUpThrottling --autoplay-policy=no-user-gesture-required --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows";
@@ -115,6 +115,15 @@ pub fn run() {
             #[cfg(windows)]
             let builder = builder.additional_browser_args(BROWSER_ARGS);
             builder.build()?;
+            }
+            // Телефон: единственное окно сразу открывает ВК с панелью Деки поверх.
+            // В tauri.android.conf.json у окна стоит create: false, поэтому создаём его здесь.
+            #[cfg(mobile)]
+            {
+                WebviewWindowBuilder::new(_app, "main", WebviewUrl::External(VK_URL.parse().unwrap()))
+                    .initialization_script(VK_BRIDGE)
+                    .initialization_script(MOBILE_OVERLAY)
+                    .build()?;
             }
             Ok(())
         })

@@ -12,6 +12,8 @@
 
   // ---------- связь с окном плеера ----------
   function emit(event, payload) {
+    // Для плеера, встроенного прямо в страницу (версия для телефона), дублируем событие в DOM.
+    try { window.dispatchEvent(new CustomEvent("deka:" + event, { detail: payload })); } catch (e) {}
     try {
       if (window.__TAURI__ && window.__TAURI__.event) return window.__TAURI__.event.emitTo("main", event, payload);
       if (window.__TAURI_INTERNALS__) return window.__TAURI_INTERNALS__.invoke("plugin:event|emit_to", {
