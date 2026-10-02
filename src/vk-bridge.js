@@ -89,6 +89,7 @@
     "[data-testid='audio-row']",
     "[data-testid*='audio_row']",
     ".audio_row",
+    ".audio_item",                         // мобильная версия m.vk
     "[class*='AudioRow__root']",
     "[class*='AudioRow']"
   ];
@@ -179,9 +180,9 @@
           title = a[3]; artist = a[4]; dur = +a[5] || 0;
         } catch (e) {}
       }
-      if (!title) title = textOf(row, [".audio_row__title_inner", "[class*='title'] a", "[class*='Title']", "[class*='title']"]);
-      if (!artist) artist = textOf(row, [".audio_row__performers", "[class*='performer']", "[class*='Performer']", "[class*='artist']", "[class*='Artist']"]);
-      if (!dur) dur = parseDur(textOf(row, [".audio_row__duration", "[class*='duration']", "[class*='Duration']"]) || row.textContent);
+      if (!title) title = textOf(row, [".audio_row__title_inner", ".ai_title", "[class*='title'] a", "[class*='Title']", "[class*='title']"]);
+      if (!artist) artist = textOf(row, [".audio_row__performers", ".ai_artist", "[class*='performer']", "[class*='Performer']", "[class*='artist']", "[class*='Artist']"]);
+      if (!dur) dur = parseDur(textOf(row, [".audio_row__duration", ".ai_dur", "[class*='duration']", "[class*='Duration']"]) || row.textContent);
       if (!key) key = row.getAttribute("data-full-id") || row.getAttribute("data-id") || (artist + "—" + title + "#" + i);
       if (!title) return;
       rowIndex.set(key, row);
@@ -212,7 +213,7 @@
     if (!row) { readRows(); row = rowIndex.get(key); }
     if (!row) return false;
     row.scrollIntoView({ block: "center" });
-    var btn = row.querySelector("[data-testid='audiorow-tappable'], .audio_row__play_btn, [data-testid*='play'], [aria-label*='оспроизв'], [aria-label*='лушать'], button, [role='button']");
+    var btn = row.querySelector("[data-testid='audiorow-tappable'], .audio_row__play_btn, .ai_play, .ai_body, [data-testid*='play'], [aria-label*='оспроизв'], [aria-label*='лушать'], button, [role='button']");
     (btn || row).click();
     return true;
   }
@@ -328,6 +329,26 @@
     step();
   }
 
+  // Что мост видит на странице: для подстройки под новую вёрстку ВК по скриншоту.
+  function diag() {
+    function n(sel) { try { return document.querySelectorAll(sel).length; } catch (e) { return -1; } }
+    var tids = {};
+    Array.prototype.forEach.call(document.querySelectorAll("[data-testid]"), function (e) {
+      var t = e.getAttribute("data-testid"); if (/audio|music|track|playlist/i.test(t)) tids[t] = (tids[t] || 0) + 1;
+    });
+    var cls = {};
+    Array.prototype.forEach.call(document.querySelectorAll("[class*='audio'],[class*='Audio'],[class*='track'],[class*='Track']"), function (e) {
+      var c = String(e.className).split(/\s+/)[0]; if (c) cls[c] = (cls[c] || 0) + 1;
+    });
+    return {
+      url: location.href.slice(0, 120), rows: readRows().length,
+      MusicTrackRow: n("[data-testid='MusicTrackRow']"), dataAudio: n("[data-audio]"), audioId: n("[data-audio-id]"),
+      audioItem: n(".audio_item"), audioRow: n(".audio_row"), media: !!media, loggedIn: isLoggedIn(),
+      testids: Object.keys(tids).slice(0, 12).map(function (k) { return k + "×" + tids[k]; }),
+      classes: Object.keys(cls).slice(0, 12).map(function (k) { return k + "×" + cls[k]; })
+    };
+  }
+
   window.__deka = {
     cmd: function (c) {
       c = c || {};
@@ -353,6 +374,13 @@
           break;
         case "refresh": lastListJson = ""; sendList(); break;
         case "collectAll": collectAll(); break;
+        case "more":
+          // Подгрузить ещё треки: ВК догружает список при прокрутке вниз.
+          var se = document.scrollingElement || document.documentElement;
+          window.scrollTo(0, se.scrollHeight);
+          setTimeout(function () { lastListJson = ""; sendList(); }, 1200);
+          break;
+        case "diag": emit("vk:diag", diag()); break;
         case "fx":
           if (typeof c.on === "boolean") fxSet.on = c.on;
           if (isFinite(c.pre)) fxSet.pre = +c.pre;

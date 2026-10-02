@@ -177,7 +177,7 @@
 <div class="wrap">
   <!-- MAIN -->
   <section class="win win-main" aria-label="Плеер">
-    <div class="bar"><div class="brand">ДЕ<b>КА</b></div><svg class="reels" id="reels" viewBox="0 0 44 18" aria-hidden="true"><g class="reel" style="transform-origin:9px 9px"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9" r="2.2" fill="currentColor"/><path d="M9 4.2v2.2M9 11.6v2.2M4.2 9h2.2M11.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><g class="reel" style="transform-origin:35px 9px"><circle cx="35" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="35" cy="9" r="2.2" fill="currentColor"/><path d="M35 4.2v2.2M35 11.6v2.2M30.2 9h2.2M37.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><path d="M9 16h26" stroke="var(--cyan)" stroke-width="1.2"/></svg><div class="spacer"></div><h2>ретро-дека · v0.4.0</h2></div>
+    <div class="bar"><div class="brand">ДЕ<b>КА</b></div><svg class="reels" id="reels" viewBox="0 0 44 18" aria-hidden="true"><g class="reel" style="transform-origin:9px 9px"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9" r="2.2" fill="currentColor"/><path d="M9 4.2v2.2M9 11.6v2.2M4.2 9h2.2M11.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><g class="reel" style="transform-origin:35px 9px"><circle cx="35" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="35" cy="9" r="2.2" fill="currentColor"/><path d="M35 4.2v2.2M35 11.6v2.2M30.2 9h2.2M37.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><path d="M9 16h26" stroke="var(--cyan)" stroke-width="1.2"/></svg><div class="spacer"></div><h2>ретро-дека · v0.5.0</h2></div>
     <div class="body">
       <div class="lcd">
         <div>
@@ -684,11 +684,9 @@
   if (T && IS_ANDROID){
     $("vkApp").hidden = true;
     $("vkInfo").innerHTML = `<h3>VK Музыка на телефоне</h3>
-      <p>Дека откроет сайт ВК, а снизу будет панель плеера: дисплей, спектр, кнопки и эквалайзер. Треки выбирайте прямо в ВК.</p>
-      <button class="btn open" id="vkOpenMobile" type="button">Открыть VK Музыку</button>`;
+      <p>Вернуться к музыке ВК в интерфейсе Деки.</p>
+      <button class="btn open" id="vkOpenMobile" type="button">Вернуться к VK Музыке</button>`;
     $("vkOpenMobile").onclick = ()=>{ location.href = "https://vk.ru/audio"; };
-    // На телефоне сразу открываем вкладку ВК: это основной режим.
-    $("tabVk").click();
   } else if (T){
     $("vkApp").hidden = false; $("vkInfo").hidden = true;
     $("vkShow").onclick = ()=>T.core.invoke("vk_show",{show:true});
