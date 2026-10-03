@@ -3,3 +3,10 @@ src-tauri/target/
 src-tauri/gen/
 Deka.exe
 Deka-setup.exe
+
+# Android signing material must never be committed.
+android/*.p12
+android/*.jks
+android/*.keystore
+android/signing.json
+**/keystore.properties
