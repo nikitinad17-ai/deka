@@ -69,6 +69,7 @@ jobs:
           $REPORT npx tauri android init --ci
           $REPORT npx tauri icon app-icon.png
           $REPORT node scripts/android-sign.js
+          $REPORT node scripts/android-webview.js
       - name: Сборка .apk
         run: |
           $REPORT npx tauri android build --apk --target aarch64 --ci

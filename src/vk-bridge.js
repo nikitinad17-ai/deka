@@ -7,7 +7,9 @@
 (function () {
   "use strict";
   if (window.top !== window) return;
-  if (!/(^|\.)vk\.(ru|com)$/.test(location.hostname)) return;
+  if (!/(^|\.)(vk\.(ru|com)|vkvideo\.ru)$/.test(location.hostname)) return;
+  // Страница VK Видео: здесь звук берём из <video> (вкладка «Сеты» на телефоне).
+  function isVideoPage() { return /vkvideo\.ru$/.test(location.hostname) || /^\/(video|clip)/.test(location.pathname); }
   if (window.__deka) return;
 
   // ---------- связь с окном плеера ----------
@@ -27,18 +29,33 @@
   // поэтому запоминаем элемент в момент первого play().
   var media = null;
   var origPlay = HTMLMediaElement.prototype.play;
-  HTMLMediaElement.prototype.play = function () {
-    if (this instanceof HTMLAudioElement || this.tagName === "AUDIO") {
-      media = this;
-      if (!this.__dekaListen) {
-        this.__dekaListen = true;
-        var el = this;
-        // К моменту «playing» у элемента уже есть поток, и его можно подключить к эквалайзеру.
-        el.addEventListener("playing", function () { hookFx(el); });
-      }
+  function adopt(el) {
+    media = el;
+    if (!el.__dekaListen) {
+      el.__dekaListen = true;
+      // К моменту «playing» у элемента уже есть поток, и его можно подключить к эквалайзеру.
+      el.addEventListener("playing", function () { hookFx(el); });
+      el.addEventListener("ended", function () { if (el === media) emit("vk:ended", {}); });
     }
+  }
+  HTMLMediaElement.prototype.play = function () {
+    if (this.tagName === "AUDIO" || (this.tagName === "VIDEO" && isVideoPage())) adopt(this);
     return origPlay.apply(this, arguments);
   };
+  // Если ВК ещё не запускал звук, берём элемент со страницы сами.
+  function findMedia() {
+    if (media) return media;
+    var el = document.querySelector(isVideoPage() ? "video" : "audio");
+    if (el) adopt(el);
+    return media;
+  }
+  function playMedia() {
+    var m = findMedia();
+    if (!m) return action("play");
+    try { m.muted = false; } catch (e) {}
+    var p = m.play(); if (p && p.catch) p.catch(function () {});
+    return true;
+  }
 
   // ВК регистрирует обработчики «следующий/предыдущий» для системных медиаклавиш.
   // Сохраняем их, чтобы вызывать те же действия из «Деки».
@@ -54,12 +71,19 @@
     }
   } catch (e) {}
 
+  function videoTitle() {
+    var h = document.querySelector("h1, [data-testid*='video_title'], [class*='VideoTitle'], [class*='video_title']");
+    var t = (h && h.textContent.trim()) || document.title || "";
+    return t.replace(/\s*[|—-]\s*VK.*$/i, "").trim().slice(0, 140);
+  }
+
   function nowPlaying() {
     var md = navigator.mediaSession && navigator.mediaSession.metadata;
     var art = md && md.artwork && md.artwork.length ? md.artwork[md.artwork.length - 1].src : "";
     return {
-      title: md ? md.title : "",
-      artist: md ? md.artist : "",
+      title: md && md.title ? md.title : (isVideoPage() ? videoTitle() : ""),
+      artist: md && md.artist ? md.artist : (isVideoPage() ? "VK Видео" : ""),
+      video: isVideoPage(),
       album: md ? md.album : "",
       artwork: art,
       currentTime: media ? media.currentTime : 0,
@@ -329,6 +353,21 @@
     step();
   }
 
+  // Открыть полный список «Мои треки» (там на странице только ваши треки).
+  function openMy() {
+    var a = document.querySelector("a[href^='/audios']");
+    if (!a) {
+      var links = document.querySelectorAll("a[href]");
+      for (var i = 0; i < links.length && !a; i++) {
+        var txt = (links[i].textContent || "").trim();
+        if (/^(Мои треки|Показать все|My tracks|Show all)$/i.test(txt) && /audio/.test(links[i].getAttribute("href"))) a = links[i];
+      }
+    }
+    if (a) { location.href = a.getAttribute("href"); return; }
+    var id = window.vk && (window.vk.id || window.vk.uid);
+    location.href = id ? "/audios" + id : "/audio";
+  }
+
   // Что мост видит на странице: для подстройки под новую вёрстку ВК по скриншоту.
   function diag() {
     function n(sel) { try { return document.querySelectorAll(sel).length; } catch (e) { return -1; } }
@@ -353,8 +392,10 @@
     cmd: function (c) {
       c = c || {};
       switch (c.type) {
-        case "toggle": if (media) { media.paused ? media.play() : media.pause(); } else action("play"); break;
-        case "play": media ? media.play() : action("play"); break;
+        case "toggle": if (media && !media.paused) media.pause(); else playMedia(); break;
+        case "play": playMedia(); break;
+        case "skip": if (media && isFinite(c.by)) media.currentTime = Math.max(0, media.currentTime + c.by); break;
+        case "openMy": openMy(); break;
         case "pause": if (media) media.pause(); break;
         case "stop": if (media) { media.pause(); media.currentTime = 0; } break;
         case "next": action("nexttrack"); break;
@@ -446,8 +487,20 @@
     })();
   }
 
+  // На странице сета видео запускаем сами, как только плеер появится.
+  function autoplayVideo() {
+    if (!isVideoPage()) return;
+    var tries = 0;
+    (function look() {
+      var v = document.querySelector("video");
+      if (v && v.paused) { adopt(v); playMedia(); }
+      if ((!v || v.paused) && ++tries < 40) setTimeout(look, 500);
+    })();
+  }
+
   function startObserver() {
     if (!document.body) return setTimeout(startObserver, 200);
+    autoplayVideo();
     autoplayFromLink();
     new MutationObserver(scheduleList).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
     scheduleList();
