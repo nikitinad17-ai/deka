@@ -1,0 +1,34 @@
+name: Deka 2 offline verification kit
+on:
+  push:
+    branches: [chore/deka2-offline-verification]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  kit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 3f9d39dc39cb777c532ef4dae54a83746265083c
+          persist-credentials: false
+      - name: Package source and verifier (no signing credentials)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verification-kit
+          git archive --format=zip HEAD -o verification-kit/source.zip
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          jar=$(find "$sdk/build-tools" -type f -name apksigner.jar | sort -V | tail -n 1)
+          test -f "$jar"
+          cp "$jar" verification-kit/apksigner.jar
+          git rev-parse HEAD > verification-kit/source-commit.txt
+          sha256sum verification-kit/source.zip verification-kit/apksigner.jar > verification-kit/SHA256SUMS.txt
+          java -jar verification-kit/apksigner.jar version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deka2-offline-verification-kit
+          path: verification-kit/
+          if-no-files-found: error
+          retention-days: 14
