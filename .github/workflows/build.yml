@@ -24,9 +24,7 @@ jobs:
       - run: python tests/mixer-browser.py
       - uses: actions/upload-artifact@v4
         if: always()
-        with:
-          name: deka2-browser-tests
-          path: test-output/
+        with: {name: deka2-browser-tests, path: test-output/}
   windows:
     needs: quality
     runs-on: windows-latest
@@ -41,16 +39,7 @@ jobs:
       - run: npm run build
       - name: Verify installation and desktop shortcut
         shell: pwsh
-        run: |
-          $p = Start-Process -FilePath "$pwd\Deka2-setup.exe" -ArgumentList '/S' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "Installer exit $($p.ExitCode)" }
-          $link = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Дека 2.lnk'
-          if (!(Test-Path $link)) { throw 'Desktop shortcut missing' }
-          $shell = New-Object -ComObject WScript.Shell
-          $target = $shell.CreateShortcut($link).TargetPath
-          if (!(Test-Path $target)) { throw 'Desktop shortcut target missing' }
-          if ([IO.Path]::GetFileName($target) -ne 'deka2.exe') { throw 'Wrong app shortcut' }
-          "Verified desktop shortcut: $link -> $target"
+        run: ./scripts/verify-windows-install.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: deka2-windows
@@ -102,8 +91,7 @@ jobs:
           echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
           echo "NDK_HOME=$ndk" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
+        with: {targets: aarch64-linux-android}
       - uses: swatinem/rust-cache@v2
         with: {workspaces: src-tauri}
       - run: npm install
@@ -149,14 +137,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with:
-          name: deka2-windows
-          path: out
+        with: {name: deka2-windows, path: out}
       - uses: actions/download-artifact@v4
         if: needs.android.outputs.kind == 'signed'
-        with:
-          name: deka2-android-build
-          path: out
+        with: {name: deka2-android-build, path: out}
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: deka2-v0.2.0
