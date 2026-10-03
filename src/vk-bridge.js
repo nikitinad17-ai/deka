@@ -241,6 +241,63 @@
     (btn || row).click();
     return true;
   }
+  // ---------- включить трек из очереди Деки ----------
+  // Ключ трека: id ВК вида 123_456, иногда с хвостом «#n» (один трек в нескольких подборках).
+  function baseKey(k) { return String(k || "").replace(/#\d+$/, ""); }
+  function rowById(id) {
+    var rows = document.querySelectorAll("[data-testid='MusicTrackRow']");
+    for (var i = 0; i < rows.length; i++) {
+      var h = rows[i].closest("[data-audio-id]");
+      if (h && h.getAttribute("data-audio-id") === id) return rows[i];
+    }
+    return null;
+  }
+  function clickTrackRow(row) {
+    row.scrollIntoView({ block: "center" });
+    var btn = row.querySelector("[data-testid='audiorow-tappable']") || row;
+    btn.click();
+  }
+  // Ищем трек на текущей странице, листая её сверху вниз (длинный список ВК
+  // подгружает кусками). Не нашли — сообщаем «Деке», она перейдёт к следующему.
+  // Чужой трек вместо пропавшего никогда не включаем.
+  var finding = 0;
+  function findAndPlay(id) {
+    var my = ++finding, rounds = 0, idle = 0, lastSig = "";
+    try { window.scrollTo(0, 0); } catch (e) {}
+    (function look() {
+      if (my !== finding) return; // пришла новая команда
+      var row = rowById(id);
+      if (row) { clickTrackRow(row); return; }
+      var rows = document.querySelectorAll("[data-testid='MusicTrackRow']");
+      var last = rows[rows.length - 1];
+      var h = last && last.closest("[data-audio-id]");
+      var sig = rows.length + "|" + (h ? h.getAttribute("data-audio-id") : "");
+      // Пока страница не загрузилась (строк нет), ждём до ~20 секунд; потом 6 пустых прокруток = конец списка.
+      if (rows.length) { idle = sig === lastSig ? idle + 1 : 0; lastSig = sig; } else if (rounds > 40) idle = 99;
+      if (idle >= 6 || ++rounds > 600) { emit("vk:linkfail", { id: id, queue: true }); return; }
+      if (last) { try { last.scrollIntoView({ block: "start" }); } catch (e) {} }
+      else { var se = document.scrollingElement || document.documentElement; window.scrollTo(0, se.scrollHeight); }
+      setTimeout(look, rows.length ? 600 : 500);
+    })();
+  }
+  function playKey(key) {
+    var row = rowIndex.get(key);
+    if (!row) { readRows(); row = rowIndex.get(key); }
+    var id = baseKey(key);
+    if (!row && /^-?\d+_\d+$/.test(id)) row = rowById(id);
+    if (row) { finding++; clickTrackRow(row); return; }
+    if (!/^-?\d+_\d+$/.test(id)) { emit("vk:linkfail", { id: id, queue: true }); return; }
+    // На странице «Мои треки» ищем прокруткой; иначе переходим туда и ищем после загрузки.
+    if (/\/audios/.test(location.pathname)) { findAndPlay(id); return; }
+    try { sessionStorage.setItem("dekaFind", id); } catch (e) {}
+    openMy();
+  }
+  function findFromQueue() {
+    var id = null;
+    try { id = sessionStorage.getItem("dekaFind"); sessionStorage.removeItem("dekaFind"); } catch (e) {}
+    if (id) findAndPlay(id);
+  }
+
   function action(name) {
     if (handlers[name]) { try { handlers[name]({ action: name }); return true; } catch (e) {} }
     return false;
@@ -428,6 +485,7 @@
         case "seek": if (media && isFinite(c.time)) media.currentTime = c.time; break;
         case "volume": if (media && isFinite(c.value)) media.volume = Math.max(0, Math.min(1, c.value)); break;
         case "playRow": clickRow(c.key); break;
+        case "playKey": playKey(c.key); break;
         case "open": if (c.path && c.path.charAt(0) === "/") location.href = c.path; break;
         case "openPlay":
           // Открыть трек по ссылке и включить его, когда страница загрузится.
@@ -524,6 +582,7 @@
     if (!document.body) return setTimeout(startObserver, 200);
     autoplayVideo();
     autoplayFromLink();
+    findFromQueue();
     new MutationObserver(scheduleList).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
     scheduleList();
   }

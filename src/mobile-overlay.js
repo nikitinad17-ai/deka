@@ -85,13 +85,12 @@
 
   // ---------- очередь Деки ----------
   function same(a, b) { return a && b && a.title === b.title && (a.artist || "") === (b.artist || ""); }
-  function onPage(t) { return items.some(function (x) { return x.key === t.key; }); }
   function playTrack(t) {
     if (!t) return;
     if (same(t, st) && !st.paused) return;            // уже играет: клик по строке ВК поставил бы паузу
     setState("ЗАГРУЗКА");
-    if (onPage(t)) cmd({ type: "playRow", key: t.key });
-    else if (/^-?\d+_\d+$/.test(t.key)) cmd({ type: "openPlay", path: "/audio" + t.key, id: t.key });
+    // Мост сам найдёт трек: на странице, прокруткой в «Моих треках» или сообщит, что не нашёл.
+    cmd({ type: "playKey", key: t.key });
   }
   function startQueue(list, index) {
     queue = { list: list.map(function (t) { return { key: t.key, title: t.title, artist: t.artist, duration: t.duration }; }), index: index };
@@ -290,6 +289,16 @@
       window.addEventListener("deka:vk:diag", function (e) {
         $("diag").hidden = false; $("diagText").textContent = "Пришлите скриншот этого окна\n" + JSON.stringify(e.detail, null, 1);
       });
+      // Трек из очереди не нашёлся в ВК (удалён или недоступен): пропускаем его,
+      // но не больше одного круга подряд, чтобы не крутиться без конца.
+      var misses = 0;
+      window.addEventListener("deka:vk:linkfail", function (e) {
+        if (!(e.detail && e.detail.queue) || !queue) return;
+        if (++misses >= Math.min(queue.list.length, 20)) { misses = 0; setState("НЕ НАЙДЕН"); return; }
+        $("count").textContent = "Трек не найден в ВК, пропускаю";
+        step(1);
+      });
+      window.addEventListener("deka:vk:state", function (e) { if (e.detail && !e.detail.paused) misses = 0; });
       window.addEventListener("deka:vk:ended", function () {
         // ВК может сам включить следующий трек; если это не тот, что в очереди Деки, переключаем.
         if (!queue) return;
