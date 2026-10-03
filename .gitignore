@@ -1,12 +1,19 @@
 node_modules/
 src-tauri/target/
 src-tauri/gen/
+test-output/
 Deka.exe
 Deka-setup.exe
-
-# Android signing material must never be committed.
+Deka2.exe
+Deka2-setup.exe
+*.apk
+*.idsig
 android/*.p12
 android/*.jks
 android/*.keystore
 android/signing.json
 **/keystore.properties
+**/*private*.pem
+**/signing-password.txt
+**/deka2-signing.p12
+__pycache__/

@@ -1,16 +1,18 @@
 {
-  "name": "deka",
+  "name": "deka2",
   "private": true,
-  "version": "0.9.0",
+  "version": "0.1.0",
+  "description": "Дека 2 — отдельный DJ-плеер",
   "scripts": {
+    "prepare:brand": "node scripts/prepare-deka2.js",
     "tauri": "tauri",
+    "predev": "npm run prepare:brand",
     "dev": "tauri dev",
+    "prebuild": "npm run prepare:brand",
     "build": "tauri build && node scripts/copy-exe.js",
     "icon": "tauri icon app-icon.png",
-    "test": "node scripts/smoke-test.js && node --test tests/library.test.js",
-    "test:browser": "python tests/browser.py"
+    "pretest": "npm run prepare:brand",
+    "test": "node scripts/smoke-test.js && node --test tests/library.test.js tests/app-identity.test.js"
   },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2"
-  }
+  "devDependencies": { "@tauri-apps/cli": "^2" }
 }
