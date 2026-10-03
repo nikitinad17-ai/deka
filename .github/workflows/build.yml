@@ -135,6 +135,34 @@ jobs:
           echo "APK: $apk"
           test -n "$apk" || { echo "::error::Файл .apk не найден после сборки"; exit 1; }
           cp "$apk" Deka.apk
+
+      - name: Проверить APK как обновление 0.6.4
+        if: steps.signing.outputs.available == 'true'
+        shell: bash
+        run: |
+          apksigner=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          aapt=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)
+          test -x "$apksigner" && test -x "$aapt" || { echo "::error::Не найдены apksigner/aapt"; exit 1; }
+
+          "$apksigner" verify --verbose Deka.apk
+
+          curl -fsSL "https://github.com/nikitinad17-ai/deka/releases/download/v0.6.4/Deka.apk" -o /tmp/Deka-0.6.4.apk
+          old_cert=$("$apksigner" verify --print-certs /tmp/Deka-0.6.4.apk | awk -F': ' '/certificate SHA-256 digest/ {print $2; exit}')
+          new_cert=$("$apksigner" verify --print-certs Deka.apk | awk -F': ' '/certificate SHA-256 digest/ {print $2; exit}')
+          old_badging=$("$aapt" dump badging /tmp/Deka-0.6.4.apk | head -n 1)
+          new_badging=$("$aapt" dump badging Deka.apk | head -n 1)
+          old_pkg=$(printf '%s' "$old_badging" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+          new_pkg=$(printf '%s' "$new_badging" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+          old_vc=$(printf '%s' "$old_badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
+          new_vc=$(printf '%s' "$new_badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
+
+          echo "Package: $old_pkg -> $new_pkg"
+          echo "VersionCode: $old_vc -> $new_vc"
+          test -n "$old_cert" && test "$old_cert" = "$new_cert" || { echo "::error::Подпись APK отличается от 0.6.4"; exit 1; }
+          test "$old_pkg" = "$new_pkg" || { echo "::error::Package name изменился"; exit 1; }
+          test "$new_vc" -gt "$old_vc" || { echo "::error::VersionCode не вырос"; exit 1; }
+          echo "APK совместим с обновлением поверх 0.6.4."
+
       - uses: actions/upload-artifact@v4
         if: steps.signing.outputs.available == 'true'
         with:
