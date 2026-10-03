@@ -336,9 +336,17 @@
   }
   function setState(text) { if ($) $("state").textContent = text; }
 
+  // Пока играет музыка, экран не гаснет (мост из Android-оболочки, см. scripts/android-webview.js).
+  var awake = null;
+  function keepAwake(on) {
+    if (on === awake) return; awake = on;
+    try { if (window.DekaAndroid) window.DekaAndroid.keepAwake(on); } catch (e) {}
+  }
+
   var lastKey = "";
   function render() {
     var playing = !st.paused;
+    keepAwake(playing);
     root.classList.toggle("spin", playing);
     $("play1").innerHTML = $("play2").innerHTML = playing ? ICON.pause : ICON.play;
     setState(playing ? "ИГРАЕТ" : (st.currentTime > 0 ? "ПАУЗА" : "СТОП"));

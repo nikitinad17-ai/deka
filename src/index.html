@@ -472,6 +472,10 @@
   audio.addEventListener("play",()=>{ setState("ИГРАЕТ"); $("playIco").innerHTML='<path d="M3 2h4v12H3zM9 2h4v12H9z"/>'; });
   audio.addEventListener("pause",()=>{ if (audio.currentTime>0) setState("ПАУЗА"); $("playIco").innerHTML='<path d="M4 2l10 6-10 6z"/>'; });
   audio.addEventListener("ended",()=>step(1));
+  // Android: пока играет свой файл, экран не гаснет (мост DekaAndroid из оболочки).
+  function keepAwake(on){ try{ if (window.DekaAndroid) window.DekaAndroid.keepAwake(on); }catch(e){} }
+  audio.addEventListener("playing",()=>keepAwake(true));
+  ["pause","ended","error","emptied"].forEach(ev=>audio.addEventListener(ev,()=>keepAwake(false)));
   audio.addEventListener("loadedmetadata",()=>{ const t=tracks[cur]; if(t && isFinite(audio.duration)){ t.dur=audio.duration; renderList(); } });
 
   // ---------- marquee ----------

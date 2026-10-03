@@ -1,6 +1,8 @@
 // Настраивает WebView в Android-проекте, который Tauri генерирует в CI:
 // звук и видео могут стартовать без отдельного касания (нужно для «Сетов»
 // и треков, открытых по ссылке, где страница перезагружается).
+// Плюс мост DekaAndroid.keepAwake(true/false): пока играет музыка,
+// экран не гаснет сам и телефон не уходит в спящий режим.
 const fs = require("fs");
 const path = require("path");
 
@@ -23,6 +25,15 @@ const override = `
   override fun onWebViewCreate(webView: android.webkit.WebView) {
     super.onWebViewCreate(webView)
     webView.settings.mediaPlaybackRequiresUserGesture = false
+    webView.addJavascriptInterface(object {
+      @android.webkit.JavascriptInterface
+      fun keepAwake(on: Boolean) {
+        runOnUiThread {
+          val f = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+          if (on) window.addFlags(f) else window.clearFlags(f)
+        }
+      }
+    }, "DekaAndroid")
   }
 `;
 const withBody = /class MainActivity\s*:\s*TauriActivity\(\)\s*\{/;
@@ -31,4 +42,4 @@ if (withBody.test(s)) s = s.replace(withBody, (m) => m + override);
 else if (noBody.test(s)) s = s.replace(noBody, (m) => m + " {" + override + "}");
 else { console.error("Не узнал формат MainActivity.kt:\n" + s); process.exit(1); }
 fs.writeFileSync(file, s);
-console.log("WebView: звук без отдельного касания включён\n" + s);
+console.log("WebView: звук без касания и «не гасить экран» включены\n" + s);
