@@ -50,6 +50,8 @@
   var sets = store.get("sets", []);                    // [{url, title, duration}]
   var myAll = store.get("myAll", []);                  // весь плейлист, собранный прокруткой
   var queue = store.get("queue", null);                // {list:[...], index}
+  if (!queue || !Array.isArray(queue.list) || !queue.list.length) queue = null;
+  else { queue.index = Math.max(0, Math.min(queue.list.length - 1, isFinite(+queue.index) ? +queue.index : 0)); }
   var openPl = null;                                   // открытый плейлист во вкладке «Плейлисты»
   var selecting = null;                                // режим создания плейлиста: {keys:{}}
   var st = { paused: true, currentTime: 0, duration: 0, title: "", artist: "", loggedIn: true };
@@ -95,12 +97,16 @@
     cmd({ type: "playKey", key: t.key });
   }
   function startQueue(list, index) {
+    list = Array.isArray(list) ? list.filter(function (t) { return t && t.key; }) : [];
+    if (!list.length) { setState("ПУСТО"); return; }
+    index = Math.max(0, Math.min(list.length - 1, isFinite(+index) ? +index : 0));
     queue = { list: list.map(function (t) { return { key: t.key, title: t.title, artist: t.artist, duration: t.duration }; }), index: index };
     store.set("queue", queue);
     playTrack(queue.list[index]);
   }
   function step(d) {
-    if (!queue || !queue.list.length) { cmd({ type: d > 0 ? "next" : "prev" }); return; }
+    if (!queue || !Array.isArray(queue.list) || !queue.list.length) { cmd({ type: d > 0 ? "next" : "prev" }); return; }
+    if (!isFinite(+queue.index) || queue.index < 0 || queue.index >= queue.list.length) queue.index = 0;
     if (d < 0 && now() > 3) { cmd({ type: "seek", time: 0 }); return; }
     queue.index = (queue.index + d + queue.list.length) % queue.list.length;
     store.set("queue", queue);
@@ -354,12 +360,18 @@
   }
   function setState(text) { if ($) $("state").textContent = text; }
 
-  // Пока играет музыка, экран не гаснет (мост из Android-оболочки, см. scripts/android-webview.js).
+  // Пока играет музыка, Android держит foreground media service + PARTIAL_WAKE_LOCK.
+  // Экран при этом может гаснуть; service нужен именно для фонового воспроизведения.
   var awake = null;
   function keepAwake(on) {
     if (on === awake) return; awake = on;
     try { if (window.DekaAndroid) window.DekaAndroid.keepAwake(on); } catch (e) {}
   }
+  // При переходе экрана в background ещё раз подтверждаем service до того,
+  // как WebView начнёт ограничивать таймеры.
+  document.addEventListener("visibilitychange", function () {
+    if (!st.paused) { awake = null; keepAwake(true); }
+  });
 
   var lastKey = "";
   function render() {
