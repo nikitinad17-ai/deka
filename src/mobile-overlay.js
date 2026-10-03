@@ -324,7 +324,7 @@
     djInput("djMid", function (v) { setBandGroup([3,4,5,6], v); });
     djInput("djHigh", function (v) { setBandGroup([7,8,9], v); });
     djInput("djFilter", function (v) { fx.on = true; fx.filter = v / 100; $("eqon").classList.add("on"); sendFx(); });
-    djInput("djMaster", function (v) { cmd({ type: "volume", value: v / 100 }); $("djMasterV").textContent = Math.round(v) + "%"; });
+    djInput("djMaster", function (v) { st.volume = v / 100; cmd({ type: "volume", value: st.volume }); $("djMasterV").textContent = Math.round(v) + "%"; });
 
     $("djPlay").onclick = function () { cmd({ type: "toggle" }); };
     $("djPrev").onclick = function () { if (IS_VIDEO) cmd({ type: "skip", by: -30 }); else step(-1); };
