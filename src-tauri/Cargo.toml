@@ -1,6 +1,6 @@
 [package]
 name = "deka"
-version = "0.7.0"
+version = "0.8.0"
 description = "Дека — ретро-плеер с поддержкой VK Музыки"
 edition = "2021"
 
