@@ -386,12 +386,26 @@
     var rows = document.querySelectorAll("[data-testid='MusicTrackRow'], .audio_item, .audio_row, [data-audio]");
     if (rows.length) { try { rows[rows.length - 1].scrollIntoView({ block: "end" }); } catch (e) {} }
   }
+  // Шаг прокрутки примерно на экран: последняя видимая строка уходит наверх.
+  // Так не перепрыгиваем середину длинного списка (ВК может показывать только
+  // строки рядом с экраном), и при этом доходим до низа, где ВК догружает треки.
+  function scrollStep() {
+    var rows = document.querySelectorAll("[data-testid='MusicTrackRow'], .audio_item, .audio_row, [data-audio]");
+    var before = window.scrollY;
+    if (rows.length) { try { rows[rows.length - 1].scrollIntoView({ block: "start" }); } catch (e) {} }
+    if (window.scrollY === before) {
+      var se = document.scrollingElement || document.documentElement;
+      window.scrollTo(0, se.scrollHeight);
+    }
+  }
 
   var collecting = false;
   function collectAll() {
     if (collecting) return;
     collecting = true;
+    finding++; // поиск трека для очереди прерываем, чтобы не мешал прокрутке
     var acc = new Map(), idle = 0, rounds = 0, startY = window.scrollY;
+    try { window.scrollTo(0, 0); } catch (e) {}
     function keyOf(t) {
       var k = String(t.key);
       var base = /^row\d+$/.test(k) ? t.artist + "—" + t.title : k.replace(/#\d+$/, "");
@@ -404,18 +418,34 @@
         if (!acc.has(k)) { acc.set(k, { key: String(t.key).replace(/#\d+$/, ""), section: t.section || "", title: t.title, artist: t.artist, duration: t.duration }); added++; }
       });
       rounds++;
+      // Страница ещё грузится: ждём строки до ~25 секунд, это не конец списка.
+      if (!acc.size && rounds < 25) { setTimeout(step, 1000); return; }
       idle = added ? 0 : idle + 1;
-      if (idle >= 5 || rounds > 400 || acc.size >= 5000) {
+      if (idle >= 10 || rounds > 1500 || acc.size >= 10000) {
         collecting = false;
         window.scrollTo(0, startY);
         emit("vk:collect", { done: true, count: acc.size, page: location.pathname, items: Array.from(acc.values()) });
         return;
       }
       emit("vk:collect", { done: false, count: acc.size });
-      scrollToEnd();
-      setTimeout(step, 900);
+      // Если новые треки перестали появляться, чуть отматываем назад: ВК догружает
+      // список, когда низ страницы снова появляется на экране.
+      if (idle === 4 || idle === 7) { try { window.scrollBy(0, -800); } catch (e) {} setTimeout(function () { scrollStep(); setTimeout(step, 1200); }, 400); return; }
+      scrollStep();
+      setTimeout(step, 1000);
     }
-    step();
+    setTimeout(step, 800); // даём ВК отрисовать начало списка после прокрутки наверх
+  }
+  // «Весь список»: открыть «Мои треки» (если ещё не там) и собрать их целиком.
+  function collectMy() {
+    if (/\/audios/.test(location.pathname)) { collectAll(); return; }
+    try { sessionStorage.setItem("dekaCollect", "1"); } catch (e) {}
+    openMy();
+  }
+  function collectFromFlag() {
+    var on = null;
+    try { on = sessionStorage.getItem("dekaCollect"); sessionStorage.removeItem("dekaCollect"); } catch (e) {}
+    if (on) collectAll();
   }
 
   // Свой id ВК: из глобальных данных страницы или из ссылки на свой профиль.
@@ -496,6 +526,7 @@
           break;
         case "refresh": lastListJson = ""; sendList(); break;
         case "collectAll": collectAll(); break;
+        case "collectMy": collectMy(); break;
         case "more":
           // Подгрузить ещё треки: ВК догружает список при прокрутке вниз.
           scrollToEnd();
@@ -583,6 +614,7 @@
     autoplayVideo();
     autoplayFromLink();
     findFromQueue();
+    collectFromFlag();
     new MutationObserver(scheduleList).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
     scheduleList();
   }

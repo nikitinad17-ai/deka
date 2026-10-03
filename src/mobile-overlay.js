@@ -53,7 +53,9 @@
   var openPl = null;                                   // открытый плейлист во вкладке «Плейлисты»
   var selecting = null;                                // режим создания плейлиста: {keys:{}}
   var st = { paused: true, currentTime: 0, duration: 0, title: "", artist: "", loggedIn: true };
-  var stAt = 0, spec = null, items = [], eqOpen = false, collecting = false;
+  var stAt = 0, spec = null, items = [], eqOpen = false;
+  // Сбор «Весь список» переживает переход на страницу «Мои треки» (страница перезагружается).
+  var collecting = Date.now() - store.get("collectingAt", 0) < 120000;
 
   if (setBack && setBack.url) {
     sets.forEach(function (s) { if (s.url === setBack.url) { if (setBack.title) s.title = setBack.title; if (setBack.duration) s.duration = setBack.duration; } });
@@ -274,17 +276,24 @@
         var d = e.detail || {};
         if (!collecting) return;
         if (!d.done) { $("count").textContent = "Собираю: " + tracksWord(d.count) + "…"; return; }
-        collecting = false;
+        collecting = false; store.set("collectingAt", 0);
         var all = d.items || [];
-        // На странице «Мои треки» (/audios…) все треки ваши; иначе берём выбранный раздел.
-        var mine = /\/audios/.test(location.pathname) || section === ALL || section === MYALL
-          ? all : all.filter(function (t) { return (t.section || "Без названия") === section; });
-        if (!mine.length) { $("count").textContent = "Треки не найдены. Нажмите «Мои треки», потом «Весь список»"; return; }
+        // На странице «Мои треки» (/audios…) все треки ваши. На других страницах ВК
+        // берём выбранный раздел, а если он не выбран — раздел «Мои треки», без рекомендаций.
+        var nameOf = function (t) { return t.section || "Без названия"; };
+        var mine;
+        if (/\/audios/.test(location.pathname)) mine = all;
+        else if (section !== ALL && section !== MYALL) mine = all.filter(function (t) { return nameOf(t) === section; });
+        else {
+          mine = all.filter(function (t) { return /^Мои|^My /i.test(nameOf(t)); });
+          if (!mine.length) mine = all;
+        }
+        if (!mine.length) { $("count").textContent = "Треки не найдены. Войдите в ВК и нажмите «Весь список» ещё раз"; return; }
         myAll = mine.map(function (t) { return { key: t.key, title: t.title, artist: t.artist, duration: t.duration }; });
         store.set("myAll", myAll);
         section = MYALL; store.set("mSection", section);
         renderLib();
-        $("count").textContent = "Сохранено: " + tracksWord(myAll.length);
+        $("count").textContent = "Сохранено: " + tracksWord(myAll.length) + " · раздел «" + MYALL.replace("★ ", "") + "»";
       });
       window.addEventListener("deka:vk:diag", function (e) {
         $("diag").hidden = false; $("diagText").textContent = "Пришлите скриншот этого окна\n" + JSON.stringify(e.detail, null, 1);
@@ -413,7 +422,7 @@
       }
       ol.innerHTML = list.length
         ? list.map(function (t, i) { return rowHtml(t, i, selecting ? { selectable: true, checked: !!selecting.keys[t.key] } : null); }).join("")
-        : emptyHtml(st.loggedIn === false ? "Войдите в ВК, чтобы увидеть свою музыку." : "Здесь появятся треки со страницы ВК. Нажмите «Мои треки» — откроется полный список ваших треков.", true);
+        : emptyHtml(st.loggedIn === false ? "Войдите в ВК, чтобы увидеть свою музыку." : "Нажмите «Весь список» — Дека откроет «Мои треки», пролистает их до конца и сохранит все ваши треки по порядку.", true);
       $("count").textContent = selecting ? "Выбрано: " + Object.keys(selecting.keys).length : tracksWord(list.length);
     } else if (tab === "playlists") {
       if (openPl) {
@@ -489,7 +498,11 @@
     var act = closestAttr(e, "data-act");
     if (!act) return;
     if (act === "my") cmd({ type: "openMy" });
-    else if (act === "all") { collecting = true; $("count").textContent = "Собираю список…"; cmd({ type: "collectAll" }); }
+    else if (act === "all") {
+      collecting = true; store.set("collectingAt", Date.now());
+      $("count").textContent = /\/audios/.test(location.pathname) ? "Собираю список…" : "Открываю «Мои треки»…";
+      cmd({ type: "collectMy" });
+    }
     else if (act === "more") cmd({ type: "more" });
     else if (act === "newpl") { selecting = { keys: {}, name: "" }; renderLib(); }
     else if (act === "selAll") { keepName(); pageList().forEach(function (t) { selecting.keys[t.key] = t; }); renderLib(); }
