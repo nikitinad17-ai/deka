@@ -450,7 +450,7 @@
     if (collecting) return;
     collecting = true;
     finding++; // поиск трека для очереди прерываем, чтобы не мешал прокрутке
-    var acc = new Map(), idle = 0, rounds = 0, startHost = trackScrollHost(), startY = hostPos(trackScrollHost());
+    var acc = new Map(), idle = 0, rounds = 0, startHost = trackScrollHost(), startY = hostPos(startHost);
     try {
       if (startHost === document.scrollingElement || startHost === document.documentElement || startHost === document.body) window.scrollTo(0, 0);
       else startHost.scrollTop = 0;
