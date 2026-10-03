@@ -1,792 +1,176 @@
-/*
- * Дека · интерфейс поверх ВК (версия для телефона)
- * На Android у приложения одно окно: в нём открыт сайт ВК, а Дека закрывает его
- * своим интерфейсом на весь экран. Сам сайт показывается только по кнопке «ВК»
- * (вход в аккаунт, поиск), тогда от Деки остаётся полоска снизу.
- *
- * Вкладки: «Музыка» (треки со страницы ВК), «Плейлисты» (свои плейлисты Деки),
- * «Сеты» (видео из VK Видео играет как аудио, с эквалайзером; ничего не сохраняется).
- * Переключение треков идёт по собственной очереди Деки, а не по очереди ВК.
- */
+/* Deka 0.9: one durable library; two independent list views; landscape DJ console. */
 (function () {
-  "use strict";
-  if (window.top !== window) return;
-  if (!/(^|\.)(vk\.(ru|com)|vkvideo\.ru)$/.test(location.hostname)) return;
-  if (window.__dekaOverlay) return;
+  'use strict';
+  if (window.top !== window || !/(^|\.)(vk\.(ru|com)|vkvideo\.ru)$/.test(location.hostname)) return;
+  if (window.__dekaOverlay || !window.DekaLibrary || !window.DekaDecks) return;
   window.__dekaOverlay = true;
-
-  var APP_URL = "http://tauri.localhost/index.html"; // своя страница приложения (файлы)
-  var MUSIC_URL = "https://vk.ru/audio";
-  var IS_VIDEO = /vkvideo\.ru$/.test(location.hostname) || /^\/(video|clip)/.test(location.pathname);
-  var FREQS = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000];
-  var PRESETS = {
-    flat: ["Ровно", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
-    bass: ["Больше баса", [7, 6, 4, 1, 0, -1, -1, 0, 0, 0]],
-    rock: ["Рок", [5, 3, -2, -4, -1, 2, 5, 6, 6, 6]],
-    vocal: ["Вокал", [-2, -3, -1, 2, 5, 5, 3, 1, 0, -1]],
-    pop: ["Поп", [-1, 2, 4, 5, 3, 0, -1, -1, -1, -1]],
-    club: ["Клуб", [0, 0, 3, 4, 4, 4, 2, 0, 0, 0]]
-  };
-  var ALL = "__all__";
-  var MYALL = "★ Весь мой список";
-
-  var store = {
-    get: function (k, d) { try { var v = localStorage.getItem("deka:" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set: function (k, v) { try { localStorage.setItem("deka:" + k, JSON.stringify(v)); } catch (e) {} }
-  };
-
-  // Данные со страницы музыки, переданные в адресе при переходе на сет (у VK Видео своё хранилище).
-  var handoff = readHash("deka");
-  if (handoff && handoff.fx) { store.set("fx", handoff.fx); store.set("preset", handoff.preset || "custom"); }
-  // Название сета, которое страница сета передала обратно на страницу музыки.
-  var setBack = readHash("deka-set");
-
-  var fx = store.get("fx", { on: true, pre: 0, gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], bal: 0, filter: 0 });
-  if (!isFinite(fx.filter)) fx.filter = 0;
-  var preset = store.get("preset", "flat");
-  var section = store.get("mSection", "");
-  var tab = store.get("tab", "music");                 // music | playlists | sets
-  var view = IS_VIDEO ? "deka" : store.get("view", "deka"); // deka — весь экран, vk — полоска снизу
-  var libraryFocus = !IS_VIDEO && store.get("libraryFocus", true) !== false;
-  var libSearch = "";
-  var djOpen = false;
-  var playlists = store.get("playlists", []);          // [{id, name, tracks:[{key,title,artist,duration}]}]
-  var sets = store.get("sets", []);                    // [{url, title, duration}]
-  var myAll = store.get("myAll", []);                  // весь плейлист, собранный прокруткой
-  var queue = store.get("queue", null);                // {list:[...], index}
-  if (!queue || !Array.isArray(queue.list) || !queue.list.length) queue = null;
-  else { queue.index = Math.max(0, Math.min(queue.list.length - 1, isFinite(+queue.index) ? +queue.index : 0)); }
-  var openPl = null;                                   // открытый плейлист во вкладке «Плейлисты»
-  var selecting = null;                                // режим создания плейлиста: {keys:{}}
-  var st = { paused: true, currentTime: 0, duration: 0, title: "", artist: "", loggedIn: true };
-  var stAt = 0, spec = null, items = [], eqOpen = false;
-  // Сбор «Весь список» переживает переход на страницу «Мои треки» (страница перезагружается).
-  var collecting = Date.now() - store.get("collectingAt", 0) < 120000;
-
-  if (setBack && setBack.url) {
-    sets.forEach(function (s) { if (s.url === setBack.url) { if (setBack.title) s.title = setBack.title; if (setBack.duration) s.duration = setBack.duration; } });
-    store.set("sets", sets);
-    tab = "sets";
-  }
-
-  function readHash(name) {
-    var m = location.hash.match(new RegExp("[#&]" + name + "=([^&]*)"));
-    if (!m) return null;
-    try { return JSON.parse(decodeURIComponent(m[1])); } catch (e) { return null; }
-  }
-  function cmd(c) { if (window.__deka) window.__deka.cmd(c); }
-  var fxTimer = null;
-  function sendFx() {
-    store.set("fx", fx);
-    clearTimeout(fxTimer);
-    fxTimer = setTimeout(function () { cmd({ type: "fx", on: fx.on, pre: fx.pre, gains: fx.gains, bal: fx.bal, filter: fx.filter || 0 }); }, 60);
-    if (djOpen && $) syncDj();
-  }
-  function now() { return st.paused ? st.currentTime : Math.min(st.duration || Infinity, st.currentTime + (performance.now() - stAt) / 1000); }
-  function fmt(s) {
-    if (!isFinite(s) || s < 0) s = 0; s = Math.floor(s);
-    var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, "0");
-    return h ? h + ":" + String(m).padStart(2, "0") + ":" + x : String(m).padStart(2, "0") + ":" + x;
-  }
-  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
-  function plural(n, f) { return f[(n % 10 === 1 && n % 100 !== 11) ? 0 : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) ? 1 : 2]; }
-  function tracksWord(n) { return n + " " + plural(n, ["трек", "трека", "треков"]); }
-
-  // ---------- очередь Деки ----------
-  function same(a, b) { return a && b && a.title === b.title && (a.artist || "") === (b.artist || ""); }
-  function playTrack(t) {
-    if (!t) return;
-    if (same(t, st) && !st.paused) return;            // уже играет: клик по строке ВК поставил бы паузу
-    setState("ЗАГРУЗКА");
-    // Мост сам найдёт трек: на странице, прокруткой в «Моих треках» или сообщит, что не нашёл.
-    cmd({ type: "playKey", key: t.key });
-  }
-  function startQueue(list, index) {
-    list = Array.isArray(list) ? list.filter(function (t) { return t && t.key; }) : [];
-    if (!list.length) { setState("ПУСТО"); return; }
-    index = Math.max(0, Math.min(list.length - 1, isFinite(+index) ? +index : 0));
-    queue = { list: list.map(function (t) { return { key: t.key, title: t.title, artist: t.artist, duration: t.duration }; }), index: index };
-    store.set("queue", queue);
-    playTrack(queue.list[index]);
-  }
-  function step(d) {
-    if (!queue || !Array.isArray(queue.list) || !queue.list.length) { cmd({ type: d > 0 ? "next" : "prev" }); return; }
-    if (!isFinite(+queue.index) || queue.index < 0 || queue.index >= queue.list.length) queue.index = 0;
-    if (d < 0 && now() > 3) { cmd({ type: "seek", time: 0 }); return; }
-    queue.index = (queue.index + d + queue.list.length) % queue.list.length;
-    store.set("queue", queue);
-    playTrack(queue.list[queue.index]);
-  }
-  function syncQueueIndex() {
-    if (!queue || !st.title) return;
-    for (var i = 0; i < queue.list.length; i++) {
-      if (same(queue.list[i], st)) { if (queue.index !== i) { queue.index = i; store.set("queue", queue); } return; }
-    }
-  }
-
-  // ---------- оформление ----------
-  var CSS = [
-    ":host{all:initial}", "*{box-sizing:border-box}",
-    ".root{--desk:#101216;--chassis:#1b1e24;--hi:#262a32;--edge:#353a44;--lcd:#0a100d;--lcd-edge:#1d2a23;--amber:#ffb347;--amber-dim:#6b4a1d;--cyan:#72d6e8;--ink:#d6dae2;--ink2:#8d94a3;",
-    "position:fixed;z-index:2147483647;color:var(--ink);font:14px/1.3 system-ui,-apple-system,Roboto,sans-serif;-webkit-tap-highlight-color:transparent}",
-    ".root.full{inset:0;background:radial-gradient(900px 400px at 20% -10%,#1c2029 0%,transparent 60%),var(--desk);display:flex;flex-direction:column;",
-    "padding:calc(8px + env(safe-area-inset-top,0px)) 12px calc(8px + env(safe-area-inset-bottom,0px))}",
-    ".root.mini{left:0;right:0;bottom:0;background:linear-gradient(180deg,var(--hi),var(--chassis) 52px);border-top:1px solid var(--edge);box-shadow:0 -10px 30px rgba(0,0,0,.45);padding:0 12px calc(6px + env(safe-area-inset-bottom,0px))}",
-    ".root.mini .fullonly{display:none!important}", ".root.full .minionly{display:none!important}",
-    ".root.full.libraryfocus .deckonly{display:none!important}",
-    ".root.full:not(.libraryfocus) .librarybar{display:none!important}",
-    ".root.full.libraryfocus .tabs{margin-top:2px}",
-    ".root.full.libraryfocus .list{min-height:0;margin-top:8px}",
-    ".root.full.libraryfocus .foot{padding-top:3px}",
-    "[hidden]{display:none!important}",
-    ".mono{font-family:VT323,'Roboto Mono',ui-monospace,monospace}",
-    ".top{display:flex;align-items:center;gap:8px;height:52px;flex:none}",
-    ".logo{display:flex;align-items:center;gap:6px;font:800 15px/1 system-ui,sans-serif;letter-spacing:.08em}", ".logo b{color:var(--amber)}",
-    ".sp{flex:1}",
-    ".reels{width:36px;height:16px;color:var(--amber-dim)}", ".spin .reels{color:var(--amber)}", ".spin .reel{animation:reel 1.6s linear infinite}",
-    "@keyframes reel{to{transform:rotate(360deg)}}",
-    "button{font:inherit;color:inherit;cursor:pointer}",
-    ".btn{appearance:none;border:1px solid #0f1115;border-radius:8px;background:linear-gradient(180deg,#3a3f49,#262a31);box-shadow:0 1px 0 rgba(255,255,255,.08) inset,0 2px 0 #0c0e11;min-width:44px;height:44px;display:inline-grid;place-items:center;padding:0 12px;font-weight:600;font-size:13px;white-space:nowrap}",
-    ".btn:active{transform:translateY(1px)}", ".btn svg{width:18px;height:18px;fill:currentColor}",
-    ".btn.sm{height:36px;min-width:36px;padding:0 10px;font-size:12px}",
-    ".btn.play{color:var(--amber);min-width:56px}",
-    ".btn.on{color:var(--cyan);box-shadow:0 0 0 1px rgba(114,214,232,.35) inset,0 2px 0 #0c0e11}",
-    ".btn.vk{color:#fff;background:linear-gradient(180deg,#3d73c7,#2a5aa5);border-color:#173a70}",
-    ".btn.accent{color:#101216;background:linear-gradient(180deg,#ffc56f,#e99a2c);border-color:#7a4e12}",
-    ".lcd{background:var(--lcd);border:1px solid var(--lcd-edge);border-radius:8px;padding:10px 12px;display:grid;gap:4px;flex:none}",
-    ".row1{display:flex;gap:12px;align-items:end}",
-    ".big{color:var(--amber);font-size:44px;line-height:.9;text-shadow:0 0 12px rgba(255,179,71,.35);font-variant-numeric:tabular-nums}",
-    ".state{color:var(--amber);font-size:17px}",
-    ".mq{min-width:0;overflow:hidden;white-space:nowrap;color:var(--amber);font-size:22px;line-height:1.1}",
-    ".mq span{display:inline-block;padding-left:100%;animation:mq 14s linear infinite}", "@keyframes mq{to{transform:translateX(-100%)}}",
-    "canvas{width:100%;height:56px;display:block}",
-    "input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;width:100%;height:30px;margin:0}",
-    "input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--amber) var(--p,0%),#0b0d10 var(--p,0%))}",
-    "input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:18px;border-radius:4px;margin-top:-6px;background:linear-gradient(180deg,#5a606c,#333842);border:1px solid #11141a}",
-    ".tr{display:flex;gap:8px;justify-content:center;flex:none}", ".tr .btn{min-width:58px;height:50px}",
-    ".tabs{display:flex;gap:4px;margin-top:10px;flex:none;border-bottom:1px solid var(--edge)}",
-    ".tab{appearance:none;background:none;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;padding:10px 12px;color:var(--ink2);font-weight:600;font-size:13px}",
-    ".tab.sel{color:var(--ink);background:#12151a;border-color:var(--edge)}",
-    ".libh{display:flex;gap:6px;align-items:center;margin-top:8px;flex:none;flex-wrap:wrap}",
-    "select,input.text{min-width:0;flex:1;font:500 13px system-ui,sans-serif;color:var(--ink);background:#0f1115;border:1px solid var(--edge);border-radius:8px;height:40px;padding:0 8px}",
-    ".list{flex:1;min-height:80px;overflow:auto;margin:6px -4px 0;padding:0 4px;list-style:none;-webkit-overflow-scrolling:touch}",
-    ".item{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:8px;align-items:center;padding:10px 6px;border-radius:8px;font:13px/1.25 'Roboto Mono',ui-monospace,monospace}",
-    ".item.sel4{grid-template-columns:30px 30px minmax(0,1fr) auto}",
-    ".item:active{background:#1a1e25}",
-    ".item .n{color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums}",
-    ".item .tt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
-    ".item small{display:block;color:var(--ink2);font-size:11px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
-    ".item .d{color:var(--ink2);font-variant-numeric:tabular-nums}",
-    ".item.cur{background:#1f1a12;color:var(--amber)}", ".item.cur .n,.item.cur .d{color:var(--amber)}",
-    ".chk{width:22px;height:22px;border:2px solid var(--edge);border-radius:5px;display:grid;place-items:center;color:#101216;font-weight:900}",
-    ".chk.on{background:var(--amber);border-color:var(--amber)}",
-    ".x{appearance:none;background:none;border:0;color:var(--ink2);width:36px;height:36px;font-size:20px;border-radius:6px}",
-    ".empty{padding:16px 6px;color:var(--ink2);line-height:1.5}", ".empty .btn{margin-top:10px}",
-    ".foot{display:flex;gap:8px;align-items:center;justify-content:space-between;color:var(--ink2);font:12px ui-monospace,monospace;padding-top:6px;flex:none}",
-    ".eq{flex:none;display:grid;gap:8px;padding-top:8px;border-top:1px solid var(--edge);margin-top:6px}",
-    ".eqh{display:flex;gap:8px;align-items:center}",
-    ".bands{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:2px;align-items:end}",
-    ".band{display:grid;justify-items:center;gap:4px}",
-    ".band input{writing-mode:vertical-lr;direction:rtl;width:26px;height:96px}",
-    ".band input::-webkit-slider-runnable-track{width:6px;height:auto;background:#0b0d10}",
-    ".band input::-webkit-slider-thumb{margin-top:0;margin-left:-8px;width:22px;height:14px}",
-    ".band span{font:500 10px/1 ui-monospace,monospace;color:var(--ink2)}", ".band .v{color:var(--amber)}",
-    ".note{font-size:12px;color:var(--ink2);line-height:1.45}", ".note.ok{color:var(--cyan)}",
-    ".diag{position:relative}",
-    ".diag pre{white-space:pre-wrap;word-break:break-all;font:11px/1.35 ui-monospace,monospace;color:var(--cyan);background:#0b0d10;border:1px solid var(--edge);border-radius:8px;padding:8px 40px 8px 8px;margin:8px 0 0;max-height:30vh;overflow:auto}",
-    ".diag .x{position:absolute;top:10px;right:4px}",
-    ".bar{display:flex;align-items:center;gap:8px;height:60px}",
-    ".minilcd{flex:1;min-width:0;background:var(--lcd);border:1px solid var(--lcd-edge);border-radius:6px;padding:5px 8px;display:flex;gap:8px;align-items:center;overflow:hidden}",
-    ".minilcd .t{color:var(--amber);font-size:20px;line-height:1;font-variant-numeric:tabular-nums}", ".minilcd .mq{font-size:18px;flex:1}",
-    ".librarybar{display:flex;align-items:center;gap:6px;flex:none;border-top:1px solid var(--edge);padding:6px 0 0;margin-top:4px}",
-    ".librarybar .now{flex:1;min-width:0;padding:0 4px}",
-    ".librarybar .now b,.librarybar .now small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
-    ".librarybar .now b{color:var(--amber);font:600 12px/1.25 ui-monospace,monospace}",
-    ".librarybar .now small{color:var(--ink2);font-size:10px;margin-top:2px}",
-    ".djshade{position:absolute;inset:0;background:rgba(0,0,0,.55);opacity:0;pointer-events:none;transition:opacity .22s ease;z-index:30}",
-    ".djshade.open{opacity:1;pointer-events:auto}",
-    ".djdrawer{position:absolute;z-index:31;top:0;right:0;bottom:0;width:min(92vw,430px);transform:translateX(102%);transition:transform .26s cubic-bezier(.2,.8,.2,1);",
-    "background:linear-gradient(180deg,#242832,#15181e 42%,#0f1115);border-left:1px solid #414753;box-shadow:-18px 0 50px rgba(0,0,0,.55);padding:calc(12px + env(safe-area-inset-top,0px)) 14px calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}",
-    ".djdrawer.open{transform:translateX(0)}",
-    ".djhead{display:flex;align-items:center;gap:8px}.djtitle{font:900 18px/1 system-ui,sans-serif;letter-spacing:.1em;color:var(--amber)}",
-    ".djdeck{background:#0a0d10;border:1px solid var(--edge);border-radius:10px;padding:10px 12px}",
-    ".djdeck .cap{font:700 10px/1 system-ui,sans-serif;color:var(--cyan);letter-spacing:.12em}",
-    ".djdeck b,.djdeck small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.djdeck b{margin-top:6px;color:var(--ink)}.djdeck small{color:var(--ink2);margin-top:3px}",
-    ".djtr{display:flex;gap:8px;justify-content:center}.djtr .btn{flex:1}",
-    ".mixgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}",
-    ".mixctl{background:#13161c;border:1px solid #2c313a;border-radius:9px;padding:8px}",
-    ".mixctl label{display:flex;justify-content:space-between;gap:8px;color:var(--ink2);font:700 10px/1 ui-monospace,monospace;letter-spacing:.06em}",
-    ".mixctl label b{color:var(--amber);font-weight:700}",
-    ".mixctl input{margin-top:6px}",
-    ".djhint{color:var(--ink2);font-size:11px;line-height:1.45;margin-top:auto;border-top:1px solid var(--edge);padding-top:10px}",
-    ".edgehint{position:absolute;left:-13px;top:45%;width:13px;height:70px;border-radius:8px 0 0 8px;background:#303640;border:1px solid #4a515e;border-right:0;display:grid;place-items:center;color:var(--amber);font-size:10px}",
-    "@media (prefers-reduced-motion:reduce){.spin .reel,.mq span{animation:none}.djdrawer,.djshade{transition:none}}"
-  ].join("\n");
-
-  var ICON = {
-    play: '<svg viewBox="0 0 16 16"><path d="M4 2l10 6-10 6z"/></svg>',
-    pause: '<svg viewBox="0 0 16 16"><path d="M3 2h4v12H3zM9 2h4v12H9z"/></svg>',
-    prev: '<svg viewBox="0 0 16 16"><path d="M3 2h2v12H3zM14 2v12L6 8z"/></svg>',
-    next: '<svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg>'
-  };
-  function reel(cx) {
-    return '<g class="reel" style="transform-origin:' + cx + 'px 8px"><circle cx="' + cx + '" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="' + cx + '" cy="8" r="2" fill="currentColor"/></g>';
-  }
-  var REELS = '<svg class="reels" viewBox="0 0 36 16" aria-hidden="true">' + reel(8) + reel(28) + "</svg>";
-
-  var root, $;
-
+  var css = `
+    :host{all:initial}*{box-sizing:border-box}[hidden]{display:none!important}
+    .app{--bg:#101318;--panel:#1b2029;--line:#343e4b;--a:#f5b44b;--b:#66d6e5;color:#e7ecf3;font:14px/1.3 system-ui,sans-serif;background:var(--bg);position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;overflow:hidden;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+    button,input,select{font:inherit}button{color:inherit;background:#262e3a;border:1px solid var(--line);border-radius:7px;min-height:36px;padding:5px 10px;cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--b);outline-offset:1px}button:disabled{opacity:.4;cursor:default}
+    header{display:flex;align-items:center;gap:7px;padding:7px 10px;flex:none;min-height:48px;border-bottom:1px solid var(--line)}.brand{font-weight:900;color:var(--a);letter-spacing:.12em;margin-right:auto}.active{border-color:var(--a);color:var(--a)}
+    .status{font-size:12px;color:#b4c4d6;min-height:26px;padding:4px 10px;background:#151c25;flex:none}.status.error{color:#ffc189}.status button{min-height:22px;padding:0 8px;margin-left:8px;font-size:11px}
+    .library{flex:1;display:flex;flex-direction:column;min-height:0;padding:0 8px}.tools{display:flex;gap:6px;padding:7px 0;flex:none}.tools input{flex:1;min-width:0}input[type=search],select{color:#e7ecf3;background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:6px;min-height:32px;min-width:0}select{max-width:180px}
+    .vlviewport{position:relative;overflow:auto;flex:1;min-height:0;overscroll-behavior:contain;overflow-anchor:none}.vlcanvas{position:relative;width:100%}.vlrow{height:48px;min-height:48px;position:absolute;left:0;right:0;width:100%;display:flex;align-items:center;text-align:left;gap:9px;border:0;border-bottom:1px solid #232b36;border-radius:0;background:transparent;padding:5px 7px}.vlrow:hover{background:#222c39}.vlrow.selected{background:#332b1b;color:var(--a)}.number{color:#8a9db2;font-size:11px;min-width:32px;text-align:right}.trackmeta{min-width:0;flex:1}.trackmeta b,.trackmeta small{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.trackmeta b{font-size:12px;font-weight:600}.trackmeta small{font-size:11px;color:#98aabd;margin-top:2px}
+    .transport{display:flex;align-items:center;gap:7px;padding:7px 10px;min-height:54px;border-top:1px solid var(--line);flex:none}.now{flex:1;min-width:0}.now b,.now small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.now b{font-size:12px;color:var(--a)}.now small{font-size:10px;color:#a7b6c8}.empty{font-size:13px;color:#aab8c9;padding:12px}.count{font-size:11px;color:#a5b7cc;padding:4px;flex:none}
+    .dj{position:absolute;inset:48px 0 54px;display:flex;flex-direction:column;background:var(--bg);transform:translateX(105%);visibility:hidden;transition:transform .22s ease,visibility .22s;overflow:hidden}.dj.open{transform:translateX(0);visibility:visible}.console{min-height:0;flex:1;display:grid;grid-template-columns:minmax(0,1fr) 72px minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:7px;padding:6px}.deck{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:9px;overflow:hidden;--accent:var(--a)}.deck[data-side=B]{--accent:var(--b)}.deck h2{display:flex;align-items:center;gap:6px;margin:0;padding:5px 8px;color:var(--accent);font-size:12px;letter-spacing:.1em}.deck h2 small{font-weight:400;color:#acbccf;letter-spacing:0;margin-left:auto;font-size:10px}.deck .vlrow.selected{background:#263745;color:var(--accent)}
+    .deckhead{display:flex;gap:8px;align-items:center;padding:0 8px 5px}.disc{flex:none;width:70px;height:70px;border-radius:50%;background:repeating-radial-gradient(circle,#101216 0 3px,#252930 4px 5px);border:2px solid #445162;position:relative}.disc:after{content:attr(data-letter);display:grid;place-items:center;position:absolute;inset:23px;border-radius:50%;color:#101318;background:var(--accent);font-weight:900}.disc.playing{animation:spin 2s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.decktitle{flex:1;min-width:0}.decktitle b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}.decktitle small{color:#aebcd0;font-size:10px}.buttons{display:flex;gap:4px;margin-top:5px}.buttons button{padding:3px 7px;min-height:30px;font-size:11px}.play{color:var(--a)}input[type=range]{accent-color:var(--accent,var(--a));width:100%;min-width:0;margin:0;height:20px}.seek{padding:0 8px}.decktools{display:flex;gap:4px;padding:4px 6px}.decktools input{flex:1;width:40px}.decktools select{flex:1;width:65px;font-size:11px}.deck .count{padding-left:8px}.deck .vlviewport{margin:0 4px}
+    .mixer{min-height:0;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:5px;padding:6px 0}.mixer label{font-size:9px;color:#aebfd3;text-align:center;width:100%}.mixer .fader{writing-mode:vertical-lr;direction:rtl;height:65px;width:26px}.mixer button{padding:4px 5px;font-size:10px;min-height:28px}.mixer .pair{display:flex;gap:2px;width:100%}.mixer .pair label{width:50%}.mixer .eq{width:100%}.mixer .eq input{height:17px}.djinfo{font-size:10px;color:#b7c7db;display:flex;align-items:center;gap:8px;padding:2px 8px;min-height:24px}.djinfo input{max-width:170px;margin-left:auto}.djinfo b{color:var(--a)}
+    .vkview{inset:auto 0 0;height:54px;padding:0}.vkview header,.vkview>.status,.vkview .library,.vkview .dj{display:none}.vkview .transport{height:54px}.msg{position:absolute;left:10px;right:10px;bottom:60px;padding:10px;background:#3a2d17;border:1px solid #936b2d;border-radius:8px;z-index:20;font-size:12px}.app.djmode>.status{display:none}
+    @media(orientation:landscape){.app header{min-height:38px;padding:3px 8px}.app header button{min-height:30px;font-size:12px}.dj{top:38px;bottom:48px}.transport{min-height:48px;padding:4px 8px}.disc{width:60px;height:60px}.disc:after{inset:19px}.deck h2{padding:3px 8px}.console{padding:4px;gap:5px}.deckhead{padding-bottom:0}.djinfo{min-height:20px}.mixer{gap:3px}.mixer .fader{height:54px}}
+    @media(orientation:portrait){.dj .console{grid-template-columns:minmax(0,1fr) 58px minmax(0,1fr)}.deckhead{flex-direction:column;gap:4px}.decktitle{width:100%}.disc{width:60px;height:60px}.disc:after{inset:19px}.decktools{flex-direction:column}.decktools input,.decktools select{width:100%}.deck .number{min-width:20px}.djinfo{flex-wrap:wrap;font-size:9px}.deck .trackmeta b{font-size:11px}}
+    @media(prefers-reduced-motion:reduce){.disc.playing{animation:none}.dj{transition:none}}
+  `;
+  var library, files = [], urls = [], playlists = [], sets = [], messageTimer, vkView = false, rotationOpened = false;
+  var sh, $, app, mode = 'library', search = { main: '', A: '', B: '' }, source = { main: 'vk', A: 'vk', B: 'vk' }, lists = {}, sigs = {};
+  var media = { paused: true, currentTime: 0, duration: 0, title: '', artist: '' }, engine, savedScope = '';
+  function command(c) { return window.__deka.cmd(c); }
+  function fmt(s) { s = Math.max(0, Math.floor(+s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2,'0'); }
+  function message(s) { $('message').textContent = s; $('message').hidden = false; clearTimeout(messageTimer); messageTimer = setTimeout(function () { $('message').hidden = true; }, 6500); }
+  function sideHTML(side) { return `<section class="deck" data-side="${side}"><h2>DECK ${side}<small id="type${side}">Выберите трек</small></h2><div class="deckhead"><div class="disc" data-letter="${side}" id="disc${side}"></div><div class="decktitle"><b id="title${side}">Загрузите трек из списка</b><small id="time${side}">0:00 / 0:00</small><div class="buttons"><button data-cmd="prev" data-side="${side}" aria-label="Предыдущий ${side}">◀</button><button class="play" data-cmd="play" data-side="${side}" id="play${side}" aria-label="Играть ${side}">▶</button><button data-cmd="next" data-side="${side}" aria-label="Следующий ${side}">▶|</button><button data-cmd="cue" data-side="${side}" title="На паузе: поставить CUE; при игре: вернуться">CUE</button></div></div></div><div class="seek"><input id="seek${side}" data-seek="${side}" type="range" min="0" max="1000" value="0" aria-label="Позиция ${side}"></div><div class="decktools"><select data-source="${side}" id="source${side}" aria-label="Источник ${side}"></select><input type="search" data-search="${side}" id="search${side}" placeholder="Поиск ${side}" aria-label="Поиск ${side}"></div><div class="count" id="count${side}"></div><div id="list${side}" aria-label="Список деки ${side}"></div></section>`; }
   function mount() {
-    if (!document.body) return setTimeout(mount, 200);
-    var host = document.createElement("div");
-    host.id = "deka-overlay";
-    document.documentElement.appendChild(host);
-    var sh = host.attachShadow({ mode: "open" });
-    var presetOpts = Object.keys(PRESETS).map(function (k) { return '<option value="' + k + '">' + PRESETS[k][0] + "</option>"; }).join("") + '<option value="custom">Свой</option>';
-    var transport = IS_VIDEO
-      ? '<button class="btn" id="back30">−30с</button><button class="btn play" id="play2" aria-label="Играть или пауза">' + ICON.play + '</button><button class="btn" id="fwd30">+30с</button>'
-      : '<button class="btn" id="prev" aria-label="Предыдущий">' + ICON.prev + '</button><button class="btn play" id="play2" aria-label="Играть или пауза">' + ICON.play + '</button><button class="btn" id="next" aria-label="Следующий">' + ICON.next + "</button>";
-    sh.innerHTML = "<style>" + CSS + "</style>" +
-      '<div class="root">' +
-      '<div class="top fullonly"><div class="logo">' + REELS + "<span>ДЕ<b>КА</b></span></div><span class=\"sp\"></span>" +
-      (IS_VIDEO ? '<button class="btn" id="backMusic">← Музыка</button>' : '<button class="btn" id="modeBtn">Плеер</button>') +
-      '<button class="btn accent" id="djBtn">DJ</button>' +
-      '<button class="btn vk" id="toVk">' + (IS_VIDEO ? "Видео" : "ВК") + "</button></div>" +
-      '<div class="lcd fullonly deckonly"><div class="row1"><span class="big mono" id="big">00:00</span><span class="state mono" id="state">СТОП</span></div>' +
-      '<div class="mq mono" id="mq2"><span>' + (IS_VIDEO ? "ДЕКА · СЕТ ЗАГРУЖАЕТСЯ" : "ДЕКА · ВЫБЕРИТЕ ТРЕК") + '</span></div><canvas id="viz"></canvas></div>' +
-      '<input class="fullonly deckonly" type="range" id="seek" min="0" max="1000" value="0" aria-label="Позиция">' +
-      '<div class="tr fullonly deckonly">' + transport + '<button class="btn" id="eqBtn">EQ</button></div>' +
-      '<div class="eq fullonly deckonly" id="eq" hidden><div class="eqh"><select id="preset" aria-label="Пресет">' + presetOpts + "</select>" +
-      '<button class="btn" id="eqon">ВКЛ</button></div><div class="bands" id="bands"></div>' +
-      '<div class="note" id="fxnote">Эквалайзер подключится, когда заиграет звук</div></div>' +
-      (IS_VIDEO
-        ? '<div class="note fullonly" style="margin-top:10px">Сет играет как аудио: картинка скрыта, видео никуда не сохраняется. Кнопка «Видео» показывает страницу VK Видео.</div><div class="sp fullonly"></div>'
-        : '<div class="tabs fullonly" role="tablist"><button class="tab" data-tab="music">Треки</button><button class="tab" data-tab="playlists">Плейлисты</button><button class="tab" data-tab="sets">Сеты / миксы</button></div>' +
-          '<div class="libh fullonly" id="libh"></div>' +
-          '<ol class="list fullonly" id="list"></ol>' +
-          '<div class="foot fullonly"><span id="count"></span><button class="btn sm" id="diagBtn">Диагностика</button></div>' +
-          '<div class="diag fullonly" id="diag" hidden><pre id="diagText"></pre><button class="x" id="diagClose" aria-label="Закрыть диагностику">×</button></div>' +
-          '<div class="librarybar fullonly" id="libraryBar"><button class="btn sm" id="libPrev" aria-label="Предыдущий">' + ICON.prev + '</button>' +
-          '<div class="now"><b id="libNowTitle">Ничего не играет</b><small id="libNowArtist">Выберите трек из списка</small></div>' +
-          '<button class="btn sm play" id="libPlay" aria-label="Играть или пауза">' + ICON.play + '</button><button class="btn sm" id="libNext" aria-label="Следующий">' + ICON.next + '</button></div>') +
-      '<div class="bar minionly"><div class="minilcd"><span class="t mono" id="t">00:00</span><div class="mq mono" id="mq1"><span>ДЕКА</span></div></div>' +
-      '<button class="btn play" id="play1" aria-label="Играть или пауза">' + ICON.play + '</button><button class="btn" id="toDeka">Дека</button></div>' +
-      '<div class="djshade" id="djShade"></div>' +
-      '<aside class="djdrawer" id="djDrawer" aria-label="DJ микшер"><div class="edgehint">DJ</div>' +
-      '<div class="djhead"><span class="djtitle">DJ MIXER</span><span class="sp"></span><button class="btn sm" id="djReset">Ноль</button><button class="btn sm" id="djClose">✕</button></div>' +
-      '<div class="djdeck"><span class="cap">DECK A · LIVE</span><b id="djNow">Ничего не играет</b><small id="djArtist">—</small></div>' +
-      '<div class="djtr"><button class="btn" id="djPrev">' + ICON.prev + '</button><button class="btn play" id="djPlay">' + ICON.play + '</button><button class="btn" id="djNext">' + ICON.next + '</button></div>' +
-      '<div class="mixgrid">' +
-      '<div class="mixctl"><label>GAIN <b id="djGainV">0 dB</b></label><input id="djGain" type="range" min="-12" max="12" step="0.5" value="0"></div>' +
-      '<div class="mixctl"><label>FILTER <b id="djFilterV">0</b></label><input id="djFilter" type="range" min="-100" max="100" step="1" value="0"></div>' +
-      '<div class="mixctl"><label>LOW <b id="djLowV">0 dB</b></label><input id="djLow" type="range" min="-12" max="12" step="0.5" value="0"></div>' +
-      '<div class="mixctl"><label>MID <b id="djMidV">0 dB</b></label><input id="djMid" type="range" min="-12" max="12" step="0.5" value="0"></div>' +
-      '<div class="mixctl"><label>HIGH <b id="djHighV">0 dB</b></label><input id="djHigh" type="range" min="-12" max="12" step="0.5" value="0"></div>' +
-      '<div class="mixctl"><label>MASTER <b id="djMasterV">100%</b></label><input id="djMaster" type="range" min="0" max="100" step="1" value="100"></div>' +
-      '</div>' +
-      '<div class="djdeck"><span class="cap">NEXT</span><b id="djNextTrack">Следующий трек не выбран</b><small>Свайп вправо закрывает пульт</small></div>' +
-      '<div class="djhint">Пульт 1.0 реально управляет текущим звуком VK: GAIN, трёхполосный EQ, DJ FILTER и MASTER. Две независимые деки и crossfader добавим следующим этапом.</div>' +
-      '</aside>' +
-      "</div>";
-    root = sh.querySelector(".root");
-    $ = function (id) { return sh.getElementById(id); };
-    root.classList.toggle("libraryfocus", libraryFocus);
-
-    buildBands();
-    $("preset").value = PRESETS[preset] ? preset : "custom";
-    $("eqon").classList.toggle("on", fx.on);
-    setView(view);
-    setLibraryFocus(libraryFocus);
-    syncDj();
-
-    $("toVk").onclick = function () { setView("vk"); };
-    $("toDeka").onclick = function () { setView("deka"); };
-    $("play1").onclick = $("play2").onclick = function () { cmd({ type: "toggle" }); };
-    $("djBtn").onclick = function () { openDj(true); };
-    $("djClose").onclick = function () { openDj(false); };
-    $("djShade").onclick = function () { openDj(false); };
-    $("djReset").onclick = resetDj;
-    $("eqBtn").onclick = function () { eqOpen = !eqOpen; $("eq").hidden = !eqOpen; $("eqBtn").classList.toggle("on", eqOpen); };
-    var seeking = false;
-    $("seek").addEventListener("input", function () { seeking = true; paint($("seek")); $("big").textContent = fmt($("seek").value / 1000 * st.duration); });
-    $("seek").addEventListener("change", function () { cmd({ type: "seek", time: $("seek").value / 1000 * st.duration }); seeking = false; });
-    $("preset").onchange = function (e) {
-      preset = e.target.value; store.set("preset", preset);
-      if (PRESETS[preset]) { fx.gains = PRESETS[preset][1].slice(); syncBands(); sendFx(); }
+    if (!document.body) return setTimeout(mount, 100);
+    var host = document.createElement('div'); host.id = 'deka-overlay'; document.documentElement.appendChild(host); sh = host.attachShadow({ mode: 'open' });
+    sh.innerHTML = '<style>' + css + '</style>' + `<main class="app"><header><span class="brand">ДЕКА</span><button id="libraryBtn" class="active">Треки</button><button id="syncBtn">Загрузить всё</button><button id="djBtn">DJ ⇠</button><button id="vkBtn">VK</button></header><div class="status" id="status">Читаю библиотеку…</div><section class="library"><div class="tools"><select data-source="main" id="sourcemain" aria-label="Источник"></select><input data-search="main" id="searchmain" type="search" placeholder="Название или исполнитель"><button id="fileBtn" title="Добавить свои аудиофайлы">＋ Файлы</button></div><div class="tools"><button id="saveBtn">Сохранить список</button><button id="currentBtn">Сейчас</button><button id="myBtn">Моя музыка VK</button><button id="cancelBtn" hidden>Стоп загрузки</button></div><div class="tools" id="setTools" hidden><input id="setUrl" type="url" placeholder="Ссылка на VK Видео"><button id="setAdd">Добавить сет</button></div><div class="count" id="countmain"></div><div id="listmain" aria-label="Все треки библиотеки"></div><div class="empty" id="empty" hidden>Откройте свою музыку в VK и нажмите «Загрузить всё». Сохраняется список названий, не аудиофайлы.</div></section><section class="dj" id="dj" aria-label="Две деки DJ"><div class="djinfo"><b>VK: один общий поток · Файлы: A + B</b><span id="djTotal"></span><input id="cross" type="range" min="-100" max="100" value="0" aria-label="Кроссфейдер A B"></div><div class="console">${sideHTML('A')}<section class="mixer" aria-label="Микшер"><label>MASTER<input id="master" type="range" min="0" max="100" value="80" aria-label="Master"></label><div class="pair"><label>A<input class="fader" data-gain="A" type="range" min="0" max="100" value="100" aria-label="Уровень A"></label><label>B<input class="fader" data-gain="B" type="range" min="0" max="100" value="100" aria-label="Уровень B"></label></div>${[0,1,2].map(function (band) { return `<label class="eq">${['LOW','MID','HIGH'][band]}<input data-eq="A" data-band="${band}" type="range" min="-12" max="12" value="0" aria-label="${['LOW','MID','HIGH'][band]} A"><input data-eq="B" data-band="${band}" type="range" min="-12" max="12" value="0" aria-label="${['LOW','MID','HIGH'][band]} B"></label>`; }).join('')}<button id="djFiles">＋ Файлы</button><button id="closeDj">К списку</button></section>${sideHTML('B')}</div></section><footer class="transport"><button id="mainPrev" aria-label="Предыдущий">|◀</button><div class="now"><b id="now">Выберите трек</b><small id="nowTime">Дека A</small></div><button id="mainPlay" class="play" aria-label="Играть пауза">▶</button><button id="mainNext" aria-label="Следующий">▶|</button><button id="backBtn" hidden>Дека</button></footer><div class="msg" id="message" hidden></div><input id="files" type="file" accept="audio/*" multiple hidden></main>`;
+    $ = function (id) { return sh.getElementById(id); }; app = sh.querySelector('.app');
+    engine = window.DekaDecks.create({ vk: command, change: renderPlayback, message: message });
+    ['main','A','B'].forEach(function (id) { lists[id] = new window.DekaVirtualList($('list' + id), function (data, index) { if (data[index].kind === 'set') { location.assign(data[index].url); return; } var side = id === 'main' ? 'A' : id; engine.load(side, data, index); engine.play(side); }); });
+    $('setAdd').onclick = function () {
+      var u; try { u = new URL($('setUrl').value); } catch (_) { return message('Нужна полная ссылка https://vkvideo.ru/video…'); }
+      var id = (u.pathname + u.search).match(/video(-?\d+_\d+)/);
+      if (!/(^|\.)(vk\.(ru|com)|vkvideo\.ru)$/.test(u.hostname) || !id) return message('Поддерживаются ссылки на видео VK');
+      var url = 'https://vkvideo.ru/video' + id[1];
+      if (!sets.some(function (s) { return s.url === url; })) sets.push({ url: url, title: 'Сет ' + (sets.length + 1), duration: 0 });
+      try { localStorage.setItem('deka:sets', JSON.stringify(sets)); } catch (_) { message('Сет не сохранён: хранилище заполнено'); }
+      $('setUrl').value = ''; renderLists(false);
     };
-    $("eqon").onclick = function () { fx.on = !fx.on; $("eqon").classList.toggle("on", fx.on); sendFx(); };
-
-    function djInput(id, fn) {
-      $(id).addEventListener("input", function () { fn(+$(id).value); syncDj(); });
-    }
-    djInput("djGain", function (v) { fx.on = true; fx.pre = v; $("eqon").classList.add("on"); sendFx(); });
-    djInput("djLow", function (v) { setBandGroup([0,1,2], v); });
-    djInput("djMid", function (v) { setBandGroup([3,4,5,6], v); });
-    djInput("djHigh", function (v) { setBandGroup([7,8,9], v); });
-    djInput("djFilter", function (v) { fx.on = true; fx.filter = v / 100; $("eqon").classList.add("on"); sendFx(); });
-    djInput("djMaster", function (v) { st.volume = v / 100; cmd({ type: "volume", value: st.volume }); $("djMasterV").textContent = Math.round(v) + "%"; });
-
-    $("djPlay").onclick = function () { cmd({ type: "toggle" }); };
-    $("djPrev").onclick = function () { if (IS_VIDEO) cmd({ type: "skip", by: -30 }); else step(-1); };
-    $("djNext").onclick = function () { if (IS_VIDEO) cmd({ type: "skip", by: 30 }); else step(1); };
-
-    var touchX = 0, touchY = 0, edgeSwipe = false;
-    root.addEventListener("touchstart", function (e) {
-      var t = e.touches && e.touches[0]; if (!t) return;
-      touchX = t.clientX; touchY = t.clientY;
-      edgeSwipe = !djOpen && touchX > (window.innerWidth - 30);
-    }, { passive: true });
-    root.addEventListener("touchend", function (e) {
-      var t = e.changedTouches && e.changedTouches[0]; if (!t) return;
-      var dx = t.clientX - touchX, dy = t.clientY - touchY;
-      if (Math.abs(dy) > Math.abs(dx) * 1.3) return;
-      if (edgeSwipe && dx < -55) openDj(true);
-      else if (djOpen && dx > 65) openDj(false);
-    }, { passive: true });
-
-    if (IS_VIDEO) {
-      $("back30").onclick = function () { cmd({ type: "skip", by: -30 }); };
-      $("fwd30").onclick = function () { cmd({ type: "skip", by: 30 }); };
-      $("backMusic").onclick = function () {
-        var info = { url: handoff && handoff.url, title: st.title, duration: st.duration };
-        location.href = MUSIC_URL + "#deka-set=" + encodeURIComponent(JSON.stringify(info));
-      };
-    } else {
-      $("prev").onclick = function () { step(-1); };
-      $("next").onclick = function () { step(1); };
-      $("modeBtn").onclick = function () { setLibraryFocus(!libraryFocus); };
-      $("libPrev").onclick = function () { step(-1); };
-      $("libNext").onclick = function () { step(1); };
-      $("libPlay").onclick = function () { cmd({ type: "toggle" }); };
-      Array.prototype.forEach.call(sh.querySelectorAll(".tab"), function (b) {
-        b.onclick = function () { tab = b.getAttribute("data-tab"); store.set("tab", tab); openPl = null; selecting = null; setLibraryFocus(true); renderLib(true); };
+    $('syncBtn').onclick = function () { window.DekaLibrary.collect(); };
+    $('myBtn').onclick = function () { window.DekaLibrary.collectMy(); };
+    $('cancelBtn').onclick = function () { window.DekaLibrary.cancel(); };
+    $('djBtn').onclick = function () { setMode('dj'); rotationOpened = false; };
+    $('libraryBtn').onclick = $('closeDj').onclick = function () { setMode('library'); rotationOpened = false; };
+    $('fileBtn').onclick = $('djFiles').onclick = function () { $('files').click(); };
+    $('mainPlay').onclick = function () { engine.toggle('A'); }; $('mainPrev').onclick = function () { engine.step('A', -1); }; $('mainNext').onclick = function () { engine.step('A', 1); };
+    $('vkBtn').onclick = function () { vkView = true; app.classList.add('vkview'); $('backBtn').hidden = false; };
+    $('backBtn').onclick = function () { vkView = false; app.classList.remove('vkview'); $('backBtn').hidden = true; };
+    $('currentBtn').onclick = function () { var t = engine.state.A.track; if (!t || !lists.main.jump(t.key)) message('Текущего трека нет в выбранном списке'); };
+    $('saveBtn').onclick = function () {
+      var items = displayed('main').filter(function (t) { return t.kind !== 'file'; });
+      if (!items.length) return message('Выберите непустой список VK. Файлы остаются на устройстве.');
+      playlists.push({ id: 'p' + Date.now(), name: 'Плейлист ' + (playlists.length + 1), tracks: items });
+      try { localStorage.setItem('deka:playlists:v2:' + savedScope, JSON.stringify(playlists)); message('Сохранено ' + items.length + ' треков'); }
+      catch (_) { message('Не удалось сохранить плейлист: хранилище заполнено'); }
+      renderOptions();
+    };
+    $('files').onchange = function () {
+      Array.from($('files').files).forEach(function (f) {
+        var url = URL.createObjectURL(f); urls.push(url);
+        files.push({ key: 'file:' + files.length + ':' + f.name, title: f.name.replace(/\.[^.]+$/, ''), artist: '', kind: 'file', url: url, duration: 0 });
       });
-      $("list").addEventListener("click", onListClick);
-      $("libh").addEventListener("click", onHeadClick);
-      $("libh").addEventListener("change", onHeadChange);
-      $("libh").addEventListener("input", onHeadInput);
-      $("diagBtn").onclick = function () { cmd({ type: "diag" }); };
-      $("diagClose").onclick = function () { $("diag").hidden = true; };
-      window.addEventListener("deka:vk:playlist", function (e) { items = (e.detail && e.detail.items) || []; if (tab === "music") renderLib(false); });
-      // «Весь список»: мост долистывает страницу ВК до конца и отдаёт все треки.
-      window.addEventListener("deka:vk:collect", function (e) {
-        var d = e.detail || {};
-        if (!collecting) return;
-        if (!d.done) { $("count").textContent = "Собираю: " + tracksWord(d.count) + "…"; return; }
-        collecting = false; store.set("collectingAt", 0);
-        var all = d.items || [];
-        // На странице «Мои треки» (/audios…) все треки ваши. На других страницах ВК
-        // берём выбранный раздел, а если он не выбран — раздел «Мои треки», без рекомендаций.
-        var nameOf = function (t) { return t.section || "Без названия"; };
-        var mine;
-        if (/\/audios/.test(location.pathname)) mine = all;
-        else if (section !== ALL && section !== MYALL) mine = all.filter(function (t) { return nameOf(t) === section; });
-        else {
-          mine = all.filter(function (t) { return /^Мои|^My /i.test(nameOf(t)); });
-          if (!mine.length) mine = all;
-        }
-        if (!mine.length) { $("count").textContent = "Треки не найдены. Войдите в ВК и нажмите «Весь список» ещё раз"; return; }
-        myAll = mine.map(function (t) { return { key: t.key, title: t.title, artist: t.artist, duration: t.duration }; });
-        store.set("myAll", myAll);
-        section = MYALL; store.set("mSection", section);
-        libSearch = "";
-        setLibraryFocus(true);
-        renderLib(true);
-        $("count").textContent = "Сохранено: " + tracksWord(myAll.length) + " · полный список";
-      });
-      window.addEventListener("deka:vk:diag", function (e) {
-        $("diag").hidden = false; $("diagText").textContent = "Пришлите скриншот этого окна\n" + JSON.stringify(e.detail, null, 1);
-      });
-      // Трек из очереди не нашёлся в ВК (удалён или недоступен): пропускаем его,
-      // но не больше одного круга подряд, чтобы не крутиться без конца.
-      var misses = 0;
-      window.addEventListener("deka:vk:linkfail", function (e) {
-        if (!(e.detail && e.detail.queue) || !queue) return;
-        if (++misses >= Math.min(queue.list.length, 20)) { misses = 0; setState("НЕ НАЙДЕН"); return; }
-        $("count").textContent = "Трек не найден в ВК, пропускаю";
-        step(1);
-      });
-      window.addEventListener("deka:vk:state", function (e) { if (e.detail && !e.detail.paused) misses = 0; });
-      window.addEventListener("deka:vk:ended", function () {
-        // ВК может сам включить следующий трек; если это не тот, что в очереди Деки, переключаем.
-        if (!queue) return;
-        var want = queue.list[(queue.index + 1) % queue.list.length];
-        setTimeout(function () {
-          if (same(want, st) && !st.paused) { syncQueueIndex(); return; }
-          step(1);
-        }, 1200);
-      });
-      renderLib();
-      cmd({ type: "refresh" });
-    }
-
-    window.addEventListener("deka:vk:state", function (e) { st = e.detail || st; stAt = performance.now(); render(); });
-    window.addEventListener("deka:vk:spectrum", function (e) { spec = e.detail; });
-    window.addEventListener("deka:vk:fx", function (e) {
-      var ok = e.detail && e.detail.ok;
-      $("fxnote").textContent = ok ? "Эквалайзер и спектр работают со звуком ВК" : "Эквалайзер недоступен для этого трека";
-      $("fxnote").classList.toggle("ok", !!ok);
-      if (ok) sendFx();
+      $('files').value = ''; source.A = source.B = 'files'; renderOptions(); renderLists(true); setMode('dj');
+    };
+    sh.addEventListener('input', function (e) {
+      var el = e.target;
+      if (el.dataset.search) { search[el.dataset.search] = el.value; renderList(el.dataset.search, true); }
+      if (el.dataset.gain) engine.setGain(el.dataset.gain, +el.value / 100);
+      if (el.dataset.eq) engine.setEQ(el.dataset.eq, +el.dataset.band, +el.value);
+      if (el.id === 'cross') engine.setCross(+el.value / 100);
+      if (el.id === 'master') engine.setMaster(+el.value / 100);
     });
-    sendFx();
-
-    function frame() {
-      var t = now();
-      $("t").textContent = fmt(t);
-      if (view === "deka") {
-        if (!seeking) {
-          $("big").textContent = fmt(t);
-          if (st.duration > 0) { $("seek").value = Math.round(t / st.duration * 1000); paint($("seek")); }
-        }
-        drawViz();
-      }
-      requestAnimationFrame(frame);
-    }
-    requestAnimationFrame(frame);
+    sh.addEventListener('change', function (e) {
+      var el = e.target;
+      if (el.dataset.source) { source[el.dataset.source] = el.value; renderList(el.dataset.source, true); }
+      if (el.dataset.seek) engine.seek(el.dataset.seek, engine.state[el.dataset.seek].duration * +el.value / 1000);
+    });
+    sh.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-cmd]'); if (!b) return;
+      var side = b.dataset.side;
+      if (b.dataset.cmd === 'play') engine.toggle(side);
+      if (b.dataset.cmd === 'prev') engine.step(side, -1);
+      if (b.dataset.cmd === 'next') engine.step(side, 1);
+      if (b.dataset.cmd === 'cue') engine.cue(side);
+    });
+    var gesture = null;
+    app.addEventListener('touchstart', function (e) { if (e.composedPath().some(function (el) { return el.tagName === 'INPUT' || el.tagName === 'SELECT'; })) { gesture = null; return; } var t = e.touches[0]; gesture = { x: t.clientX, y: t.clientY }; }, { passive: true });
+    app.addEventListener('touchend', function (e) { if (!gesture) return; var t = e.changedTouches[0], dx = t.clientX - gesture.x, dy = t.clientY - gesture.y; gesture = null; if (Math.abs(dy) > 30 || Math.abs(dx) < 80) return; if (dx < 0) setMode('dj'); else setMode('library'); }, { passive: true });
+    window.addEventListener('deka:library', function (e) { library = e.detail; renderLibrary(); });
+    window.addEventListener('deka:vk:state', function (e) { media = e.detail || media; engine.noteVK(media); });
+    window.addEventListener('deka:vk:ended', function () { engine.endedVK(); });
+    window.addEventListener('deka:vk:fx', function (e) { if (e.detail && !e.detail.ok && mode === 'dj') message('Для этого потока VK эквалайзер недоступен. Для файлов обе деки работают независимо.'); });
+    var landscape = matchMedia('(orientation: landscape)');
+    function rotate() { if (vkView) return; if (landscape.matches) { setMode('dj'); rotationOpened = true; } else if (rotationOpened) { setMode('library'); rotationOpened = false; } requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
+    landscape.addEventListener('change', rotate);
+    library = window.DekaLibrary.get(); renderLibrary(); rotate(); renderPlayback();
+    window.addEventListener('pagehide', function () { engine.destroy(); urls.forEach(function (u) { URL.revokeObjectURL(u); }); }, { once: true });
   }
-
-  function setView(v) {
-    view = v; if (!IS_VIDEO) store.set("view", v);
-    root.classList.toggle("full", v === "deka");
-    root.classList.toggle("mini", v !== "deka");
-    try { document.body.style.paddingBottom = v === "deka" ? "" : "76px"; } catch (e) {}
-  }
-  function setLibraryFocus(on) {
-    if (IS_VIDEO) return;
-    libraryFocus = !!on;
-    store.set("libraryFocus", libraryFocus);
-    if (root) root.classList.toggle("libraryfocus", libraryFocus);
-    if ($ && $("modeBtn")) $("modeBtn").textContent = libraryFocus ? "Плеер" : "Список";
-    if (libraryFocus && $ && $("eq")) { eqOpen = false; $("eq").hidden = true; $("eqBtn").classList.remove("on"); }
-  }
-
-  function avgBand(ids) {
-    var sum = 0;
-    ids.forEach(function (i) { sum += +fx.gains[i] || 0; });
-    return sum / ids.length;
-  }
-  function setBandGroup(ids, value) {
-    fx.on = true;
-    ids.forEach(function (i) { fx.gains[i] = value; });
-    preset = "custom"; store.set("preset", preset);
-    if ($ && $("preset")) $("preset").value = "custom";
-    if ($ && $("eqon")) $("eqon").classList.add("on");
-    syncBands(); sendFx();
-  }
-  function djVal(id, value, suffix) {
-    if (!$ || !$(id)) return;
-    $(id).textContent = (value > 0 && suffix === " dB" ? "+" : "") + value + (suffix || "");
-  }
-  function syncDj() {
-    if (!$ || !$("djGain")) return;
-    var low = Math.round(avgBand([0,1,2]) * 10) / 10;
-    var mid = Math.round(avgBand([3,4,5,6]) * 10) / 10;
-    var high = Math.round(avgBand([7,8,9]) * 10) / 10;
-    $("djGain").value = +fx.pre || 0;
-    $("djLow").value = low; $("djMid").value = mid; $("djHigh").value = high;
-    $("djFilter").value = Math.round((+fx.filter || 0) * 100);
-    $("djMaster").value = Math.round((isFinite(st.volume) ? st.volume : 1) * 100);
-    djVal("djGainV", +$("djGain").value, " dB");
-    djVal("djLowV", low, " dB"); djVal("djMidV", mid, " dB"); djVal("djHighV", high, " dB");
-    djVal("djFilterV", +$("djFilter").value, "");
-    $("djMasterV").textContent = $("djMaster").value + "%";
-  }
-  function openDj(on) {
-    djOpen = !!on;
-    if (!$) return;
-    $("djDrawer").classList.toggle("open", djOpen);
-    $("djShade").classList.toggle("open", djOpen);
-    if (djOpen) syncDj();
-  }
-  function resetDj() {
-    fx.on = true; fx.pre = 0; fx.filter = 0; fx.gains = [0,0,0,0,0,0,0,0,0,0];
-    preset = "flat"; store.set("preset", preset);
-    if ($ && $("preset")) $("preset").value = "flat";
-    if ($ && $("eqon")) $("eqon").classList.add("on");
-    cmd({ type: "volume", value: 1 });
-    syncBands(); sendFx(); syncDj();
-  }
-
-  function setState(text) { if ($) $("state").textContent = text; }
-
-  // Пока играет музыка, Android держит foreground media service + PARTIAL_WAKE_LOCK.
-  // Экран при этом может гаснуть; service нужен именно для фонового воспроизведения.
-  var awake = null;
-  function keepAwake(on) {
-    if (on === awake) return; awake = on;
-    try { if (window.DekaAndroid) window.DekaAndroid.keepAwake(on); } catch (e) {}
-  }
-  // При переходе экрана в background ещё раз подтверждаем service до того,
-  // как WebView начнёт ограничивать таймеры.
-  document.addEventListener("visibilitychange", function () {
-    if (!st.paused) { awake = null; keepAwake(true); }
-  });
-
-  var lastKey = "";
-  function render() {
-    var playing = !st.paused;
-    keepAwake(playing);
-    root.classList.toggle("spin", playing);
-    $("play1").innerHTML = $("play2").innerHTML = playing ? ICON.pause : ICON.play;
-    if ($("libPlay")) $("libPlay").innerHTML = playing ? ICON.pause : ICON.play;
-    if ($("djPlay")) $("djPlay").innerHTML = playing ? ICON.pause : ICON.play;
-    setState(playing ? "ИГРАЕТ" : (st.currentTime > 0 ? "ПАУЗА" : "СТОП"));
-    var key = (st.artist || "") + "|" + (st.title || "");
-    if (key !== lastKey && st.title) {
-      lastKey = key;
-      var text = ((st.artist ? st.artist + " — " : "") + st.title + (st.duration ? " (" + fmt(st.duration) + ")" : "")).toUpperCase();
-      $("mq1").firstChild.textContent = text;
-      $("mq2").firstChild.textContent = text;
-      if (!IS_VIDEO) { syncQueueIndex(); renderLib(); }
-    }
-    if ($("libNowTitle")) { $("libNowTitle").textContent = st.title || "Ничего не играет"; $("libNowArtist").textContent = st.artist || "Выберите трек из списка"; }
-    if ($("djNow")) { $("djNow").textContent = st.title || "Ничего не играет"; $("djArtist").textContent = st.artist || "—"; }
-    if ($("djNextTrack")) {
-      var next = queue && queue.list && queue.list.length ? queue.list[(queue.index + 1) % queue.list.length] : null;
-      $("djNextTrack").textContent = next ? ((next.artist ? next.artist + " — " : "") + next.title) : "Следующий трек не выбран";
-    }
-  }
-
-  // ---------- библиотека: вкладки ----------
-  function sectionsOf() {
-    var names = myAll.length ? [MYALL] : [];
-    items.forEach(function (t) { var n = t.section || "Без названия"; if (names.indexOf(n) < 0) names.push(n); });
-    return names;
-  }
-  function pageList() {
-    var names = sectionsOf();
-    if (names.indexOf(section) < 0 && section !== ALL) section = myAll.length ? MYALL : (names.filter(function (n) { return /^Мои|^My /i.test(n); })[0] || names[0] || ALL);
-    var base = section === MYALL ? myAll : items.filter(function (t) { return section === ALL || (t.section || "Без названия") === section; });
-    var q = libSearch.trim().toLowerCase();
-    if (!q) return base;
-    return base.filter(function (t) { return ((t.artist || "") + " " + (t.title || "")).toLowerCase().indexOf(q) >= 0; });
-  }
-  function rowHtml(t, i, opts) {
-    opts = opts || {};
-    var cur = same(t, st) && st.title;
-    var chk = opts.selectable ? '<span class="chk' + (opts.checked ? " on" : "") + '">' + (opts.checked ? "✓" : "") + "</span>" : "";
-    var tail = opts.removable ? '<button class="x" data-del="' + i + '" aria-label="Убрать">×</button>' : '<span class="d">' + (t.duration ? fmt(t.duration) : "--:--") + "</span>";
-    return '<li class="item' + (opts.selectable ? " sel4" : "") + (cur ? " cur" : "") + '" data-i="' + i + '"><span class="n">' + (i + 1) + ".</span>" + chk +
-      '<span class="tt">' + esc(t.title) + "<small>" + esc(t.artist) + "</small></span>" + tail + "</li>";
-  }
-  function emptyHtml(text, vkBtn) {
-    return '<li class="empty">' + text + (vkBtn ? '<br><button class="btn vk" data-act="vk">Открыть ВК</button>' : "") + "</li>";
-  }
-
-  var shown = []; // то, что сейчас в списке (для кликов)
-  function renderMusicRows(reset) {
-    var ol = $("list"), oldTop = ol.scrollTop;
-    var list = pageList(); shown = list;
-    ol.innerHTML = list.length
-      ? list.map(function (t, i) { return rowHtml(t, i, selecting ? { selectable: true, checked: !!selecting.keys[t.key] } : null); }).join("")
-      : emptyHtml(st.loggedIn === false ? "Войдите в ВК, чтобы увидеть свою музыку." : (libSearch ? "По вашему поиску ничего не найдено." : "Нажмите «Весь список» — Дека соберёт и сохранит весь ваш плейлист."), true);
-    if (!reset) ol.scrollTop = oldTop;
-    var total = section === MYALL ? myAll.length : list.length;
-    $("count").textContent = selecting ? "Выбрано: " + Object.keys(selecting.keys).length : (libSearch && total !== list.length ? tracksWord(list.length) + " найдено" : tracksWord(list.length));
-  }
-  function renderLib(reset) {
-    if (!$ || IS_VIDEO) return;
-    Array.prototype.forEach.call(root.querySelectorAll(".tab"), function (b) { b.classList.toggle("sel", b.getAttribute("data-tab") === tab); });
-    var head = $("libh"), ol = $("list"), oldTop = ol.scrollTop;
-    var viewKey = tab + "|" + section + "|" + (openPl || "") + "|" + libSearch;
-    var keepScroll = !reset && ol.dataset.viewKey === viewKey;
-    if (tab === "music") {
-      if (selecting) {
-        head.innerHTML = '<input class="text" id="plName" placeholder="Название плейлиста" value="' + esc(selecting.name || "") + '">' +
-          '<button class="btn sm" data-act="selAll">Все видимые</button><button class="btn sm accent" data-act="save">Сохранить</button><button class="btn sm" data-act="cancel">Отмена</button>';
-      } else {
-        var names = sectionsOf();
-        head.innerHTML = '<select id="section" aria-label="Раздел ВК">' +
-          names.map(function (n) { return '<option value="' + esc(n) + '"' + (n === section ? " selected" : "") + ">" + esc(n) + "</option>"; }).join("") +
-          '<option value="' + ALL + '"' + (section === ALL ? " selected" : "") + ">Треки на этой странице</option></select>" +
-          '<input class="text" id="libSearch" type="search" placeholder="Поиск по трекам" value="' + esc(libSearch) + '">' +
-          '<button class="btn sm" data-act="current">Сейчас</button>' +
-          '<button class="btn sm accent" data-act="all">' + (myAll.length ? "Обновить список" : "Весь список") + '</button>' +
-          '<button class="btn sm" data-act="newpl">＋ Плейлист</button>';
-      }
-      renderMusicRows(!keepScroll);
-    } else if (tab === "playlists") {
-      if (openPl) {
-        var pl = playlists.filter(function (p) { return p.id === openPl; })[0];
-        if (!pl) { openPl = null; return renderLib(true); }
-        shown = pl.tracks;
-        head.innerHTML = '<button class="btn sm" data-act="plBack">← Плейлисты</button><span class="sp" style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(pl.name) + "</span>" +
-          '<button class="btn sm" data-act="plPlay">▶ Играть</button><button class="btn sm" data-act="plDel">Удалить</button>';
-        ol.innerHTML = pl.tracks.length ? pl.tracks.map(function (t, i) { return rowHtml(t, i, { removable: true }); }).join("") : emptyHtml("Плейлист пуст.");
-        $("count").textContent = tracksWord(pl.tracks.length);
-      } else {
-        shown = [];
-        head.innerHTML = '<span class="note sp">Ваши сохранённые плейлисты. Новый создаётся из вкладки «Треки».</span>';
-        ol.innerHTML = playlists.length
-          ? playlists.map(function (p, i) {
-              return '<li class="item" data-pl="' + esc(p.id) + '"><span class="n">' + (i + 1) + '.</span><span class="tt">' + esc(p.name) + "<small>" + tracksWord(p.tracks.length) + '</small></span><span class="d">›</span></li>';
-            }).join("")
-          : emptyHtml("Пока нет сохранённых плейлистов.");
-        $("count").textContent = playlists.length + " " + plural(playlists.length, ["плейлист", "плейлиста", "плейлистов"]);
-      }
-      if (keepScroll) ol.scrollTop = oldTop;
-    } else {
-      shown = sets;
-      head.innerHTML = '<input class="text" id="setUrl" type="url" placeholder="Ссылка на видео VK"><button class="btn sm accent" data-act="addSet">Добавить сет</button>' +
-        '<span class="note" style="flex-basis:100%">Сет играет как аудио. Для обработки звука откройте DJ-пульт свайпом от правого края.</span>';
-      ol.innerHTML = sets.length
-        ? sets.map(function (s, i) {
-            return '<li class="item" data-set="' + i + '"><span class="n">' + (i + 1) + '.</span><span class="tt">' + esc(s.title || "Сет") + "<small>" + esc(s.url.replace(/^https?:\/\//, "")) + "</small></span>" +
-              '<button class="x" data-delset="' + i + '" aria-label="Убрать">×</button></li>';
-          }).join("")
-        : emptyHtml("Вставьте ссылку на видео VK, чтобы сохранить сет.");
-      $("count").textContent = sets.length + " " + plural(sets.length, ["сет", "сета", "сетов"]);
-      if (keepScroll) ol.scrollTop = oldTop;
-    }
-    ol.dataset.viewKey = tab + "|" + section + "|" + (openPl || "") + "|" + libSearch;
-  }
-
-  function closestAttr(e, name) {
-    var path = e.composedPath ? e.composedPath() : [];
-    for (var i = 0; i < path.length; i++) {
-      var el = path[i];
-      if (el && el.getAttribute && el.getAttribute(name) != null) return el.getAttribute(name);
-      if (el === root) break;
-    }
-    return null;
-  }
-  function onListClick(e) {
-    if (closestAttr(e, "data-act") === "vk") return setView("vk");
-    var del = closestAttr(e, "data-del");
-    if (del != null) {
-      var pl = playlists.filter(function (p) { return p.id === openPl; })[0];
-      if (pl) { pl.tracks.splice(+del, 1); store.set("playlists", playlists); renderLib(); }
-      return;
-    }
-    var delset = closestAttr(e, "data-delset");
-    if (delset != null) { sets.splice(+delset, 1); store.set("sets", sets); renderLib(); return; }
-    var plId = closestAttr(e, "data-pl");
-    if (plId != null) { openPl = plId; renderLib(); return; }
-    var si = closestAttr(e, "data-set");
-    if (si != null) { openSet(sets[+si]); return; }
-    var i = closestAttr(e, "data-i");
-    if (i == null) return;
-    var t = shown[+i];
-    if (selecting) {
-      if (selecting.keys[t.key]) delete selecting.keys[t.key]; else selecting.keys[t.key] = t;
-      keepName(); renderLib(); return;
-    }
-    startQueue(shown, +i);
-  }
-  function keepName() { var n = $("plName"); if (n && selecting) selecting.name = n.value; }
-  function onHeadChange(e) {
-    var path = e.composedPath ? e.composedPath() : [];
-    if (path[0] && path[0].id === "section") { section = path[0].value; store.set("mSection", section); libSearch = ""; renderLib(true); }
-  }
-  function onHeadInput(e) {
-    var path = e.composedPath ? e.composedPath() : [];
-    if (path[0] && path[0].id === "libSearch") {
-      libSearch = path[0].value || "";
-      renderMusicRows(true);
-    }
-  }
-  function onHeadClick(e) {
-    var act = closestAttr(e, "data-act");
-    if (!act) return;
-    if (act === "all") {
-      libSearch = ""; setLibraryFocus(true);
-      collecting = true; store.set("collectingAt", Date.now());
-      $("count").textContent = /\/audios/.test(location.pathname) ? "Собираю список…" : "Открываю «Мои треки»…";
-      cmd({ type: "collectMy" });
-    }
-    else if (act === "current") {
-      if (libSearch) { libSearch = ""; renderLib(true); }
-      var cur = $("list").querySelector(".item.cur");
-      if (cur) cur.scrollIntoView({ block: "center", behavior: "smooth" });
-      else $("count").textContent = "Текущий трек не входит в открытый список";
-    }
-    else if (act === "newpl") { selecting = { keys: {}, name: "" }; setLibraryFocus(true); renderLib(true); }
-    else if (act === "selAll") { keepName(); pageList().forEach(function (t) { selecting.keys[t.key] = t; }); renderLib(); }
-    else if (act === "cancel") { selecting = null; renderLib(true); }
-    else if (act === "save") {
-      keepName();
-      var chosen = pageList().filter(function (t) { return selecting.keys[t.key]; });
-      if (!chosen.length) { $("count").textContent = "Отметьте хотя бы один трек"; return; }
-      var name = (selecting.name || "").trim() || "Плейлист " + (playlists.length + 1);
-      var pl = { id: "p" + Date.now(), name: name, tracks: chosen.map(function (t) { return { key: t.key, title: t.title, artist: t.artist, duration: t.duration }; }) };
-      playlists.push(pl); store.set("playlists", playlists);
-      selecting = null; tab = "playlists"; store.set("tab", tab); openPl = pl.id; renderLib(true);
-    }
-    else if (act === "plBack") { openPl = null; renderLib(true); }
-    else if (act === "plPlay") { var p = playlists.filter(function (x) { return x.id === openPl; })[0]; if (p && p.tracks.length) startQueue(p.tracks, 0); }
-    else if (act === "plDel") { playlists = playlists.filter(function (x) { return x.id !== openPl; }); store.set("playlists", playlists); openPl = null; renderLib(); }
-    else if (act === "addSet") {
-      var raw = ($("setUrl").value || "").trim();
-      var url = normalizeVideoUrl(raw);
-      if (!url) { $("count").textContent = "Нужна ссылка на видео VK: vkvideo.ru/video-…"; return; }
-      if (!sets.some(function (s) { return s.url === url; })) { sets.push({ url: url, title: "", duration: 0 }); store.set("sets", sets); }
-      renderLib();
-    }
-  }
-  function normalizeVideoUrl(raw) {
-    if (!raw) return null;
-    if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw;
-    var u; try { u = new URL(raw); } catch (e) { return null; }
-    if (!/(^|\.)(vk\.(ru|com)|vkvideo\.ru)$/.test(u.hostname)) return null;
-    var m = (u.pathname + u.search).match(/video(-?\d+_\d+)/) || (u.search.match(/[?&]z=video(-?\d+_\d+)/));
-    if (!m) return null;
-    return "https://vkvideo.ru/video" + m[1];
-  }
-  function openSet(s) {
-    if (!s) return;
-    var info = { url: s.url, fx: fx, preset: preset };
-    location.href = s.url + "#deka=" + encodeURIComponent(JSON.stringify(info));
-  }
-
-  function paint(el) { var min = +el.min, max = +el.max, v = +el.value; el.style.setProperty("--p", ((v - min) / (max - min) * 100) + "%"); }
-
-  // ---------- эквалайзер ----------
-  var bandEls = [];
-  function bandEl(label, val, onChange) {
-    var d = document.createElement("div"); d.className = "band";
-    var v = document.createElement("span"); v.className = "v";
-    var i = document.createElement("input"); i.type = "range"; i.min = -12; i.max = 12; i.step = 1; i.value = val;
-    i.setAttribute("aria-label", label + " дБ");
-    var l = document.createElement("span"); l.textContent = label;
-    function upd() { v.textContent = (i.value > 0 ? "+" : "") + i.value; }
-    i.addEventListener("input", function () { onChange(+i.value); upd(); });
-    upd(); d.appendChild(v); d.appendChild(i); d.appendChild(l);
-    return { d: d, i: i, upd: upd };
-  }
-  function buildBands() {
-    var box = $("bands");
-    box.appendChild(bandEl("PRE", fx.pre, function (x) { fx.pre = x; sendFx(); }).d);
-    FREQS.forEach(function (f, idx) {
-      var b = bandEl(f >= 1000 ? (f / 1000) + "K" : String(f), fx.gains[idx], function (x) {
-        fx.gains[idx] = x; preset = "custom"; store.set("preset", preset); $("preset").value = "custom"; sendFx();
-      });
-      bandEls.push(b); box.appendChild(b.d);
+  function setMode(value) { mode = value; $('dj').classList.toggle('open', mode === 'dj'); app.classList.toggle('djmode', mode === 'dj'); $('djBtn').classList.toggle('active', mode === 'dj'); $('libraryBtn').classList.toggle('active', mode !== 'dj'); requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
+  function renderOptions() {
+    var choices = [{ id: 'vk', name: 'Треки VK' }, { id: 'files', name: 'Мои файлы' }, { id: 'sets', name: 'Сеты / VK Видео' }].concat(playlists.map(function (p) { return { id: p.id, name: p.name }; }));
+    ['main','A','B'].forEach(function (id) {
+      var select = $('source' + id), signature = JSON.stringify(choices);
+      if (select.dataset.signature !== signature) { select.replaceChildren(); choices.forEach(function (o) { var option = document.createElement('option'); option.value = o.id; option.textContent = o.name; select.appendChild(option); }); select.dataset.signature = signature; }
+      if (!choices.some(function (o) { return o.id === source[id]; })) source[id] = 'vk'; select.value = source[id];
     });
   }
-  function syncBands() { bandEls.forEach(function (b, i) { b.i.value = fx.gains[i]; b.upd(); }); }
-
-  // ---------- спектр ----------
-  var peaks = new Array(40).fill(0);
-  function drawViz() {
-    var c = $("viz"), g = c.getContext("2d");
-    var dpr = Math.min(2, window.devicePixelRatio || 1);
-    var w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr);
-    if (!w || !h) return;
-    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-    g.clearRect(0, 0, w, h);
-    var N = 40, gap = 2 * dpr, bw = (w - gap * (N - 1)) / N, playing = !st.paused;
-    var grad = g.createLinearGradient(0, h, 0, 0);
-    grad.addColorStop(0, "#b86b12"); grad.addColorStop(0.65, "#ffb347"); grad.addColorStop(1, "#ff5d4a");
-    for (var i = 0; i < N; i++) {
-      var v = playing && spec ? (spec[i] || 0) / 255 : 0;
-      var x = i * (bw + gap), bh = Math.max(dpr, v * h), cell = 3 * dpr;
-      g.fillStyle = grad;
-      for (var y = h; y > h - bh; y -= cell + dpr) g.fillRect(x, y - cell, bw, cell);
-      peaks[i] = Math.max(v * h, peaks[i] - 1.2 * dpr);
-      g.fillStyle = "#72d6e8"; g.fillRect(x, h - peaks[i] - 2 * dpr, bw, 2 * dpr);
-    }
+  function displayed(id) {
+    var p = playlists.find(function (p) { return p.id === source[id]; });
+    var items = source[id] === 'sets' ? sets.map(function (s) { return { key: s.url, title: s.title || 'Сет', artist: 'VK Видео', kind: 'set', url: s.url }; }) : source[id] === 'files' ? files : p ? p.tracks : ((library && library.items) || []);
+    var q = search[id].trim().toLowerCase();
+    return q ? items.filter(function (t) { return ((t.artist || '') + ' ' + t.title).toLowerCase().includes(q); }) : items;
   }
-
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount);
-  else mount();
+  function renderList(id, reset) {
+    var items = displayed(id), signature = JSON.stringify(items.map(function (t) { return [t.key,t.title,t.artist]; }));
+    if (reset || sigs[id] !== signature) { lists[id].set(items, reset); sigs[id] = signature; }
+    $('count' + id).textContent = items.length + ' треков' + (search[id] ? ' · результат поиска' : '');
+    if (id === 'main') { $('empty').hidden = !!items.length; $('setTools').hidden = source.main !== 'sets'; }
+  }
+  function renderLists(reset) { ['main','A','B'].forEach(function (id) { renderList(id, reset); }); }
+  function renderLibrary() {
+    var identity = String((library && library.source) || '').split('|')[0];
+    if (identity !== savedScope) {
+      savedScope = identity;
+      try { playlists = JSON.parse(localStorage.getItem('deka:playlists:v2:' + savedScope)) || []; } catch (_) { playlists = []; }
+      if (!Array.isArray(playlists)) playlists = [];
+      // Preserve legacy playlists without silently treating an unscoped old cache as current VK data.
+      try {
+        if (!localStorage.getItem('deka:migrated:v2:' + savedScope)) {
+          var old = JSON.parse(localStorage.getItem('deka:playlists')) || [];
+          var all = JSON.parse(localStorage.getItem('deka:myAll')) || [];
+          if (Array.isArray(old)) old.forEach(function (p) { if (p && Array.isArray(p.tracks)) playlists.push({ id: 'legacy-' + p.id, name: (p.name || 'Плейлист') + ' · из 0.8', tracks: DekaLibraryCore.merge([], p.tracks) }); });
+          if (Array.isArray(all) && all.length) playlists.push({ id: 'legacy-myall', name: 'Список из 0.8 · локальная копия', tracks: DekaLibraryCore.merge([], all) });
+          localStorage.setItem('deka:playlists:v2:' + savedScope, JSON.stringify(playlists));
+          localStorage.setItem('deka:migrated:v2:' + savedScope, '1');
+        }
+        sets = JSON.parse(localStorage.getItem('deka:sets')) || [];
+        if (!Array.isArray(sets)) sets = [];
+        sets = sets.filter(function (s) { try { var u = new URL(s.url); return u.protocol === 'https:' && /(^|\.)(vk\.(ru|com)|vkvideo\.ru)$/.test(u.hostname); } catch (_) { return false; } });
+      } catch (_) {}
+      playlists = playlists.filter(function (p) { return p && p.id && typeof p.name === 'string' && Array.isArray(p.tracks); });
+    }
+    renderOptions(); renderLists(false);
+    var l = library || {}, n = (l.items || []).length, expected = l.expected;
+    var reason = { 'missing-tracks':'VK не отдал весь список', stalled:'Загрузка остановилась', 'source-changed':'Открыт другой список', cancelled:'Загрузка остановлена вами', 'no-rows':'На странице пока нет треков', limit:'Достигнут лимит прохода', 'read-error':'Ошибка чтения страницы', 'count-conflict':'Число треков не совпало', 'choose-library':'Откройте «Мои треки» в VK' };
+    var status = l.status === 'loading' ? 'Загружаю: ' + (l.scanned || n) + (expected ? ' из ' + expected : '') + ' · список уже доступен' : l.complete ? (l.reason === 'count-matched' ? 'Загружено всё: ' + n + ' из ' + expected : 'Дошли до конца страницы · ' + n + ' треков') : 'Сохранено ' + n + (expected ? ' из ' + expected : '') + ' · ' + (reason[l.reason] || 'нажмите «Загрузить всё»');
+    $('status').textContent = status; $('status').classList.toggle('error', l.status === 'partial');
+    $('syncBtn').disabled = l.status === 'loading'; $('syncBtn').textContent = l.status === 'loading' ? 'Загрузка…' : 'Загрузить всё'; $('cancelBtn').hidden = l.status !== 'loading';
+    $('djTotal').textContent = n + (expected ? '/' + expected : '') + ' треков';
+    if (l.storageError) message('Хранилище заполнено: этот список доступен только до закрытия приложения');
+  }
+  function renderPlayback() {
+    if (!engine || !$) return;
+    ['A','B'].forEach(function (side) {
+      var s = engine.state[side], t = s.track;
+      $('title' + side).textContent = t ? t.title : 'Выберите трек ниже';
+      $('type' + side).textContent = t ? t.kind === 'file' ? 'Файл · независимая дека' : 'VK · общий поток' : 'Список готов';
+      $('time' + side).textContent = fmt(s.time) + ' / ' + fmt(s.duration);
+      $('play' + side).textContent = s.pending ? '…' : s.paused ? '▶' : 'Ⅱ';
+      $('disc' + side).classList.toggle('playing', !s.paused);
+      if (sh.activeElement !== $('seek' + side)) $('seek' + side).value = s.duration ? Math.floor(s.time / s.duration * 1000) : 0;
+      lists[side].current(t && t.key);
+    });
+    var a = engine.state.A, b = engine.state.B;
+    $('now').textContent = a.track ? (a.track.artist ? a.track.artist + ' — ' : '') + a.track.title : 'Выберите трек в списке';
+    $('nowTime').textContent = 'A ' + fmt(a.time) + (b.track ? ' · B ' + fmt(b.time) : ''); $('mainPlay').textContent = a.paused ? '▶' : 'Ⅱ'; lists.main.current(a.track && a.track.key);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true }); else mount();
 })();

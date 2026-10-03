@@ -1,13 +1,14 @@
 {
   "name": "deka",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.9.0",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build && node scripts/copy-exe.js",
     "icon": "tauri icon app-icon.png",
-    "test": "node scripts/smoke-test.js"
+    "test": "node scripts/smoke-test.js && node --test tests/library.test.js",
+    "test:browser": "python tests/browser.py"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

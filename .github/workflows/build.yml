@@ -1,18 +1,15 @@
-name: Build
-
-# Каждый push в main проходит smoke-тесты, собирает Windows и Android и публикует Release.
+name: Build and test
 on:
   workflow_dispatch:
   push:
+    branches: [main, feature/v0.9.0-landscape-library]
+  pull_request:
     branches: [main]
-
 permissions:
-  contents: write
-
+  contents: read
 concurrency:
-  group: build
+  group: deka-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -21,9 +18,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Smoke tests
-        run: npm test
-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm test
+      - run: python -m pip install -r tests/requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: python tests/browser.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-regression-results
+          path: test-output/
   windows:
     needs: quality
     runs-on: windows-latest
@@ -37,7 +43,6 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm install
-      - run: npm test
       - run: npm run build
       - uses: actions/upload-artifact@v4
         with:
@@ -45,19 +50,15 @@ jobs:
           path: |
             Deka.exe
             Deka-setup.exe
-
   android:
     needs: quality
     runs-on: ubuntu-latest
+    outputs:
+      kind: ${{ steps.signing.outputs.kind }}
     env:
       REPORT: bash scripts/ci-report.sh
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -65,133 +66,110 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - name: Smoke tests до восстановления signing key
-        run: npm test
-
-      - name: Подготовить Android signing
+      - name: Prepare protected signing or isolated preview
         id: signing
         shell: bash
+        env:
+          KEYSTORE_B64: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
+          KEY_ALIAS: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEY_ALIAS || '' }}
+          KEY_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
         run: |
-          mkdir -p android
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ]; then
-            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/deka-release.p12
-            test -s android/deka-release.p12 || { echo "::error::ANDROID_KEYSTORE_BASE64 не декодируется в keystore"; exit 1; }
-            echo "source=secret" >> "$GITHUB_OUTPUT"
-          elif [ "$(node -p "require('./package.json').version")" = "0.8.0" ]; then
-            # Совместимость обновления: текущие телефоны 0.7.x подписаны прежним ключом.
-            # Ключ уже был опубликован в истории и считается скомпрометированным.
-            # Fallback ограничен этой версией; в рабочее дерево ключ не возвращается.
-            legacy="eefd71b253e94a0cc3a27e8ab88ab5294f2eb11c"
-            git show "${legacy}:android/deka-release.p12" > android/deka-release.p12
-            cfg="$(git show "${legacy}:android/signing.json")"
-            alias="$(printf '%s' "$cfg" | python3 -c 'import json,sys; print(json.load(sys.stdin)["keyAlias"])')"
-            password="$(printf '%s' "$cfg" | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])')"
-            echo "::add-mask::$alias"
-            echo "::add-mask::$password"
-            echo "ANDROID_KEY_ALIAS=$alias" >> "$GITHUB_ENV"
-            echo "ANDROID_KEYSTORE_PASSWORD=$password" >> "$GITHUB_ENV"
-            echo "source=legacy-update-only" >> "$GITHUB_OUTPUT"
-            echo "::warning::0.8.0 подписывается прежним ключом только для обновления поверх 0.7.x. Ключ остаётся вне рабочего дерева."
+          set -euo pipefail
+          umask 077
+          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/deka-signing.p12"
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            printf '%s' "$KEYSTORE_B64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+            export ANDROID_KEY_ALIAS="$KEY_ALIAS"
+            export ANDROID_KEYSTORE_PASSWORD="$KEY_PASSWORD"
+            echo "kind=signed" >> "$GITHUB_OUTPUT"
+            echo "APK_NAME=Deka.apk" >> "$GITHUB_ENV"
+            echo "APK_PACKAGE=ru.volna.player" >> "$GITHUB_ENV"
           else
-            echo "source=none" >> "$GITHUB_OUTPUT"
-            echo "::warning::Android APK пропущен: настройте ANDROID_KEYSTORE_BASE64, ANDROID_KEY_ALIAS и ANDROID_KEYSTORE_PASSWORD."
-            exit 0
+            # A separate app, never an in-place update signed with an exposed key.
+            export ANDROID_KEY_ALIAS=preview
+            export ANDROID_KEYSTORE_PASSWORD="$(openssl rand -hex 32)"
+            echo "::add-mask::$ANDROID_KEYSTORE_PASSWORD"
+            keytool -genkeypair -noprompt -storetype PKCS12 -keystore "$ANDROID_KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" -keyalg RSA -keysize 3072 -validity 3650 -dname "CN=Deka Preview" -storepass:env ANDROID_KEYSTORE_PASSWORD -keypass:env ANDROID_KEYSTORE_PASSWORD
+            node -e "const fs=require('fs'),p='src-tauri/tauri.conf.json',c=JSON.parse(fs.readFileSync(p));c.identifier='ru.volna.player.preview';c.productName='Deka Preview';fs.writeFileSync(p,JSON.stringify(c,null,2));"
+            echo "kind=preview" >> "$GITHUB_OUTPUT"
+            echo "APK_NAME=Deka-Preview.apk" >> "$GITHUB_ENV"
+            echo "APK_PACKAGE=ru.volna.player.preview" >> "$GITHUB_ENV"
+            echo "::warning::Preview is a separate installation. No update compatibility with 0.8 is claimed."
           fi
-          echo "ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/deka-release.p12" >> "$GITHUB_ENV"
-          echo "available=true" >> "$GITHUB_OUTPUT"
-
-      - name: Android SDK и NDK
-        if: steps.signing.outputs.available == 'true'
+          test -s "$ANDROID_KEYSTORE_PATH"
+          echo "ANDROID_KEYSTORE_PATH=$ANDROID_KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+      - name: Android SDK and NDK
         run: |
           sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           ndk="${ANDROID_NDK_LATEST_HOME:-}"
-          if [ -z "$ndk" ]; then ndk=$(ls -d "$sdk"/ndk/* 2>/dev/null | sort -V | tail -n 1); fi
-          echo "SDK: $sdk"; echo "NDK: $ndk"
-          test -d "$sdk" && test -d "$ndk" || { echo "::error::Не найден Android SDK/NDK (SDK=$sdk NDK=$ndk)"; exit 1; }
+          if [ -z "$ndk" ]; then ndk=$(ls -d "$sdk"/ndk/* | sort -V | tail -n 1); fi
+          test -d "$sdk" && test -d "$ndk"
           echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
           echo "NDK_HOME=$ndk" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
-        if: steps.signing.outputs.available == 'true'
         with:
           targets: aarch64-linux-android
       - uses: swatinem/rust-cache@v2
-        if: steps.signing.outputs.available == 'true'
         with:
           workspaces: src-tauri
       - run: npm install
-        if: steps.signing.outputs.available == 'true'
-      - name: Android-проект Tauri
-        if: steps.signing.outputs.available == 'true'
+      - name: Generate native project
         run: |
           $REPORT npx tauri android init --ci
           $REPORT npx tauri icon app-icon.png
           $REPORT node scripts/android-sign.js
           $REPORT node scripts/android-webview.js
-      - name: Сборка .apk
-        if: steps.signing.outputs.available == 'true'
+      - name: Build and verify APK
         run: |
           $REPORT npx tauri android build --apk --target aarch64 --ci
           apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -n 1)
-          echo "APK: $apk"
-          test -n "$apk" || { echo "::error::Файл .apk не найден после сборки"; exit 1; }
-          cp "$apk" Deka.apk
-
-      - name: Проверить APK как обновление 0.7.0
-        if: steps.signing.outputs.available == 'true'
-        shell: bash
-        run: |
-          apksigner=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          test -n "$apk"
+          cp "$apk" "$APK_NAME"
+          signer=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
           aapt=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)
-          test -x "$apksigner" && test -x "$aapt" || { echo "::error::Не найдены apksigner/aapt"; exit 1; }
-
-          "$apksigner" verify --verbose Deka.apk
-
-          curl -fsSL "https://github.com/nikitinad17-ai/deka/releases/download/v0.7.0/Deka.apk" -o /tmp/Deka-0.7.0.apk
-          old_cert=$("$apksigner" verify --print-certs /tmp/Deka-0.7.0.apk | awk -F': ' '/certificate SHA-256 digest/ {print $2; exit}')
-          new_cert=$("$apksigner" verify --print-certs Deka.apk | awk -F': ' '/certificate SHA-256 digest/ {print $2; exit}')
-          old_badging=$("$aapt" dump badging /tmp/Deka-0.7.0.apk | head -n 1)
-          new_badging=$("$aapt" dump badging Deka.apk | head -n 1)
-          old_pkg=$(printf '%s' "$old_badging" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
-          new_pkg=$(printf '%s' "$new_badging" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
-          old_vc=$(printf '%s' "$old_badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
-          new_vc=$(printf '%s' "$new_badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
-
-          echo "Package: $old_pkg -> $new_pkg"
-          echo "VersionCode: $old_vc -> $new_vc"
-          test -n "$old_cert" && test "$old_cert" = "$new_cert" || { echo "::error::Подпись APK отличается от 0.7.0"; exit 1; }
-          test "$old_pkg" = "$new_pkg" || { echo "::error::Package name изменился"; exit 1; }
-          test "$new_vc" -gt "$old_vc" || { echo "::error::VersionCode не вырос"; exit 1; }
-          echo "APK совместим с обновлением поверх 0.7.0."
-
+          "$signer" verify --verbose --print-certs "$APK_NAME"
+          "$aapt" dump badging "$APK_NAME" > "$RUNNER_TEMP/deka-badging.txt"
+          head -n 1 "$RUNNER_TEMP/deka-badging.txt"
+          grep -q "package: name='$APK_PACKAGE'" "$RUNNER_TEMP/deka-badging.txt"
+          grep -q "versionName='0.9.0'" "$RUNNER_TEMP/deka-badging.txt"
       - uses: actions/upload-artifact@v4
-        if: steps.signing.outputs.available == 'true'
         with:
           name: deka-android
-          path: Deka.apk
-
+          path: ${{ env.APK_NAME }}
+      - name: Remove ephemeral signing material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/deka-signing.p12" src-tauri/gen/android/keystore.properties
   release:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: [quality, windows, android]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Версия из package.json
-        id: ver
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - id: ver
+        run: node -e 'require("fs").appendFileSync(process.env.GITHUB_OUTPUT,"version="+require("./package.json").version+"\n")'
       - uses: actions/download-artifact@v4
         with:
+          pattern: deka-*
           path: out
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.version }}
-          name: Дека ${{ steps.ver.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Дека ${{ steps.ver.outputs.version }} — проверочная версия
+          prerelease: true
+          make_latest: false
           body: |
-            Сборка из коммита ${{ github.sha }}.
-            Deka-setup.exe — установщик Windows.
-            Deka.exe — Windows без установки.
-            Deka.apk — Android arm64, можно ставить поверх 0.7.0.
-            В 0.8.0: полноэкранный плейлист, поиск и «Сейчас», исправление длинных VK-списков,
-            DJ-пульт справа налево с GAIN/LOW/MID/HIGH/FILTER/MASTER и сохранение фонового воспроизведения.
+            Коммит: ${{ github.sha }}. Android build: ${{ needs.android.outputs.kind }}.
+            Полная накопительная библиотека, два списка и две деки при повороте телефона.
+            Сведение двух файлов работает независимо; VK остаётся одним общим потоком.
+            Deka-Preview.apk — отдельное приложение рядом с 0.8; не обновление поверх него.
+            Deka.apk появляется только при настроенных защищённых signing secrets.
+            Тесты используют синтетическую VK-разметку; реальная сессия VK и физический сон телефона здесь не проверены.
           files: out/*
-          fail_on_unmatched_files: false
-          make_latest: true
+          fail_on_unmatched_files: true

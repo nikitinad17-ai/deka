@@ -1,0 +1,16 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;font:14px sans-serif;background:#fff}#scroll{height:350px;overflow-y:auto;position:relative;margin:20px;width:calc(100% - 40px)}#canvas{position:relative}.holder{height:48px;position:absolute;left:0;right:0;box-sizing:border-box;border-bottom:1px solid #ddd}button{height:48px;width:100%;text-align:left}h2{margin:10px}
+</style></head><body><h2>Мои треки</h2><div id="scroll"><div id="canvas"></div></div><script>
+window.vk={id:42}; window.__calls=[]; window.__deka={cmd:c=>{window.__calls.push(c);return true;}};
+const params = new URLSearchParams(location.search), total=+(params.get('total')||1000), delay=+(params.get('delay')||50);
+const host=document.getElementById('scroll'), canvas=document.getElementById('canvas');
+let available=Math.min(80,total), pending=false, clicks=[];
+host.setAttribute('data-total-count',total); window.__clicked=clicks;
+const pool=Array.from({length:12},()=>{const h=document.createElement('div');h.className='holder';h.innerHTML='<div data-testid="MusicTrackRow"><button data-testid="audiorow-tappable"><span data-testid="MusicTrackRow_Title"></span><span data-testid="MusicTrackRow_Authors"></span><span data-testid="MusicTrackRow_Duration">3:00</span></button></div>';canvas.appendChild(h);h.querySelector('button').onclick=()=>clicks.push(h.getAttribute('data-audio-id'));return h;});
+function draw(){
+ canvas.style.height=(available*48)+'px';const first=Math.max(0,Math.floor(host.scrollTop/48)-2);
+ pool.forEach((h,j)=>{let i=first+j;h.hidden=i>=available;h.style.top=(i*48)+'px';h.setAttribute('data-audio-id','42_'+i);h.querySelector('[data-testid=MusicTrackRow_Title]').textContent='Track '+String(i).padStart(4,'0');h.querySelector('[data-testid=MusicTrackRow_Authors]').textContent='Artist '+(i%17);});
+ if(!pending&&available<total&&host.scrollTop+host.clientHeight>=available*48-80){pending=true;host.setAttribute('aria-busy','true');setTimeout(()=>{available=Math.min(total,available+80);pending=false;host.removeAttribute('aria-busy');draw();},delay);}
+}
+host.addEventListener('scroll',draw);draw();
+</script></body></html>
