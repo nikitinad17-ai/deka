@@ -1,6 +1,7 @@
 name: Build
 
-# Каждый push в main собирает Деку для Windows и Android и выкладывает файлы в Releases.
+# Каждый push в main собирает Windows. Android собирается только когда
+# настроены GitHub Secrets с новым ключом подписи.
 on:
   workflow_dispatch:
   push:
@@ -37,18 +38,39 @@ jobs:
   android:
     runs-on: ubuntu-latest
     env:
-      # Если шаг падает, последние строки его вывода попадают в аннотации сборки.
       REPORT: bash scripts/ci-report.sh
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Проверить Android signing secrets
+        id: signing
+        shell: bash
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Android APK пропущен: настройте ANDROID_KEYSTORE_BASE64, ANDROID_KEY_ALIAS и ANDROID_KEYSTORE_PASSWORD."
+            exit 0
+          fi
+          mkdir -p android
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/deka-release.p12
+          test -s android/deka-release.p12 || { echo "::error::ANDROID_KEYSTORE_BASE64 не декодируется в keystore"; exit 1; }
+          echo "ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/deka-release.p12" >> "$GITHUB_ENV"
+          echo "available=true" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-node@v4
+        if: steps.signing.outputs.available == 'true'
         with:
           node-version: 22
       - uses: actions/setup-java@v5
+        if: steps.signing.outputs.available == 'true'
         with:
           distribution: temurin
           java-version: 17
-      - name: Android SDK и NDK (уже есть на машине GitHub)
+      - name: Android SDK и NDK
+        if: steps.signing.outputs.available == 'true'
         run: |
           sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           ndk="${ANDROID_NDK_LATEST_HOME:-}"
@@ -58,19 +80,24 @@ jobs:
           echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
           echo "NDK_HOME=$ndk" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.signing.outputs.available == 'true'
         with:
           targets: aarch64-linux-android
       - uses: swatinem/rust-cache@v2
+        if: steps.signing.outputs.available == 'true'
         with:
           workspaces: src-tauri
       - run: npm install
+        if: steps.signing.outputs.available == 'true'
       - name: Android-проект Tauri
+        if: steps.signing.outputs.available == 'true'
         run: |
           $REPORT npx tauri android init --ci
           $REPORT npx tauri icon app-icon.png
           $REPORT node scripts/android-sign.js
           $REPORT node scripts/android-webview.js
       - name: Сборка .apk
+        if: steps.signing.outputs.available == 'true'
         run: |
           $REPORT npx tauri android build --apk --target aarch64 --ci
           apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -n 1)
@@ -78,6 +105,7 @@ jobs:
           test -n "$apk" || { echo "::error::Файл .apk не найден после сборки"; exit 1; }
           cp "$apk" Deka.apk
       - uses: actions/upload-artifact@v4
+        if: steps.signing.outputs.available == 'true'
         with:
           name: deka-android
           path: Deka.apk
@@ -101,9 +129,7 @@ jobs:
           body: |
             Сборка из коммита ${{ github.sha }}.
             Deka-setup.exe — установщик для Windows, Deka.exe — плеер без установки.
-            Deka.apk — версия для Android (arm64).
-          files: |
-            out/Deka.exe
-            out/Deka-setup.exe
-            out/Deka.apk
+            Deka.apk публикуется только если настроен новый Android signing key в GitHub Secrets.
+          files: out/*
+          fail_on_unmatched_files: false
           make_latest: true
