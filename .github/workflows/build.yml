@@ -65,6 +65,8 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: Smoke tests до восстановления signing key
+        run: npm test
 
       - name: Подготовить Android signing
         id: signing
@@ -117,8 +119,6 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm install
-        if: steps.signing.outputs.available == 'true'
-      - run: npm test
         if: steps.signing.outputs.available == 'true'
       - name: Android-проект Tauri
         if: steps.signing.outputs.available == 'true'
