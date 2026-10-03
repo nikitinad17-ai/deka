@@ -24,7 +24,7 @@ test('library and UI use isolated Deka 2 names without reading original storage'
 });
 test('desktop and Android both inject the two-deck interface', () => {
   const native = read('src-tauri/src/lib.rs');
-  assert.match(native, /DECK_ENGINE, VK_BRIDGE, LIBRARY_RUNTIME, VIRTUAL_LIST, MOBILE_OVERLAY/);
+  assert.match(native, /DECK_ENGINE, VK_BRIDGE, MIXER_POLICY, LIBRARY_RUNTIME, VIRTUAL_LIST, EXTRA_CONTROLS, MOBILE_OVERLAY/);
   assert.ok(!native.includes('#[cfg(mobile)]\nconst DECK_ENGINE'));
 });
 test('branding is idempotent', () => {

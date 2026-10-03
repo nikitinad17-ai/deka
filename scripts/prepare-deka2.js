@@ -27,6 +27,7 @@ const native = path.join(root, 'scripts/android-webview.js');
 let before = fs.readFileSync(native, 'utf8');
 let after = before.replaceAll('ru.volna.player.action.', 'ru.deka2.player.action.')
   .replaceAll('setContentTitle("Дека")', 'setContentTitle("Дека 2")');
+if (!after.includes('webView.settings.domStorageEnabled')) after = after.replace('webView.settings.mediaPlaybackRequiresUserGesture = false', 'webView.settings.mediaPlaybackRequiresUserGesture = false\n    webView.settings.domStorageEnabled = true\n    android.webkit.CookieManager.getInstance().setAcceptCookie(true)');
 if (after !== before) fs.writeFileSync(native, after);
 const conf = JSON.parse(fs.readFileSync(path.join(root, 'src-tauri/tauri.conf.json')));
 if (conf.identifier !== 'ru.deka2.player' || conf.productName !== 'Deka 2') {

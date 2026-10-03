@@ -1,7 +1,7 @@
 name: Deka 2 - build and test
 on:
   push:
-    branches: [deka2]
+    branches: [deka2, feature/deka2-0.2.0-vk-mixer]
   workflow_dispatch:
 permissions:
   contents: read
@@ -14,15 +14,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+        with: {node-version: 22}
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+        with: {python-version: '3.12'}
       - run: npm test
       - run: python -m pip install -r tests/requirements.txt
       - run: python -m playwright install --with-deps chromium
       - run: python tests/browser.py
+      - run: python tests/mixer-browser.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -34,14 +33,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+        with: {node-version: 22}
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
+        with: {workspaces: src-tauri}
       - run: npm install
       - run: npm run build
+      - name: Verify installation and desktop shortcut
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "$pwd\Deka2-setup.exe" -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installer exit $($p.ExitCode)" }
+          $link = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Дека 2.lnk'
+          if (!(Test-Path $link)) { throw 'Desktop shortcut missing' }
+          $shell = New-Object -ComObject WScript.Shell
+          $target = $shell.CreateShortcut($link).TargetPath
+          if (!(Test-Path $target)) { throw 'Desktop shortcut target missing' }
+          if ([IO.Path]::GetFileName($target) -ne 'deka2.exe') { throw 'Wrong app shortcut' }
+          "Verified desktop shortcut: $link -> $target"
       - uses: actions/upload-artifact@v4
         with:
           name: deka2-windows
@@ -52,53 +61,38 @@ jobs:
   android:
     needs: quality
     runs-on: ubuntu-latest
+    outputs:
+      kind: ${{ steps.signing.outputs.kind }}
     env:
       REPORT: bash scripts/ci-report.sh
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+        with: {node-version: 22}
       - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: 17
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: python -m pip install cryptography==46.0.3
-      - name: Prepare Deka 2 identity
-        run: npm run prepare:brand
-      - name: Use protected key or bootstrap first Deka 2 key
+        with: {distribution: temurin, java-version: 17}
+      - run: npm run prepare:brand
+      - name: Use existing protected key or prepare offline signing
+        id: signing
         env:
-          DEKA2_KEYSTORE_B64: ${{ secrets.DEKA2_KEYSTORE_BASE64 }}
-          DEKA2_ALIAS: ${{ secrets.DEKA2_KEY_ALIAS }}
-          DEKA2_PASSWORD: ${{ secrets.DEKA2_KEYSTORE_PASSWORD }}
-          GH_TOKEN: ${{ github.token }}
+          KEY_B64: ${{ secrets.DEKA2_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.DEKA2_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.DEKA2_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
           umask 077
-          mkdir -p dist-signing
-          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/deka2-signing.p12"
-          if [ -n "$DEKA2_KEYSTORE_B64" ] && [ -n "$DEKA2_ALIAS" ] && [ -n "$DEKA2_PASSWORD" ]; then
-            printf '%s' "$DEKA2_KEYSTORE_B64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
-            export ANDROID_KEY_ALIAS="$DEKA2_ALIAS"
-            export ANDROID_KEYSTORE_PASSWORD="$DEKA2_PASSWORD"
+          if [ -n "$KEY_B64" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            printf '%s' "$KEY_B64" | base64 --decode > "$RUNNER_TEMP/deka2-signing.p12"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/deka2-signing.p12" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo 'kind=signed' >> "$GITHUB_OUTPUT"
+            echo 'APK_NAME=Deka2.apk' >> "$GITHUB_ENV"
           else
-            # Never generate a replacement signing identity for an already published app.
-            test "$(node -p "require('./package.json').version")" = '0.1.0' || { echo 'Configure DEKA2 signing secrets using the existing key.'; exit 1; }
-            code=$(curl -sS -o "$RUNNER_TEMP/deka2-release.json" -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/deka2-v0.1.0")
-            test "$code" = '404' || { echo 'First Deka 2 release already exists, or GitHub did not confirm its absence. Restore its key to DEKA2 Secrets; refusing key replacement.'; exit 1; }
-            export ANDROID_KEY_ALIAS=deka2
-            export ANDROID_KEYSTORE_PASSWORD="$(openssl rand -hex 32)"
-            echo "::add-mask::$ANDROID_KEYSTORE_PASSWORD"
-            keytool -genkeypair -noprompt -storetype PKCS12 -keystore "$ANDROID_KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" -keyalg RSA -keysize 3072 -validity 10000 -dname 'CN=Deka 2, O=Alex Nikitin' -storepass:env ANDROID_KEYSTORE_PASSWORD -keypass:env ANDROID_KEYSTORE_PASSWORD
+            # Never replace signing identity. Owner signs this artifact offline with the 0.1.0 key.
+            echo 'kind=unsigned' >> "$GITHUB_OUTPUT"
+            echo 'APK_NAME=Deka2-unsigned.apk' >> "$GITHUB_ENV"
           fi
-          test -s "$ANDROID_KEYSTORE_PATH"
-          python scripts/signing-envelope.py seal keys/deka2-recovery-public.pem dist-signing/Deka2-signing-backup.sealed.json
-          echo "ANDROID_KEYSTORE_PATH=$ANDROID_KEYSTORE_PATH" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
-          echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
       - name: Android SDK and NDK
         run: |
           sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
@@ -111,81 +105,71 @@ jobs:
         with:
           targets: aarch64-linux-android
       - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
+        with: {workspaces: src-tauri}
       - run: npm install
-      - name: Generate Deka 2 native project
+      - name: Generate native project
         run: |
           $REPORT npx tauri android init --ci
           $REPORT npx tauri icon app-icon.png
-          $REPORT node scripts/android-sign.js
+          if [ -n "${ANDROID_KEYSTORE_PATH:-}" ]; then $REPORT node scripts/android-sign.js; fi
           $REPORT node scripts/android-webview.js
-      - name: Build and verify Deka 2 APK
+      - name: Build and verify package identity
         run: |
           set -euo pipefail
           $REPORT npx tauri android build --apk --target aarch64 --ci
           apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -n 1)
           test -n "$apk"
-          cp "$apk" Deka2.apk
-          signer=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          cp "$apk" "$APK_NAME"
           aapt=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)
-          "$signer" verify --verbose --print-certs Deka2.apk | tee "$RUNNER_TEMP/deka2-cert.txt"
-          "$aapt" dump badging Deka2.apk > "$RUNNER_TEMP/deka2-badging.txt"
-          head -n 1 "$RUNNER_TEMP/deka2-badging.txt"
-          grep -q "package: name='ru.deka2.player'" "$RUNNER_TEMP/deka2-badging.txt"
-          grep -q "versionName='0.1.0'" "$RUNNER_TEMP/deka2-badging.txt"
-          grep -q "application-label:'Deka 2'" "$RUNNER_TEMP/deka2-badging.txt"
-          "$aapt" dump xmltree Deka2.apk AndroidManifest.xml > "$RUNNER_TEMP/deka2-manifest.txt"
-          grep -q 'DekaPlaybackService' "$RUNNER_TEMP/deka2-manifest.txt"
-          sha256sum Deka2.apk > dist-signing/Deka2-SHA256.txt
-          cp "$RUNNER_TEMP/deka2-cert.txt" dist-signing/Deka2-signature.txt
+          "$aapt" dump badging "$APK_NAME" > Deka2-package.txt
+          grep -q "package: name='ru.deka2.player'" Deka2-package.txt
+          grep -q "versionName='0.2.0'" Deka2-package.txt
+          grep -q "application-label:'Deka 2'" Deka2-package.txt
+          if [ "$APK_NAME" = Deka2.apk ]; then
+            signer=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+            "$signer" verify --verbose --print-certs "$APK_NAME"
+          fi
+          echo "${{ github.sha }}" > source-commit.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: deka2-android
-          path: Deka2.apk
+          name: deka2-android-build
+          path: |
+            ${{ env.APK_NAME }}
+            Deka2-package.txt
+            source-commit.txt
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: deka2-encrypted-signing-backup
-          path: dist-signing/
-          if-no-files-found: error
-      - name: Delete plaintext signing material
+      - name: Remove plaintext signing material
         if: always()
         run: rm -f "$RUNNER_TEMP/deka2-signing.p12" src-tauri/gen/android/keystore.properties
   release:
     if: github.ref == 'refs/heads/deka2'
     needs: [quality, windows, android]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    permissions: {contents: write}
     steps:
       - uses: actions/checkout@v4
-      - id: ver
-        run: node -e 'require("fs").appendFileSync(process.env.GITHUB_OUTPUT,"version="+require("./package.json").version+"\n")'
       - uses: actions/download-artifact@v4
         with:
-          pattern: deka2-*
+          name: deka2-windows
           path: out
-          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        if: needs.android.outputs.kind == 'signed'
+        with:
+          name: deka2-android-build
+          path: out
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: deka2-v${{ steps.ver.outputs.version }}
+          tag_name: deka2-v0.2.0
           target_commitish: ${{ github.sha }}
-          name: Дека 2 - ${{ steps.ver.outputs.version }}
+          name: Дека 2 - 0.2.0
           prerelease: true
           make_latest: false
           body: |
-            Отдельное приложение «Дека 2». Коммит ${{ github.sha }}.
-            Deka2.apk — новая установка рядом с Декой 1 и Preview, не обновляет их.
-            Android: ru.deka2.player. Новый ключ, зашифрованная резервная копия сохранена.
-            Deka2-setup.exe и Deka2.exe — отдельная Windows-версия с двухдековым интерфейсом.
-            Два локальных файла сводятся независимо; VK остаётся одним потоком.
-            Пройдены тесты библиотеки, интерфейса и изоляции приложения. Живая VK-сессия и физический телефон не тестировались.
-          files: |
-            out/Deka2.apk
-            out/Deka2.exe
-            out/Deka2-setup.exe
-            out/Deka2-signing-backup.sealed.json
-            out/Deka2-SHA256.txt
-            out/Deka2-signature.txt
+            Desktop shortcut, VK session handling, own-library restore, tested mixer controls.
+            Two local decks; VK is one shared stream. No claims of a real VK-account test.
+            Tests include real WebAudio signal attenuation, not only control positions.
+            Android signing mode: ${{ needs.android.outputs.kind }}.
+            Unsigned Android build artifacts are NOT installers and are not released here.
+            With offline signing, the installable APK is delivered separately after signature verification.
+          files: out/*
           fail_on_unmatched_files: true

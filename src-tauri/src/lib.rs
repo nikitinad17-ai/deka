@@ -1,5 +1,8 @@
 // Deka 2 is a separate application. Both platforms use the same two-deck UI.
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+const MIXER_POLICY: &str = include_str!("../../src/vk-mixer-policy.js");
+const VK_SESSION: &str = include_str!("../../src/vk-session.js");
+const EXTRA_CONTROLS: &str = include_str!("../../src/player-controls.js");
 const LIBRARY_CORE: &str = include_str!("../../src/library-engine.js");
 const DECK_ENGINE: &str = include_str!("../../src/deck-engine.js");
 const VK_BRIDGE: &str = include_str!("../../src/vk-bridge.js");
@@ -34,7 +37,7 @@ pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             // Capture native play before the VK hook, then mount the shared interface.
-            let script = [LIBRARY_CORE, DECK_ENGINE, VK_BRIDGE, LIBRARY_RUNTIME, VIRTUAL_LIST, MOBILE_OVERLAY].join("\n;\n");
+            let script = [VK_SESSION, LIBRARY_CORE, DECK_ENGINE, VK_BRIDGE, MIXER_POLICY, LIBRARY_RUNTIME, VIRTUAL_LIST, EXTRA_CONTROLS, MOBILE_OVERLAY].join("\n;\n");
             let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(VK_URL.parse().unwrap()))
                 .title("Дека 2")
                 .initialization_script(script);

@@ -6,23 +6,37 @@
   var Core = window.DekaLibraryCore, original = window.__deka.cmd.bind(window.__deka);
   var SELECTOR = "[data-testid='MusicTrackRow'],[data-audio],.audio_item,.audio_row,[data-testid='audio-row'],[class*='AudioRow__root']";
   var rowMap = new Map(), cached = null, scope = '', runToken = 0, loading = false, snapshot = null, timer;
-  function userId() { var v = window.vk || {}; return String(v.id || v.uid || (v.user && v.user.id) || 'unknown'); }
+  function userId() {
+    if(window.DekaSession)return window.DekaSession.userId()||'unknown';
+    var v=window.vk||{},id=String(v.id||v.uid||(v.user&&v.user.id)||'');
+    if(!/^[1-9]\d*$/.test(id)){var m=document.cookie.match(/(?:^|;\s*)remixmid=(\d+)/);id=m?m[1]:'';}
+    return /^[1-9]\d*$/.test(id)?id:'unknown';
+  }
+  function ownPage(){return location.pathname==='/audios'+userId();}
+  function landing(){return /^\/(audio|music)\/?$/.test(location.pathname)&&!/[?&](z|act)=/.test(location.search);}
+  function viewSnapshot(){
+    if(landing()&&userId()!=='unknown'){
+      var saved=readStore('deka2:own-library:'+userId(),null);
+      if(saved&&saved.source&&String(saved.source).split('|')[0]===userId()&&Array.isArray(saved.items)&&saved.items.length)return Object.assign({},saved,{status:'saved'});
+    }
+    return snapshot;
+  }
   function sourceId() { return userId() + '|' + location.pathname + location.search; }
   function readStore(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch (_) { return fallback; } }
   function loadCache() {
     var key = sourceId();
     if (scope === key && cached) return;
     scope = key;
-    cached = readStore('deka:library:v2:' + scope, { items: [], complete: false, reason: 'saved' });
+    cached = readStore('deka2:library:v2:' + scope, { items: [], complete: false, reason: 'saved' });
     cached.items = Core.merge([], Array.isArray(cached.items) ? cached.items : []);
     snapshot = Object.assign({}, cached, { count: cached.items.length, source: scope, status: 'saved' });
   }
   function persist() {
-    try { localStorage.setItem('deka:library:v2:' + scope, JSON.stringify(cached)); }
+    try { localStorage.setItem('deka2:library:v2:' + scope, JSON.stringify(cached)); if(ownPage())localStorage.setItem('deka2:own-library:'+userId(),JSON.stringify(cached)); }
     catch (_) { snapshot.storageError = true; }
   }
   function emit(name, data) {
-    window.dispatchEvent(new CustomEvent('deka:' + name, { detail: data }));
+    window.dispatchEvent(new CustomEvent('deka2:' + name, { detail: data }));
     try {
       var p = window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emitTo('main', name, data);
       if (p && p.catch) p.catch(function () {});
@@ -102,13 +116,14 @@
   }
   async function collect(timing) {
     if (loading) return;
+    if(window.DekaSession&&window.DekaSession.read().authenticated===false){emit('library',{items:[],source:sourceId(),status:'partial',reason:'login-required'});return;}
     collector = Core.createCollector(adapter, Object.assign({}, timing || {}, { onProgress: onProgress }));
     loadCache(); loading = true; runToken++;
     try {
       var result = await collector.run();
       if (result.source !== sourceId()) return;
       cached = Object.assign({}, result, { items: Core.saveResult(cached.items, result), updatedAt: Date.now() });
-      cached.count = cached.items.length;
+      cached.count = cached.items.length; cached.source=scope;
       snapshot = Object.assign({}, cached); persist();
       emit('library', snapshot);
       // Preserve the desktop CSV interface, but expose completeness separately.
@@ -126,6 +141,7 @@
     return null;
   }
   function collectMy() {
+    if(window.DekaSession&&window.DekaSession.read().authenticated===false){emit('library',Object.assign({},snapshot,{status:'partial',reason:'login-required'}));return;}
     var u = ownURL();
     if (/^\/audios-?\d+/.test(location.pathname) && (!u || u.pathname === location.pathname)) return collect();
     if (!u) { emit('library', Object.assign({}, snapshot, { status: 'partial', complete: false, reason: 'choose-library' })); return; }
@@ -137,7 +153,8 @@
     var request = ++runToken;
     if (collector) collector.cancel();
     while (loading) await new Promise(function (r) { setTimeout(r, 50); });
-    var oldSource = sourceId(), start = Date.now();
+    if(request!==runToken)return false;
+    var oldSource = sourceId(), start = Date.now(), bottomSince=null;
     read();
     if (!rowMap.has(target)) { scrollTo(0); await new Promise(function (r) { setTimeout(r, 500); }); }
     while (request === runToken && oldSource === sourceId() && Date.now() - start < 90000) {
@@ -147,7 +164,7 @@
         (button || row).click(); return true;
       }
       var m = measure();
-      if (m.top + m.height >= m.fullHeight - 3 && !busy()) break;
+      if(m.top+m.height>=m.fullHeight-3&&!busy()){if(bottomSince===null)bottomSince=Date.now();if(Date.now()-bottomSince>8000)break;expand();}else bottomSince=null;
       scrollTo(m.top + Math.max(1, Math.floor(m.height * 0.6)));
       await new Promise(function (r) { setTimeout(r, 350); });
     }
@@ -165,12 +182,13 @@
     return original(c);
   };
   window.DekaLibrary = { collect: collect, collectMy: collectMy, cancel: function () { if (collector) collector.cancel(); },
-    get: function () { loadCache(); return snapshot; }, adapter: adapter,
+    get: function () { loadCache(); return viewSnapshot(); }, adapter: adapter,
+    userId: userId, ownURL: ownURL, ownPage: ownPage, landing: landing, preferred: function(){return landing()?collectMy():collect();},
     playKey: playKey, isRunning: function () { return loading; } };
   // Retire the old same-origin-only flag before the old bridge's DOMContentLoaded callback.
   try { sessionStorage.removeItem('dekaCollect'); } catch (_) {}
   function boot() {
-    loadCache(); emit('library', snapshot);
+    loadCache(); emit('library', viewSnapshot());
     if (/deka-library=collect/.test(location.hash)) {
       try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
       collect();
@@ -179,18 +197,18 @@
     new MutationObserver(function () {
       clearTimeout(timer);
       timer = setTimeout(function () {
-        if (sourceId() !== lastSource) { if (collector) collector.cancel(); runToken++; lastSource = sourceId(); loadCache(); emit('library', snapshot); }
+        if (sourceId() !== lastSource) { if (collector) collector.cancel(); runToken++; lastSource = sourceId(); loadCache(); emit('library', viewSnapshot()); }
         // Passive accumulation belongs only to this source; never shrink it to visible rows.
         if (!loading) {
           var found = read(), merged = Core.merge(cached.items, found);
           if (merged.length !== cached.items.length) {
-            cached.items = merged; cached.complete = false; cached.reason = 'partial';
+            cached.items = merged; cached.complete = false; cached.reason = 'partial'; cached.source=scope;
             snapshot = Object.assign({}, cached, { status: 'saved', count: merged.length, expected: total(), source: scope });
-            persist(); emit('library', snapshot);
+            persist(); emit('library', viewSnapshot());
           }
         }
       }, 300);
-    }).observe(document.body, { childList: true, subtree: true });
+    }).observe(document.body, { childList: true, subtree: true, characterData:true,attributes:true,attributeFilter:['data-audio-id','data-full-id','data-id','aria-busy'] });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
 })();

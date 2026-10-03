@@ -57,7 +57,7 @@
         else if (anchor) { var pos = data.findIndex(function (t) { return t.key === anchor; }); if (pos >= 0) element.scrollTop = pos * rowHeight + offset; }
         render();
       },
-      current: function (key) { selected = key || ''; render(); },
+      current: function (key) { var next=key||'';if(selected===next)return;selected=next;render(); },
       jump: function (key) { var i = data.findIndex(function (t) { return t.key === key; }); if (i < 0) return false; element.scrollTop = Math.max(0, i * rowHeight - element.clientHeight / 2); render(); return true; },
       render: render, count: function () { return data.length; }, destroy: function () { observer.disconnect(); if (frame !== null) cancelAnimationFrame(frame); }
     };
