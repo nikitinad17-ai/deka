@@ -1,19 +1,26 @@
-// Подключает постоянный ключ подписи к Android-проекту, который Tauri генерирует в CI.
-// Один и тот же ключ нужен, чтобы новые версии .apk ставились поверх старых
-// (без удаления приложения и без потери входа в аккаунты).
+// Подключает Android release signing только из переменных окружения.
+// Ключ и пароль не должны храниться в репозитории.
 const fs = require("fs");
 const path = require("path");
 
 const root = path.join(__dirname, "..");
-const cfg = JSON.parse(fs.readFileSync(path.join(root, "android", "signing.json"), "utf8"));
+const keyAlias = process.env.ANDROID_KEY_ALIAS;
+const password = process.env.ANDROID_KEYSTORE_PASSWORD;
+const storeFile = process.env.ANDROID_KEYSTORE_PATH || path.join(root, "android", "deka-release.p12");
+
+if (!keyAlias || !password || !fs.existsSync(storeFile)) {
+  console.error("Android signing не настроен: нужны ANDROID_KEY_ALIAS, ANDROID_KEYSTORE_PASSWORD и ANDROID_KEYSTORE_PATH.");
+  process.exit(1);
+}
+
 const androidDir = path.join(root, "src-tauri", "gen", "android");
 
 fs.writeFileSync(
   path.join(androidDir, "keystore.properties"),
   [
-    `keyAlias=${cfg.keyAlias}`,
-    `password=${cfg.password}`,
-    `storeFile=${path.join(root, cfg.storeFile).replace(/\\/g, "/")}`,
+    `keyAlias=${keyAlias}`,
+    `password=${password}`,
+    `storeFile=${storeFile.replace(/\\/g, "/")}`,
   ].join("\n") + "\n"
 );
 
@@ -43,4 +50,4 @@ if (!s.includes("signingConfigs")) {
   }
   fs.writeFileSync(gradle, s);
 }
-console.log("Подпись .apk подключена");
+console.log("Подпись .apk подключена из защищённых переменных окружения");
