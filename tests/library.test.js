@@ -31,7 +31,8 @@ test('unstable row indices fall back to metadata, not row number', () => {
 test('partial pass keeps saved tail, complete pass permits deletions', () => {
   const prior = Array.from({ length: 1000 }, (_, i) => track(i));
   assert.equal(C.saveResult(prior, { complete:false, items:prior.slice(0,30) }).length, 1000);
-  assert.equal(C.saveResult(prior, { complete:true, items:prior.slice(0,30) }).length, 30);
+  assert.equal(C.saveResult(prior, { complete:true, reason:'end-observed', items:prior.slice(0,30) }).length, 1000);
+  assert.equal(C.saveResult(prior, { complete:true, reason:'count-matched', items:prior.slice(0,30) }).length, 30);
 });
 test('count mismatch at the bottom is partial, not a successful full list', async () => {
   const f = fixture(40); f.a.total = () => 1000;

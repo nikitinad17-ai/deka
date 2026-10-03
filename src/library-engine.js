@@ -18,8 +18,8 @@
     return Array.from(map.values());
   }
   function saveResult(previous, result) {
-    // A interrupted/failed/partial pass must not erase the previously saved tail.
-    return result.complete ? merge([], result.items) : merge(previous, result.items);
+    // Only a matched advertised total can justify deleting the previously saved tail.
+    return result.complete && result.reason === 'count-matched' ? merge([], result.items) : merge(previous, result.items);
   }
   function createCollector(adapter, options) {
     var opts = Object.assign({ stepMs: 450, settleMs: 800, endMs: 12000, stalledMs: 45000,
