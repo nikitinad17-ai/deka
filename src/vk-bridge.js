@@ -211,7 +211,7 @@
       if (!title) return;
       rowIndex.set(key, row);
       list.push({
-        key: key, title: decode(title), artist: decode(artist), duration: dur,
+        key: key, section: sectionOf(row), title: decode(title), artist: decode(artist), duration: dur,
         current: /(_playing|_paused|--playing|--current|is-current|isCurrent)/i.test(row.className || "")
       });
     });
@@ -309,7 +309,7 @@
   // музыку через MSE): прямые ссылки на чужой сервер браузер отдал бы в цепочку
   // тишиной, и звук пропал бы.
   var FREQS = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000];
-  var fxSet = { on: true, pre: 0, gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], bal: 0 };
+  var fxSet = { on: true, pre: 0, gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], bal: 0, filter: 0 };
   var fx = null;              // общий граф
   var hooked = new WeakSet(); // элементы, уже подключённые к графу
   var fxState = null;
@@ -324,12 +324,16 @@
       b.type = i === 0 ? "lowshelf" : (i === FREQS.length - 1 ? "highshelf" : "peaking");
       b.frequency.value = f; b.Q.value = 1.1; return b;
     });
+    var djFilter = ctx.createBiquadFilter();
+    djFilter.type = "allpass";
+    djFilter.frequency.value = 20000;
+    djFilter.Q.value = 0.7;
     var pan = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
     var an = ctx.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0.7;
     var n = input; n.connect(pre); n = pre;
     filters.forEach(function (f) { n.connect(f); n = f; });
-    n.connect(pan); pan.connect(an); an.connect(ctx.destination);
-    fx = { ctx: ctx, input: input, pre: pre, filters: filters, pan: pan, an: an, data: new Uint8Array(an.frequencyBinCount) };
+    n.connect(djFilter); djFilter.connect(pan); pan.connect(an); an.connect(ctx.destination);
+    fx = { ctx: ctx, input: input, pre: pre, filters: filters, djFilter: djFilter, pan: pan, an: an, data: new Uint8Array(an.frequencyBinCount) };
     applyFx();
     setInterval(sendSpectrum, 40);
   }
@@ -339,6 +343,19 @@
     var t = fx.ctx.currentTime;
     fx.filters.forEach(function (f, i) { f.gain.setTargetAtTime(fxSet.on ? (+fxSet.gains[i] || 0) : 0, t, 0.02); });
     fx.pre.gain.setTargetAtTime(fxSet.on ? Math.pow(10, (+fxSet.pre || 0) / 20) : 1, t, 0.02);
+    var cut = Math.max(-1, Math.min(1, +fxSet.filter || 0));
+    if (!fxSet.on || Math.abs(cut) < 0.025) {
+      fx.djFilter.type = "allpass";
+      fx.djFilter.frequency.setTargetAtTime(20000, t, 0.02);
+    } else if (cut < 0) {
+      fx.djFilter.type = "lowpass";
+      fx.djFilter.frequency.setTargetAtTime(18000 * Math.pow(160 / 18000, -cut), t, 0.025);
+      fx.djFilter.Q.setTargetAtTime(0.85, t, 0.025);
+    } else {
+      fx.djFilter.type = "highpass";
+      fx.djFilter.frequency.setTargetAtTime(30 * Math.pow(8000 / 30, cut), t, 0.025);
+      fx.djFilter.Q.setTargetAtTime(0.85, t, 0.025);
+    }
     if (fx.pan.pan) fx.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, +fxSet.bal || 0)), t, 0.02);
   }
 
@@ -380,23 +397,52 @@
   // из вида, поэтому листаем вниз и копим треки, пока новые не перестанут появляться.
   // Прокрутка к концу списка. Мобильный ВК может прокручивать не окно, а свой блок,
   // поэтому дополнительно прокручиваем к последней строке трека.
+  function trackScrollHost() {
+    var row = document.querySelector("[data-testid='MusicTrackRow'], .audio_item, .audio_row, [data-audio]");
+    var p = row && row.parentElement;
+    while (p && p !== document.body && p !== document.documentElement) {
+      try {
+        var s = getComputedStyle(p);
+        if (/(auto|scroll)/.test(s.overflowY || "") && p.scrollHeight > p.clientHeight + 40) return p;
+      } catch (e) {}
+      p = p.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+  function hostPos(host) {
+    return host === document.scrollingElement || host === document.documentElement || host === document.body ? window.scrollY : host.scrollTop;
+  }
+  function hostAtEnd(host) {
+    if (!host) return true;
+    if (host === document.scrollingElement || host === document.documentElement || host === document.body) {
+      var se = document.scrollingElement || document.documentElement;
+      return window.scrollY + window.innerHeight >= se.scrollHeight - 48;
+    }
+    return host.scrollTop + host.clientHeight >= host.scrollHeight - 48;
+  }
   function scrollToEnd() {
-    var se = document.scrollingElement || document.documentElement;
-    window.scrollTo(0, se.scrollHeight);
+    var host = trackScrollHost();
+    if (host === document.scrollingElement || host === document.documentElement || host === document.body) {
+      var se = document.scrollingElement || document.documentElement;
+      window.scrollTo(0, se.scrollHeight);
+    } else {
+      host.scrollTop = host.scrollHeight;
+    }
     var rows = document.querySelectorAll("[data-testid='MusicTrackRow'], .audio_item, .audio_row, [data-audio]");
     if (rows.length) { try { rows[rows.length - 1].scrollIntoView({ block: "end" }); } catch (e) {} }
   }
-  // Шаг прокрутки примерно на экран: последняя видимая строка уходит наверх.
-  // Так не перепрыгиваем середину длинного списка (ВК может показывать только
-  // строки рядом с экраном), и при этом доходим до низа, где ВК догружает треки.
+  // Шаг примерно на 80% экрана/скролл-контейнера. VK на Android иногда
+  // виртуализирует строки внутри собственного блока, поэтому window.scrollY
+  // недостаточно: двигаем реальный прокручиваемый родитель списка.
   function scrollStep() {
+    var host = trackScrollHost();
     var rows = document.querySelectorAll("[data-testid='MusicTrackRow'], .audio_item, .audio_row, [data-audio]");
-    var before = window.scrollY;
-    if (rows.length) { try { rows[rows.length - 1].scrollIntoView({ block: "start" }); } catch (e) {} }
-    if (window.scrollY === before) {
-      var se = document.scrollingElement || document.documentElement;
-      window.scrollTo(0, se.scrollHeight);
-    }
+    var before = hostPos(host);
+    var amount = Math.max(260, Math.floor(((host && host.clientHeight) || window.innerHeight || 600) * 0.8));
+    if (host === document.scrollingElement || host === document.documentElement || host === document.body) window.scrollBy(0, amount);
+    else host.scrollTop = Math.min(host.scrollHeight, host.scrollTop + amount);
+    if (rows.length) { try { rows[rows.length - 1].scrollIntoView({ block: "end" }); } catch (e) {} }
+    return { moved: hostPos(host) !== before, atEnd: hostAtEnd(host) };
   }
 
   var collecting = false;
@@ -404,12 +450,17 @@
     if (collecting) return;
     collecting = true;
     finding++; // поиск трека для очереди прерываем, чтобы не мешал прокрутке
-    var acc = new Map(), idle = 0, rounds = 0, startY = window.scrollY;
-    try { window.scrollTo(0, 0); } catch (e) {}
+    var acc = new Map(), idle = 0, rounds = 0, startHost = trackScrollHost(), startY = hostPos(trackScrollHost());
+    try {
+      if (startHost === document.scrollingElement || startHost === document.documentElement || startHost === document.body) window.scrollTo(0, 0);
+      else startHost.scrollTop = 0;
+    } catch (e) {}
     function keyOf(t) {
       var k = String(t.key);
       var base = /^row\d+$/.test(k) ? t.artist + "—" + t.title : k.replace(/#\d+$/, "");
-      return (t.section || "") + "|" + base;
+      // На /audios один и тот же трек может временно оказаться в нескольких виртуальных блоках.
+      // Для полного «Моего списка» дедуплицируем по id/названию, а не по заголовку блока.
+      return (/\/audios/.test(location.pathname) ? "" : (t.section || "") + "|") + base;
     }
     function step() {
       var added = 0;
@@ -421,18 +472,30 @@
       // Страница ещё грузится: ждём строки до ~25 секунд, это не конец списка.
       if (!acc.size && rounds < 25) { setTimeout(step, 1000); return; }
       idle = added ? 0 : idle + 1;
-      if (idle >= 10 || rounds > 1500 || acc.size >= 10000) {
+      var progress = scrollStep();
+      // Заканчиваем, только когда некоторое время нет новых треков И мы реально
+      // дошли до низа скролл-контейнера. Это важно для длинных виртуальных списков VK.
+      if ((idle >= 12 && progress.atEnd) || idle >= 24 || rounds > 2000 || acc.size >= 15000) {
         collecting = false;
-        window.scrollTo(0, startY);
+        try {
+          if (startHost === document.scrollingElement || startHost === document.documentElement || startHost === document.body) window.scrollTo(0, startY);
+          else startHost.scrollTop = startY;
+        } catch (e) {}
         emit("vk:collect", { done: true, count: acc.size, page: location.pathname, items: Array.from(acc.values()) });
         return;
       }
       emit("vk:collect", { done: false, count: acc.size });
-      // Если новые треки перестали появляться, чуть отматываем назад: ВК догружает
-      // список, когда низ страницы снова появляется на экране.
-      if (idle === 4 || idle === 7) { try { window.scrollBy(0, -800); } catch (e) {} setTimeout(function () { scrollStep(); setTimeout(step, 1200); }, 400); return; }
-      scrollStep();
-      setTimeout(step, 1000);
+      // Иногда VK ждёт повторного появления нижней границы в viewport.
+      if (idle === 6 || idle === 12 || idle === 18) {
+        var h = trackScrollHost();
+        try {
+          if (h === document.scrollingElement || h === document.documentElement || h === document.body) window.scrollBy(0, -600);
+          else h.scrollTop = Math.max(0, h.scrollTop - 600);
+        } catch (e) {}
+        setTimeout(function () { scrollStep(); setTimeout(step, 1400); }, 450);
+        return;
+      }
+      setTimeout(step, progress.moved ? 850 : 1200);
     }
     setTimeout(step, 800); // даём ВК отрисовать начало списка после прокрутки наверх
   }
@@ -538,6 +601,7 @@
           if (isFinite(c.pre)) fxSet.pre = +c.pre;
           if (Array.isArray(c.gains) && c.gains.length === FREQS.length) fxSet.gains = c.gains.map(Number);
           if (isFinite(c.bal)) fxSet.bal = +c.bal;
+          if (isFinite(c.filter)) fxSet.filter = Math.max(-1, Math.min(1, +c.filter));
           applyFx();
           if (media && !media.paused) hookFx(media);
           break;
