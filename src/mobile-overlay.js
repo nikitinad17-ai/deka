@@ -28,6 +28,7 @@
     club: ["Клуб", [0, 0, 3, 4, 4, 4, 2, 0, 0, 0]]
   };
   var ALL = "__all__";
+  var MYALL = "★ Весь мой список";
 
   var store = {
     get: function (k, d) { try { var v = localStorage.getItem("deka:" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -47,11 +48,12 @@
   var view = IS_VIDEO ? "deka" : store.get("view", "deka"); // deka — весь экран, vk — полоска снизу
   var playlists = store.get("playlists", []);          // [{id, name, tracks:[{key,title,artist,duration}]}]
   var sets = store.get("sets", []);                    // [{url, title, duration}]
+  var myAll = store.get("myAll", []);                  // весь плейлист, собранный прокруткой
   var queue = store.get("queue", null);                // {list:[...], index}
   var openPl = null;                                   // открытый плейлист во вкладке «Плейлисты»
   var selecting = null;                                // режим создания плейлиста: {keys:{}}
   var st = { paused: true, currentTime: 0, duration: 0, title: "", artist: "", loggedIn: true };
-  var stAt = 0, spec = null, items = [], eqOpen = false;
+  var stAt = 0, spec = null, items = [], eqOpen = false, collecting = false;
 
   if (setBack && setBack.url) {
     sets.forEach(function (s) { if (s.url === setBack.url) { if (setBack.title) s.title = setBack.title; if (setBack.duration) s.duration = setBack.duration; } });
@@ -268,6 +270,23 @@
       $("diagBtn").onclick = function () { cmd({ type: "diag" }); };
       $("diagClose").onclick = function () { $("diag").hidden = true; };
       window.addEventListener("deka:vk:playlist", function (e) { items = (e.detail && e.detail.items) || []; if (tab === "music") renderLib(); });
+      // «Весь список»: мост долистывает страницу ВК до конца и отдаёт все треки.
+      window.addEventListener("deka:vk:collect", function (e) {
+        var d = e.detail || {};
+        if (!collecting) return;
+        if (!d.done) { $("count").textContent = "Собираю: " + tracksWord(d.count) + "…"; return; }
+        collecting = false;
+        var all = d.items || [];
+        // На странице «Мои треки» (/audios…) все треки ваши; иначе берём выбранный раздел.
+        var mine = /\/audios/.test(location.pathname) || section === ALL || section === MYALL
+          ? all : all.filter(function (t) { return (t.section || "Без названия") === section; });
+        if (!mine.length) { $("count").textContent = "Треки не найдены. Нажмите «Мои треки», потом «Весь список»"; return; }
+        myAll = mine.map(function (t) { return { key: t.key, title: t.title, artist: t.artist, duration: t.duration }; });
+        store.set("myAll", myAll);
+        section = MYALL; store.set("mSection", section);
+        renderLib();
+        $("count").textContent = "Сохранено: " + tracksWord(myAll.length);
+      });
       window.addEventListener("deka:vk:diag", function (e) {
         $("diag").hidden = false; $("diagText").textContent = "Пришлите скриншот этого окна\n" + JSON.stringify(e.detail, null, 1);
       });
@@ -335,13 +354,14 @@
 
   // ---------- библиотека: вкладки ----------
   function sectionsOf() {
-    var names = [];
+    var names = myAll.length ? [MYALL] : [];
     items.forEach(function (t) { var n = t.section || "Без названия"; if (names.indexOf(n) < 0) names.push(n); });
     return names;
   }
   function pageList() {
     var names = sectionsOf();
-    if (names.indexOf(section) < 0 && section !== ALL) section = names.filter(function (n) { return /^Мои|^My /i.test(n); })[0] || names[0] || ALL;
+    if (names.indexOf(section) < 0 && section !== ALL) section = myAll.length ? MYALL : (names.filter(function (n) { return /^Мои|^My /i.test(n); })[0] || names[0] || ALL);
+    if (section === MYALL) return myAll;
     return items.filter(function (t) { return section === ALL || (t.section || "Без названия") === section; });
   }
   function rowHtml(t, i, opts) {
@@ -371,7 +391,8 @@
         head.innerHTML = '<select id="section" aria-label="Раздел ВК">' +
           names.map(function (n) { return '<option value="' + esc(n) + '"' + (n === section ? " selected" : "") + ">" + esc(n) + "</option>"; }).join("") +
           '<option value="' + ALL + '"' + (section === ALL ? " selected" : "") + ">Все разделы страницы</option></select>" +
-          '<button class="btn sm" data-act="my">Мои треки</button><button class="btn sm" data-act="more">Ещё</button><button class="btn sm" data-act="newpl">＋ Плейлист</button>';
+          '<button class="btn sm" data-act="my">Мои треки</button><button class="btn sm accent" data-act="all">Весь список</button>' +
+          '<button class="btn sm" data-act="more">Ещё</button><button class="btn sm" data-act="newpl">＋ Плейлист</button>';
       }
       ol.innerHTML = list.length
         ? list.map(function (t, i) { return rowHtml(t, i, selecting ? { selectable: true, checked: !!selecting.keys[t.key] } : null); }).join("")
@@ -451,6 +472,7 @@
     var act = closestAttr(e, "data-act");
     if (!act) return;
     if (act === "my") cmd({ type: "openMy" });
+    else if (act === "all") { collecting = true; $("count").textContent = "Собираю список…"; cmd({ type: "collectAll" }); }
     else if (act === "more") cmd({ type: "more" });
     else if (act === "newpl") { selecting = { keys: {}, name: "" }; renderLib(); }
     else if (act === "selAll") { keepName(); pageList().forEach(function (t) { selecting.keys[t.key] = t; }); renderLib(); }

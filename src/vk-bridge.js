@@ -321,6 +321,15 @@
   // ---------- сбор всего списка для экспорта ----------
   // ВК подгружает длинные списки при прокрутке и может убирать строки, ушедшие
   // из вида, поэтому листаем вниз и копим треки, пока новые не перестанут появляться.
+  // Прокрутка к концу списка. Мобильный ВК может прокручивать не окно, а свой блок,
+  // поэтому дополнительно прокручиваем к последней строке трека.
+  function scrollToEnd() {
+    var se = document.scrollingElement || document.documentElement;
+    window.scrollTo(0, se.scrollHeight);
+    var rows = document.querySelectorAll("[data-testid='MusicTrackRow'], .audio_item, .audio_row, [data-audio]");
+    if (rows.length) { try { rows[rows.length - 1].scrollIntoView({ block: "end" }); } catch (e) {} }
+  }
+
   var collecting = false;
   function collectAll() {
     if (collecting) return;
@@ -346,16 +355,27 @@
         return;
       }
       emit("vk:collect", { done: false, count: acc.size });
-      var se = document.scrollingElement || document.documentElement;
-      window.scrollTo(0, se.scrollHeight);
+      scrollToEnd();
       setTimeout(step, 900);
     }
     step();
   }
 
+  // Свой id ВК: из глобальных данных страницы или из ссылки на свой профиль.
+  function myId() {
+    try {
+      var v = window.vk || {};
+      var id = v.id || v.uid || (v.user && v.user.id);
+      if (id) return id;
+    } catch (e) {}
+    var m = document.cookie.match(/(?:^|;\s*)remixmid=(\d+)/);
+    return m ? m[1] : "";
+  }
+
   // Открыть полный список «Мои треки» (там на странице только ваши треки).
   function openMy() {
-    var a = document.querySelector("a[href^='/audios']");
+    // Мобильный ВК пишет полный адрес (https://m.vk.ru/audios…), компьютерный — короткий.
+    var a = document.querySelector("a[href*='/audios']");
     if (!a) {
       var links = document.querySelectorAll("a[href]");
       for (var i = 0; i < links.length && !a; i++) {
@@ -364,7 +384,7 @@
       }
     }
     if (a) { location.href = a.getAttribute("href"); return; }
-    var id = window.vk && (window.vk.id || window.vk.uid);
+    var id = myId();
     location.href = id ? "/audios" + id : "/audio";
   }
 
@@ -382,7 +402,10 @@
     return {
       url: location.href.slice(0, 120), rows: readRows().length,
       MusicTrackRow: n("[data-testid='MusicTrackRow']"), dataAudio: n("[data-audio]"), audioId: n("[data-audio-id]"),
-      audioItem: n(".audio_item"), audioRow: n(".audio_row"), media: !!media, loggedIn: isLoggedIn(),
+      audioItem: n(".audio_item"), audioRow: n(".audio_row"), media: !!media, loggedIn: isLoggedIn(), myId: myId(),
+      audioLinks: Array.prototype.slice.call(document.querySelectorAll("a[href*='audio']"), 0, 10).map(function (a) {
+        return (a.textContent || "").trim().slice(0, 24) + " → " + a.getAttribute("href").slice(0, 60);
+      }),
       testids: Object.keys(tids).slice(0, 12).map(function (k) { return k + "×" + tids[k]; }),
       classes: Object.keys(cls).slice(0, 12).map(function (k) { return k + "×" + cls[k]; })
     };
@@ -417,8 +440,7 @@
         case "collectAll": collectAll(); break;
         case "more":
           // Подгрузить ещё треки: ВК догружает список при прокрутке вниз.
-          var se = document.scrollingElement || document.documentElement;
-          window.scrollTo(0, se.scrollHeight);
+          scrollToEnd();
           setTimeout(function () { lastListJson = ""; sendList(); }, 1200);
           break;
         case "diag": emit("vk:diag", diag()); break;
