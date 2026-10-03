@@ -65,10 +65,18 @@ const mobile = file("src/mobile-overlay.js");
 check(mobile.includes('cmd({ type: "playKey"'), "очередь Деки запускает конкретный VK-трек");
 check(mobile.includes('cmd({ type: "collectMy"'), "«Весь список» идёт через collectMy");
 check(mobile.includes("keepAwake(playing)"), "состояние воспроизведения управляет Android background guard");
+check(mobile.includes("libraryfocus") && mobile.includes("function setLibraryFocus"), "есть полноэкранный режим библиотеки");
+check(!mobile.includes('data-act="more"'), "непонятная кнопка «Ещё» удалена");
+check(mobile.includes("DJ MIXER") && mobile.includes("function openDj"), "есть выезжающий DJ-пульт");
+check(mobile.includes('id="djFilter"') && mobile.includes('id="djLow"') && mobile.includes('id="djMid"') && mobile.includes('id="djHigh"'), "DJ-пульт содержит рабочие каналы EQ/filter");
+check(mobile.includes("oldTop") && mobile.includes("ol.scrollTop = oldTop"), "длинный плейлист сохраняет позицию прокрутки при перерисовке");
+check(mobile.includes('id="libSearch"') && mobile.includes('data-act="current"'), "у полного плейлиста есть поиск и переход к текущему треку");
 const bridge = file("src/vk-bridge.js");
 check(bridge.includes("[data-testid='MusicTrackRow']"), "основной селектор VK присутствует");
 check(bridge.includes("function findAndPlay"), "поиск отсутствующего трека прокруткой присутствует");
 check(bridge.includes('case "collectMy"'), "команда collectMy присутствует");
+check(bridge.includes("trackScrollHost") && bridge.includes("hostAtEnd"), "сбор плейлиста учитывает внутренний scroll-контейнер VK");
+check(bridge.includes("djFilter") && bridge.includes("fxSet.filter"), "DJ FILTER подключён к WebAudio-графу");
 check(!/\bfetch\s*\(/.test(bridge) && !/XMLHttpRequest/.test(bridge), "VK-мост не отправляет сетевые запросы сам");
 
 // Проверяем генератор Android не строковым поиском, а на маленьком фальш-проекте.
