@@ -15,7 +15,7 @@ test('Deka 2 has a separate native identity, name and executable', () => {
 });
 test('library and UI use isolated Deka 2 names without reading original storage', () => {
   const runtime = read('src/library-runtime.js');
-  assert.ok(runtime.includes('deka2:library:v2:'));
+  assert.ok(runtime.includes('deka2:own-library:v3:'));
   assert.ok(!runtime.includes("'deka:library:"));
   const ui = read('src/mobile-overlay.js');
   assert.ok(ui.includes('ДЕКА 2'));

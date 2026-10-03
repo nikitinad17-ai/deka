@@ -45,38 +45,72 @@
     function paint(now){if(stopped)return;frame=requestAnimationFrame(paint);if(now-last<60)return;last=now;
       var d=engine.diagnostics(),v=engine.levels();
       $('masterValue').textContent=Math.round(d.master*100)+'%';$('crossValue').textContent=d.cross===0?'A • B':d.cross<0?'A '+Math.round(-d.cross*100)+'%':'B '+Math.round(d.cross*100)+'%';
-      ['A','B'].forEach(function(side){var s=engine.state[side];$('gainValue'+side).textContent=Math.round(s.gain*100)+'%';$('vu'+side).firstChild.style.width=Math.min(100,v[side]*400)+'%';
+      ['A','B'].forEach(function(side){var s=engine.state[side];sh.querySelectorAll('[data-eq='+side+'],[data-filter='+side+']').forEach(function(el){el.disabled=!!s.track&&s.track.kind!=='file';el.title=el.disabled?'VK: безопасное прямое воспроизведение; EQ и фильтр доступны для своих файлов':'';});$('gainValue'+side).textContent=Math.round(s.gain*100)+'%';$('vu'+side).firstChild.style.width=Math.min(100,v[side]*400)+'%';
         $('rateValue'+side).textContent=((s.rate-1)*100).toFixed(1)+'%';$('mute'+side).classList.toggle('mute-on',s.muted);
         sh.querySelectorAll('[data-hot][data-side='+side+']').forEach(function(b){b.classList.toggle('active',s.hotCues[+b.dataset.hot]!==null);});
         sh.querySelectorAll('[data-loop][data-side='+side+']').forEach(function(b){b.classList.toggle('active',!!s.loop&&s.loop.seconds===+b.dataset.loop);b.disabled=!!s.track&&s.track.kind!=='file';});
       });
     }frame=requestAnimationFrame(paint);
     // Opening the real VK page never opens a custom password form.
-    var authenticated=null;
+    var account=document.createElement('div');account.className='accountbar';account.id='accountStatus';
+    account.style.cssText='font-size:12px;padding:6px 10px;border-bottom:1px solid #343e4b;display:flex;gap:8px;align-items:center;flex-wrap:wrap';
+    account.innerHTML='<span id="accountIdentity"></span><button id="accountPage" style="margin-left:auto;min-height:26px;font-size:11px">Это мой VK?</button>';
+    app.querySelector('header').after(account);
+    // Place this outside the absolute drawer too: the account is always explicit.
+    var sheet=sh.querySelector('style');sheet.textContent+='\n.accountbar button{min-height:26px}.vkview>.accountbar{display:none}.app.djmode>.accountbar{display:none}';
+    var lastAccount=null, autoStarted='', resumeTimer;
     function auth(s){
-      authenticated=s.authenticated;
+      var id=s.authenticated===true?s.id:'';
+      if(lastAccount!==null&&lastAccount!==id)engine.clearVK();
+      lastAccount=id;
       if(s.authPage){app.hidden=true;return;}app.hidden=false;
       $('vkBtn').textContent=s.authenticated===true?'VK ✓':'Войти VK';
+      $('accountIdentity').textContent=id?('Аккаунт: '+(s.name?s.name+' · ':'')+'id'+id):
+        (s.conflict?'VK сообщает разные аккаунты. Проверьте вход.':'Ваш аккаунт VK ещё не подтверждён. Откройте VK и войдите.');
       if(s.hasLoginForm){app.classList.add('vkview');$('backBtn').hidden=false;}
+      if(s.conflict||s.authenticated!==true){$('syncBtn').disabled=true;}
     }
-    var autoStarted=false;
+    // Show the actual logged-in profile, not a profile inferred from someone else's music.
+    $('accountPage').onclick=function(){
+      var id=DekaSession.read().id;
+      if(id){var profile=new URL('/id'+id,location.origin);profile.hash='deka2-native';location.assign(profile.href);}
+      else {$('vkBtn').click();}
+    };
+    function restoreRequested(){
+      var intent=DekaLibrary.takePendingPlay&&DekaLibrary.takePendingPlay();
+      if(!intent)return false;
+      autoStarted=intent.accountId;
+      var data=DekaLibrary.get().items||[],index=data.findIndex(function(t){return t.key===intent.track.key;});
+      if(index<0){data=[intent.track];index=0;}
+      engine.load(intent.side,data,index);engine.play(intent.side);return true;
+    }
     function autoLibrary(s){
-      if(autoStarted||s.authenticated!==true||s.authPage)return;
-      autoStarted=true;
+      if(s.authenticated!==true||s.authPage)return;
+      if(restoreRequested())return;
+      if(autoStarted===s.id)return;
+      autoStarted=s.id;
       setTimeout(function(){
-        if(engine.state.A.track||engine.state.B.track||$('sourcemain').value==='files')return;
+        if(DekaSession.read().id!==s.id||engine.state.A.track||engine.state.B.track||$('sourcemain').value==='files')return;
         if(DekaLibrary.landing())DekaLibrary.collectMy();
         else if(DekaLibrary.ownPage()&&!DekaLibrary.isRunning()&&!DekaLibrary.get().complete)DekaLibrary.collect();
       },1200);
     }
     if(window.DekaSession){var session=DekaSession.read();auth(session);autoLibrary(session);
-      window.addEventListener('deka2:session',function(e){auth(e.detail);autoLibrary(e.detail);});} 
+      window.addEventListener('deka2:session',function(e){auth(e.detail);autoLibrary(e.detail);});}
+    if(location.hash==='#deka2-native'){app.classList.add('vkview');$('backBtn').hidden=false;}
     var oldBack=$('backBtn').onclick;
     $('backBtn').onclick=function(){oldBack();if(window.DekaSession){var s=DekaSession.refresh();if(s.authenticated===true&&DekaLibrary.landing())DekaLibrary.collectMy();}};
     $('myBtn').textContent='Моя библиотека VK';
-    $('syncBtn').onclick=function(){DekaLibrary.preferred();};
+    $('syncBtn').onclick=function(){DekaLibrary.collectMy();};
+    window.addEventListener('deka2:playback-error',function(e){
+      var messages={'account-required':'Сначала подтвердите вход в свой VK.', 'open-own-library':'Нужно открыть свою библиотеку VK.',
+        'playback-not-started':'VK не начал воспроизведение. Нажмите VK и включите трек на его странице.',
+        'play-button-unavailable':'VK не показывает кнопку запуска этого трека.', 'track-not-found':'Трек не найден в вашей библиотеке VK.'};
+      o.message(messages[e.detail.reason]||'VK не подтвердил запуск трека.');
+    });
+    window.addEventListener('deka2:library',function(e){var reasons={'identity-unknown':'Сначала войдите в свой VK','identity-conflict':'Аккаунт VK не подтверждён: откройте VK','login-required':'Войдите в свой аккаунт VK','open-own-library':'Рекомендации скрыты. Откройте «Моя библиотека VK»'};if(e.detail&&reasons[e.detail.reason])$('status').textContent=reasons[e.detail.reason];});
     // Library remains usable without a login for local files, but a detected login page is never covered.
-    window.DekaApp={engine:engine,library:window.DekaLibrary,version:'0.2.0'};
+    window.DekaApp={engine:engine,library:window.DekaLibrary,version:'0.2.1'};
     window.addEventListener('pagehide',function(){stopped=true;cancelAnimationFrame(frame);},{once:true});
   }};
   // The inherited UI has one engine. Attach extensions after it has mounted its DOM.

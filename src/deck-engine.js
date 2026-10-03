@@ -105,7 +105,7 @@
       list = (Array.isArray(list) ? list : []).filter(function (t) { return t && t.key; });
       if (!list.length) { tell('Список пуст'); return; }
       pause(side); s.list = list.slice(); s.index = Math.floor(clamp(index, 0, list.length - 1));
-      s.track = s.list[s.index]; s.time = 0; s.duration = s.track.duration || 0; s.cue = 0; s.loop=null; s.hotCues=[null,null,null];
+      s.track = s.list[s.index]; s.accountId = win.DekaLibrary ? win.DekaLibrary.userId() : ''; s.time = 0; s.duration = s.track.duration || 0; s.cue = 0; s.loop=null; s.hotCues=[null,null,null];
       if (s.track.kind === 'file') { var el = audio(side); el.src = s.track.url; el.load(); apply(); }
       changed();
     }
@@ -122,10 +122,11 @@
         } else {
           if (vkSide !== side) { var other = state[vkSide]; if (other.track && other.track.kind !== 'file') { other.paused = true; other.pending = false; other.generation++; tell('VK: переключён один общий поток на деку ' + side); } vkSide = side; }
           apply();
-          var ok = s.track.key === 'live-vk' ? await vk({ type: 'play' }) : await vk({ type: 'playKey', key: s.track.key });
+          var ok = s.track.key === 'live-vk' ? await vk({ type: 'play' }) : await vk({ type: 'playKey', key: s.track.key, side: side, accountId: s.accountId });
           if (generation !== s.generation) return;
           apply();
-          if (ok === false) { s.pending = false; s.paused = true; tell('VK не нашёл выбранный трек. Другой трек вместо него не включён.'); }
+          if (ok === true) { s.pending = false; s.paused = false; }
+          if (ok === false) { s.pending = false; s.paused = true; tell('VK не подтвердил запуск. Откройте VK и попробуйте включить этот трек там; чужая песня вместо него не запускается.'); }
         }
       } catch (_) { if (generation === s.generation) { s.pending = false; s.paused = true; tell('Не удалось запустить деку ' + side); } }
       changed();
@@ -143,12 +144,15 @@
       load(side, s.list, index); return play(side);
     }
     function noteVK(data) {
+      if (win.DekaSession && win.DekaSession.read().authenticated !== true) return;
       var s = state[vkSide], wasPaused=s.paused, wasPending=s.pending;
+      // The library adapter confirms requested playback. Stale metadata must not light the deck.
+      if (s.pending && s.track && s.track.key !== 'live-vk') return;
       if (!s.track || s.track.kind === 'file') {
         // Playback started in the visible VK page, not a deck. Adopt it explicitly.
         if (!data.paused && data.title && !s.track) { s.track = { key: 'live-vk', title: data.title, artist: data.artist, kind: 'vk' }; apply(); } else return;
       }
-      if(s.pending && data.title && data.title!==s.track.title && s.track.key!=='live-vk')return;
+      if(data.title && data.title!==s.track.title && s.track.key!=='live-vk'){s.paused=true;changed();return;}
       s.time = +data.currentTime || 0; s.duration = +data.duration || 0;
       s.paused = !!data.paused;
       if (!data.paused && (data.title === s.track.title || s.track.key==='live-vk')) s.pending = false;
@@ -168,7 +172,8 @@
       });
     },40);
     function adjusted(){apply();persist();changed();}
-    return { state: state, load: load, play: play, pause: pause, toggle: toggle, seek: seek, step: step,
+    return { clearVK: function () { ['A','B'].forEach(function (side) { var s = state[side]; if (s.track && s.track.kind !== 'file') { pause(side); s.track=null; s.list=[]; s.index=-1; s.time=0; s.duration=0; s.accountId=''; } }); changed(); },
+      state: state, load: load, play: play, pause: pause, toggle: toggle, seek: seek, step: step,
       noteVK: noteVK, endedVK: endedVK,
       cue: function (side) { var s = state[side]; if (s.paused) s.cue = s.time; else { pause(side); seek(side, s.cue); } changed(); },
       setCross: function (x) { cross = clamp(x, -1, 1); adjusted(); },

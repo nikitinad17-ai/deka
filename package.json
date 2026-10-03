@@ -1,7 +1,7 @@
 {
   "name": "deka2",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Дека 2 — отдельный DJ-плеер",
   "scripts": {
     "prepare:brand": "node scripts/prepare-deka2.js",

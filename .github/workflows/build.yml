@@ -1,7 +1,7 @@
 name: Deka 2 - build and test
 on:
   push:
-    branches: [deka2, feature/deka2-0.2.0-vk-mixer]
+    branches: [deka2, fix/deka2-0.2.1-personal-vk]
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,6 +22,7 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - run: python tests/browser.py
       - run: python tests/mixer-browser.py
+      - run: python tests/vk-reliability-browser.py
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: deka2-browser-tests, path: test-output/}
@@ -111,7 +112,7 @@ jobs:
           aapt=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)
           "$aapt" dump badging "$APK_NAME" > Deka2-package.txt
           grep -q "package: name='ru.deka2.player'" Deka2-package.txt
-          grep -q "versionName='0.2.0'" Deka2-package.txt
+          grep -q "versionName='0.2.1'" Deka2-package.txt
           grep -q "application-label:'Deka 2'" Deka2-package.txt
           if [ "$APK_NAME" = Deka2.apk ]; then
             signer=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
@@ -143,15 +144,15 @@ jobs:
         with: {name: deka2-android-build, path: out}
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: deka2-v0.2.0
+          tag_name: deka2-v0.2.1
           target_commitish: ${{ github.sha }}
-          name: Дека 2 - 0.2.0
+          name: Дека 2 - 0.2.1
           prerelease: true
           make_latest: false
           body: |
-            Desktop shortcut, VK session handling, own-library restore, tested mixer controls.
+            Personal VK library only; verified viewer identity; reliable native playback and resume.
             Two local decks; VK is one shared stream. No claims of a real VK-account test.
-            Tests include real WebAudio signal attenuation, not only control positions.
+            Includes account isolation, no-op-click rejection, playback confirmation, resume and fader regression tests.
             Android signing mode: ${{ needs.android.outputs.kind }}.
             Unsigned Android build artifacts are NOT installers and are not released here.
             With offline signing, the installable APK is delivered separately after signature verification.

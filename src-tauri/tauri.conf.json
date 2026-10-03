@@ -1,18 +1,45 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Deka 2",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "ru.deka2.player",
-  "build": { "frontendDist": "../src" },
+  "build": {
+    "frontendDist": "../src"
+  },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{ "label": "main", "title": "Дека 2", "create": false }],
-    "security": { "csp": null }
+    "windows": [
+      {
+        "label": "main",
+        "title": "Дека 2",
+        "create": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-    "windows": { "nsis": { "languages": ["Russian"], "installerHooks": "windows/desktop-shortcut.nsh", "installMode": "currentUser", "startMenuFolder": "Deka 2" } }
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "languages": [
+          "Russian"
+        ],
+        "installerHooks": "windows/desktop-shortcut.nsh",
+        "installMode": "currentUser",
+        "startMenuFolder": "Deka 2"
+      }
+    }
   }
 }
