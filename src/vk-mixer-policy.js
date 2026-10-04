@@ -5,11 +5,13 @@
   if(!window.__deka||window.__deka.mixerState)return;
   var original=window.__deka.cmd.bind(window.__deka),play=HTMLMediaElement.prototype.play;
   var desired=null,rate=1,media=null,watched=new WeakSet();
-  function apply(el){if(!el)return;if(desired!==null)el.volume=desired;el.playbackRate=rate;el.preservesPitch=true;}
+  function nativeView(){return window.DekaNativeView&&DekaNativeView.isNative();}
+  window.addEventListener("deka2:view",function(e){if(e.detail.native)desired=null;});
+  function apply(el){if(!el||nativeView())return;if(desired!==null)el.volume=desired;el.playbackRate=rate;el.preservesPitch=true;}
   function adopt(el){media=el;apply(el);if(watched.has(el))return;watched.add(el);
     el.addEventListener('playing',function(){if(el===media)apply(el);});
     el.addEventListener('loadedmetadata',function(){if(el===media)apply(el);});
-    el.addEventListener('volumechange',function(){if(el===media&&desired!==null&&Math.abs(el.volume-desired)>.001)el.volume=desired;});
+    el.addEventListener('volumechange',function(){if(!nativeView()&&el===media&&desired!==null&&Math.abs(el.volume-desired)>.001)el.volume=desired;});
   }
   HTMLMediaElement.prototype.play=function(){
     if(this.tagName==='AUDIO'||(this.tagName==='VIDEO'&&(/vkvideo\.ru$/.test(location.hostname)||/^\/(video|clip)/.test(location.pathname))))adopt(this);

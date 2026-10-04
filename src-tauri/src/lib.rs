@@ -9,6 +9,8 @@ const VK_BRIDGE: &str = include_str!("../../src/vk-bridge.js");
 const LIBRARY_RUNTIME: &str = include_str!("../../src/library-runtime.js");
 const VIRTUAL_LIST: &str = include_str!("../../src/virtual-list.js");
 const MOBILE_OVERLAY: &str = include_str!("../../src/mobile-overlay.js");
+#[cfg(windows)]
+const NATIVE_VIEW: &str = include_str!("../../src/windows-native-view.js");
 const VK_URL: &str = "https://vk.ru/audio";
 #[cfg(windows)]
 const BROWSER_ARGS: &str = "--autoplay-policy=no-user-gesture-required --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows";
@@ -38,6 +40,8 @@ pub fn run() {
         .setup(|app| {
             // Capture native play before the VK hook, then mount the shared interface.
             let script = [VK_SESSION, LIBRARY_CORE, DECK_ENGINE, VK_BRIDGE, MIXER_POLICY, LIBRARY_RUNTIME, VIRTUAL_LIST, EXTRA_CONTROLS, MOBILE_OVERLAY].join("\n;\n");
+            #[cfg(windows)]
+            let script = [NATIVE_VIEW, script.as_str()].join("\n;\n");
             let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(VK_URL.parse().unwrap()))
                 .title("Дека 2")
                 .initialization_script(script);
