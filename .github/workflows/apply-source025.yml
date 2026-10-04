@@ -21,6 +21,8 @@ jobs:
           allowed={'.github/workflows/reliable-source.yml','.github/workflows/source-export.yml','docs/WINDOWS-0.2.5.md','package.json','src-tauri/Cargo.toml','src-tauri/src/lib.rs','src-tauri/tauri.conf.json','src/desktop-link.js','src/library-runtime.js','src/mobile-overlay.js','src/player-controls.js','src/source-link.js','tests/cards-boundary-browser.py','tests/desktop-flow.py','tests/hydration-browser.py','tests/source-transport.test.js'}
           assert {c['path'] for c in change['files']}==allowed
           for c in change['files']:
+            # This job has contents permission only. No workflow mutation here.
+            if c['path'].startswith('.github/'):continue
             p=pathlib.Path(c['path'])
             if 'old_sha256' in c:
               old=p.read_text()
@@ -36,12 +38,12 @@ jobs:
             assert hashlib.sha256(text.encode()).hexdigest()==c['sha256'],str(p)
             p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text)
           for p in pathlib.Path('.transfer').glob('windows025-*.b64'):p.unlink()
-          pathlib.Path('.github/workflows/apply-source025.yml').unlink()
       - name: Commit verified source only
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git diff --cached --check
+          test -z "$(git diff --cached --name-only -- .github/)"
           git commit -m 'Deka 2 0.2.5: repair source visibility, readiness and personal list boundaries'
           git push origin HEAD:fix/deka2-0.2.5-reliable-source
