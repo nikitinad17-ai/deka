@@ -233,7 +233,7 @@
     var h = host(), s = selection(), height = h.clientHeight || innerHeight, full = h.scrollHeight;
     // Stop at the personal list boundary, not at the bottom of an infinite
     // recommendation feed that happens to share the same page scroll host.
-    if (s.excluded && s.box && s.box !== h && s.rows.length) {
+    if (s.excluded && s.box && s.box !== h && h.contains(s.box) && s.rows.length) {
       var top = h === document.scrollingElement ? 0 : h.getBoundingClientRect().top + h.clientTop;
       full = Math.min(full, Math.max(height, Math.ceil(h.scrollTop + (s.end || s.box).getBoundingClientRect().bottom - top)));
     }
