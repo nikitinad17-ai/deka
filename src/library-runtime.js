@@ -431,6 +431,7 @@
       scrollElement: h.tagName + (h.id ? '#' + h.id : ''), hasMore: !!moreButton(false) };
   }
   window.DekaLibrary = { collect: collect, collectMy: collectMy, cancel: function () { if (collector) collector.cancel(); },
+    cancelInteraction: function () { runToken++; if (collector) collector.cancel(); pendingIntent = null; },
     get: viewSnapshot, diagnostics: diagnostics, adapter: adapter, userId: userId, ownURL: ownURL, ownPage: ownPage, landing: landing,
     preferred: collectMy, playKey: playKey, takePendingPlay: takePendingPlay, isRunning: function () { return loading || preparing; } };
   // Retire the old same-origin-only flag before the old bridge's DOMContentLoaded callback.
@@ -445,7 +446,7 @@
       try { history.replaceState(null, '', location.pathname + (location.search || '')); } catch (_) {}
     } else if (/deka-library=collect/.test(hash)) {
       try { history.replaceState(null, '', location.pathname + (location.search || '')); } catch (_) {}
-      if (ownPage()) collect();
+      if (!window.DEKA_MANUAL_VK && ownPage()) collect();
     }
     var lastSource = sourceId();
     function refresh() {

@@ -21,7 +21,10 @@
         try { if (win.DekaAndroid) win.DekaAndroid.keepAwake(on); awake = on; } catch (_) {}
       }
     }
-    function vk(c) { return opts.vk(c); }
+    function vk(c) {
+      if (win.DekaNativeView && win.DekaNativeView.isNative()) return false;
+      return opts.vk(c);
+    }
     function ramp(param, value) {
       var t = ctx.currentTime;
       if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(t);
@@ -144,6 +147,7 @@
       load(side, s.list, index); return play(side);
     }
     function noteVK(data) {
+      if (win.DekaNativeView && win.DekaNativeView.isNative()) return;
       if (win.DekaSession && win.DekaSession.read().authenticated !== true) return;
       var s = state[vkSide], wasPaused=s.paused, wasPending=s.pending;
       // The library adapter confirms requested playback. Stale metadata must not light the deck.
@@ -161,6 +165,7 @@
       changed();
     }
     function endedVK() {
+      if (win.DekaNativeView && win.DekaNativeView.isNative()) return;
       var side = vkSide, s = state[side], index = s.index + 1, generation = s.generation;
       setTimeout(function () { if (!destroyed && generation === s.generation && s.list[index]) { load(side, s.list, index); play(side); } }, 150);
     }

@@ -51,7 +51,12 @@
     $('libraryBtn').onclick = $('closeDj').onclick = function () { setMode('library'); rotationOpened = false; };
     $('fileBtn').onclick = $('djFiles').onclick = function () { $('files').click(); };
     $('mainPlay').onclick = function () { engine.toggle('A'); }; $('mainPrev').onclick = function () { engine.step('A', -1); }; $('mainNext').onclick = function () { engine.step('A', 1); };
-    $('vkBtn').onclick = function () { vkView = true; app.classList.add('vkview'); $('backBtn').hidden = false; };
+    $('vkBtn').onclick = function () { if (window.DekaNativeView) { DekaNativeView.showVK(); return; } vkView = true; app.classList.add('vkview'); $('backBtn').hidden = false; };
+    window.addEventListener('deka2:view', function (e) {
+      vkView = !!e.detail.native;
+      app.classList.remove('vkview','scanview'); $('backBtn').hidden = true;
+      if (!vkView) { setMode('library'); rotationOpened = false; }
+    });
     $('backBtn').onclick = function () { vkView = false; app.classList.remove('vkview'); $('backBtn').hidden = true; };
     $('currentBtn').onclick = function () { var t = engine.state.A.track; if (!t || !lists.main.jump(t.key)) message('Текущего трека нет в выбранном списке'); };
     $('saveBtn').onclick = function () {
@@ -98,7 +103,7 @@
     window.addEventListener('deka:vk:ended', function () { engine.endedVK(); });
     window.addEventListener('deka:vk:fx', function (e) { if (e.detail && !e.detail.ok && mode === 'dj') message('Для этого потока VK эквалайзер недоступен. Для файлов обе деки работают независимо.'); });
     var landscape = matchMedia('(orientation: landscape)');
-    function rotate() { if (vkView) return; if (landscape.matches) { setMode('dj'); rotationOpened = true; } else if (rotationOpened) { setMode('library'); rotationOpened = false; } requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
+    function rotate() { if (window.DEKA_MANUAL_VK || vkView) return; if (landscape.matches) { setMode('dj'); rotationOpened = true; } else if (rotationOpened) { setMode('library'); rotationOpened = false; } requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
     landscape.addEventListener('change', rotate);
     library = window.DekaLibrary.get(); renderLibrary(); rotate(); renderPlayback();
     window.addEventListener('pagehide', function () { engine.destroy(); urls.forEach(function (u) { URL.revokeObjectURL(u); }); }, { once: true });
@@ -172,5 +177,6 @@
     $('now').textContent = a.track ? (a.track.artist ? a.track.artist + ' — ' : '') + a.track.title : 'Выберите трек в списке';
     $('nowTime').textContent = 'A ' + fmt(a.time) + (b.track ? ' · B ' + fmt(b.time) : ''); $('mainPlay').textContent = a.paused ? '▶' : 'Ⅱ'; lists.main.current(a.track && a.track.key);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true }); else mount();
+  if (window.DekaNativeView) DekaNativeView.register(mount);
+  else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true }); else mount();
 })();
