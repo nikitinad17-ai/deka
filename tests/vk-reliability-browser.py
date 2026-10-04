@@ -21,7 +21,7 @@ def row(key='42_7', title='My actual track', artist='My artist', parent=False):
 def mount(browser, path='/audios42', vk=None, cookie='', rows='', saved=None, parent=False, hash_value=''):
     page=browser.new_page(viewport={'width':844,'height':440})
     page.on('pageerror',lambda e:errors.append(str(e)))
-    page.set_content('<html><head><style>button{min-height:40px}#list{height:280px;overflow:auto}</style></head><body><div id="list"><section><h2>Мои треки</h2>'+rows+'</section></div></body></html>')
+    page.set_content('<html><head><style>button{min-height:40px}#list{height:280px;overflow:auto}</style></head><body><div id="list"><section><h2>'+('Рекомендации' if path=='/audio' else 'Мои треки')+'</h2>'+rows+'</section></div></body></html>')
     page.evaluate('''d=>{
       const u=new URL('https://vk.ru'+d.path+d.hash);window.testLocation={hostname:u.hostname,pathname:u.pathname,search:u.search,hash:u.hash,origin:u.origin,href:u.href,assign:u=>window.navigation=u};
       window.vk=d.vk;window.cookieValue=d.cookie;Object.defineProperty(document,'cookie',{configurable:true,get:()=>window.cookieValue});
@@ -69,7 +69,7 @@ with sync_playwright() as pw:
     foreign.wait_for_timeout(350)
     record('A visited foreign library is not accumulated into my library',len(foreign.evaluate('DekaLibrary.get().items'))==0)
     foreign.evaluate('DekaLibrary.collectMy()')
-    record('My-library navigation uses viewer 42, not visited owner 777','/audios42#' in foreign.evaluate('window.navigation||""'))
+    record('Foreign page without a personal entry does not navigate to a guessed or foreign URL',not foreign.evaluate('window.navigation||""') and foreign.evaluate('DekaLibrary.get().reason')=='personal-entry-not-found')
     # Recommendations appended below the true personal list must not enter it.
     own=mount(browser,rows=row())
     own.evaluate('''html=>{var s=document.createElement('section');s.innerHTML='<h2>Рекомендации</h2>'+html;document.getElementById('list').appendChild(s);}''',row('5_5','Recommended tail'))

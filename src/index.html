@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Дека</title>
+<title>Дека 2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=VT323&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -294,9 +294,9 @@
     vocal:[-2,-3,-1,2,5,5,3,1,0,-1], pop:[-1,2,4,5,3,0,-1,-1,-1,-1], club:[0,0,3,4,4,4,2,0,0,0]
   };
   const store = {
-    // Настройки хранятся под префиксом «deka:»; старые из «Волны» («volna:») подхватываются.
-    get(k,d){ try{ let v = localStorage.getItem("deka:"+k); if (v==null) v = localStorage.getItem("volna:"+k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
-    set(k,v){ try{ localStorage.setItem("deka:"+k, JSON.stringify(v)); }catch(e){} }
+    // Настройки хранятся под префиксом «deka2:»; старые из «Волны» («deka2-legacy:») подхватываются.
+    get(k,d){ try{ let v = localStorage.getItem("deka2:"+k); if (v==null) v = localStorage.getItem("deka2-legacy:"+k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
+    set(k,v){ try{ localStorage.setItem("deka2:"+k, JSON.stringify(v)); }catch(e){} }
   };
 
   let ctx=null, src, preamp, filters=[], panner, gain, analyser, freqData, timeData;
@@ -339,67 +339,6 @@
   }
   function applyVol(){ const v = $("vol").value/100; if (gain) gain.gain.setTargetAtTime(v*v, ctx.currentTime, .02); paint($("vol")); store.set("vol", +$("vol").value); if (mode==="vk") vk({type:"volume", value: v*v}); }
   function applyBal(){ sendFx(); const b=$("bal").value/100; if (panner && panner.pan) panner.pan.setTargetAtTime(b, ctx.currentTime, .02); paint($("bal"),true); }
-
-  // ---------- demo tracks (synthesized locally) ----------
-  async function renderDemo(o){
-    const sr = 44100, len = o.sec*sr;
-    const oc = new OfflineAudioContext(2, len, sr);
-    const beat = 60/o.bpm, master = oc.createGain(); master.gain.value=.8;
-    const comp = oc.createDynamicsCompressor(); master.connect(comp); comp.connect(oc.destination);
-    const noiseBuf = oc.createBuffer(1, sr*.5, sr); const nd = noiseBuf.getChannelData(0);
-    for (let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
-    const hz = m => 440*Math.pow(2,(m-69)/12);
-    const beats = Math.floor(o.sec/beat);
-    for (let b=0;b<beats;b++){
-      const t=b*beat;
-      if (o.kick(b)) { const os=oc.createOscillator(), g=oc.createGain();
-        os.frequency.setValueAtTime(140,t); os.frequency.exponentialRampToValueAtTime(42,t+.18);
-        g.gain.setValueAtTime(1,t); g.gain.exponentialRampToValueAtTime(.001,t+.35);
-        os.connect(g); g.connect(master); os.start(t); os.stop(t+.4); }
-      for (const off of [0,.5]) { const th=t+off*beat; if (off===0 && !o.hatOn) continue;
-        const s=oc.createBufferSource(); s.buffer=noiseBuf; const hp=oc.createBiquadFilter(); hp.type="highpass"; hp.frequency.value=7000;
-        const g=oc.createGain(); g.gain.setValueAtTime(off? .22:.12,th); g.gain.exponentialRampToValueAtTime(.001,th+.06);
-        const p=oc.createStereoPanner(); p.pan.value = off? .35:-.35;
-        s.connect(hp); hp.connect(g); g.connect(p); p.connect(master); s.start(th); s.stop(th+.08); }
-      if (b%4===0){ const ch=o.chords[(b/4)%o.chords.length];
-        ch.forEach((m,k)=>{ const os=oc.createOscillator(); os.type="triangle"; os.frequency.value=hz(m);
-          os.detune.value=(k-1)*6; const g=oc.createGain(); const d=beat*4;
-          g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.07,t+.3); g.gain.linearRampToValueAtTime(0,t+d);
-          const p=oc.createStereoPanner(); p.pan.value=(k-1)*.5;
-          os.connect(g); g.connect(p); p.connect(master); os.start(t); os.stop(t+d); });
-        for (let s8=0;s8<8;s8++){ const tb=t+s8*beat/2; const m=ch[0]-12+(o.bassPat[s8]||0);
-          const os=oc.createOscillator(); os.type="sawtooth"; os.frequency.value=hz(m);
-          const lp=oc.createBiquadFilter(); lp.type="lowpass"; lp.frequency.setValueAtTime(900,tb); lp.frequency.exponentialRampToValueAtTime(160,tb+.2);
-          const g=oc.createGain(); g.gain.setValueAtTime(.16,tb); g.gain.exponentialRampToValueAtTime(.001,tb+beat/2);
-          os.connect(lp); lp.connect(g); g.connect(master); os.start(tb); os.stop(tb+beat/2); }
-        if (o.lead){ for (let s=0;s<8;s++){ if (Math.sin(b*3.1+s*1.7)>.25){ const tl=t+s*beat/2;
-          const m=ch[(s+b)%3]+12; const os=oc.createOscillator(); os.type="square"; os.frequency.value=hz(m);
-          const lp=oc.createBiquadFilter(); lp.frequency.value=2400;
-          const g=oc.createGain(); g.gain.setValueAtTime(.045,tl); g.gain.exponentialRampToValueAtTime(.001,tl+.25);
-          os.connect(lp); lp.connect(g); g.connect(master); os.start(tl); os.stop(tl+.3);} } }
-      }
-    }
-    const buf = await oc.startRendering();
-    return URL.createObjectURL(wav(buf));
-  }
-  function wav(buf){
-    const ch=buf.numberOfChannels, len=buf.length, sr=buf.sampleRate, bytes=len*ch*2;
-    const ab=new ArrayBuffer(44+bytes), v=new DataView(ab); let p=0;
-    const w=s=>{for(let i=0;i<s.length;i++)v.setUint8(p++,s.charCodeAt(i));}, u32=x=>{v.setUint32(p,x,true);p+=4}, u16=x=>{v.setUint16(p,x,true);p+=2};
-    w("RIFF");u32(36+bytes);w("WAVEfmt ");u32(16);u16(1);u16(ch);u32(sr);u32(sr*ch*2);u16(ch*2);u16(16);w("data");u32(bytes);
-    const d=[...Array(ch)].map((_,i)=>buf.getChannelData(i));
-    for(let i=0;i<len;i++)for(let c=0;c<ch;c++){const s=Math.max(-1,Math.min(1,d[c][i]));v.setInt16(p,s<0?s*0x8000:s*0x7fff,true);p+=2;}
-    return new Blob([ab],{type:"audio/wav"});
-  }
-  const DEMOS = [
-    {title:"Полночь на Литейном", artist:"Синт-демо", sec:32, bpm:112, hatOn:true, kick:b=>true, lead:true,
-     chords:[[57,60,64],[53,57,60],[55,59,62],[52,55,59]], bassPat:[0,0,12,0,0,12,0,7]},
-    {title:"Разводной мост", artist:"Синт-демо", sec:34, bpm:92, hatOn:false, kick:b=>b%2===0, lead:false,
-     chords:[[50,53,57],[46,50,53],[48,52,55],[45,48,52]], bassPat:[0,0,0,7,0,0,5,0]},
-    {title:"Дождь по стеклу", artist:"Синт-демо", sec:30, bpm:124, hatOn:true, kick:b=>true, lead:true,
-     chords:[[52,55,59],[48,52,55],[50,54,57],[47,50,54]], bassPat:[0,12,0,12,0,12,7,12]},
-  ];
-  DEMOS.forEach(d => tracks.push({title:d.title, artist:d.artist, url:null, demo:d, dur:d.sec, isDemo:true}));
 
   // ---------- playlist ----------
   const fmt = s => { if(!isFinite(s)||s<0) s=0; s=Math.floor(s); return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); };
@@ -447,7 +386,7 @@
     const t = tracks[i];
     if (cur!==i || !audio.src){
       cur=i;
-      if (!t.url){ setState("ЗАГРУЗКА"); setMarquee("СИНТЕЗ ДЕМО-ТРЕКА…"); t.url = await renderDemo(t.demo); }
+      if (!t.url){ setState("НЕТ ФАЙЛА"); setMarquee("ДОБАВЬТЕ СВОЙ АУДИОФАЙЛ"); return; }
       if (cur!==i) return;
       audio.src=t.url;
       setMarquee(`${cur+1}. ${t.artist} — ${t.title} (${fmt(t.dur)})`);
