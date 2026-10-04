@@ -65,7 +65,7 @@
   // first heading found somewhere inside a shared page ancestor.
   var HEADINGS = 'h1,h2,h3,h4,[role=heading],[data-testid*=BlockHeader],[data-testid=headerlayout],.audio_block__title,.CatalogBlock__header,.CatalogBlock__title,.audio_page_block__title,.page_block_h2';
   var PERSONAL = /^(мои (треки|аудиозаписи|песни)|моя (музыка|библиотека)|my (music|tracks|audio)|your (music|tracks)|все (мои )?(треки|аудиозаписи)|all tracks|треки|аудиозаписи|tracks)(?:\s|$|[·:(])/i;
-  var DISCOVERY = /(рекоменд|похож|для вас|вам (?:может )?понрав|популярн|недавно прослуш|вы слушали|собран[оы] для|новинки|чарт|recommend|similar|for you|suggest|related|recently played|you may|you might|based on|chart)/i;
+  var DISCOVERY = /(рекоменд|похож|для вас|вам (?:может )?понрав|популярн|недавно прослуш|вы слушали|собран[оы] (?:для|редакц)|микс по артистам|vk микс|новинки|чарт|recommend|similar|for you|suggest|related|recently played|you may|you might|based on|chart)/i;
   var boundaryMemo = new WeakMap();
   var pinnedHost = null, lastScope = null, pagingClick = { element: null, at: 0 };
   function shown(n) { return !!(n && n.isConnected && n.getClientRects().length && !n.closest('[hidden],[aria-hidden="true"]')); }
@@ -160,6 +160,12 @@
     while (box && box.parentElement && box.parentElement !== document.body) {
       var parent = box.parentElement;
       if (all.some(function (r) { return parent.contains(r) && !chosen.includes(r); })) break;
+      // A cards-only block is still a foreign section. Its Show all must never
+      // be selected as pagination of our audio list.
+      if (Array.from(parent.querySelectorAll(HEADINGS)).some(function (h) {
+        if (!shown(h) || h.closest(SELECTOR) || (personal && (h === personal.boundary.node || h.contains(personal.boundary.node)))) return false;
+        return !PERSONAL.test(ownLabel(h));
+      })) break;
       box = parent;
     }
     var end = box;
@@ -261,7 +267,7 @@
     }));
     return candidates.find(function (el) {
       if (!shown(el) || el.closest(SELECTOR) || el.disabled || el.getAttribute('aria-disabled') === 'true' || rowBoundary(el).recommendation || marker(el)) return false;
-      var value = ownLabel(el).replace(/[·:()\d]/g, '').trim();
+      var value = ownLabel(el).replace(/[·:()\d›»→❯]/g, '').trim();
       if (full) return /^(показать|посмотреть|смотреть|открыть|все|все мои|show|see|view)(?:\s+(?:все|всё|треки|аудиозаписи|мои треки|аудио|all|tracks|music))*$/i.test(value);
       return /^(показать|загрузить|ещ[её]|show|load)(?:\s+(?:ещ[её]|больше|треки|аудиозаписи|more))*$/i.test(value);
     }) || null;
@@ -286,6 +292,8 @@
   }
   async function openFullList() {
     var b = moreButton(true); if (!b) return false;
+    if (pagingClick.element === b && Date.now() - pagingClick.at < 1500) return false;
+    pagingClick = {element:b,at:Date.now()};
     var u = safeMusicLink(b);
     if (b.hasAttribute('href') && !u) return false;
     if (u && u.pathname + u.search !== location.pathname + (location.search || '')) {
@@ -311,9 +319,20 @@
   async function collect(timing) {
     if (loading || preparing) return;
     if (session().authenticated !== true || !ownPage()) { emit('library', viewSnapshot()); return; }
-    var initialSource = sourceId(); preparing = true;
-    try { if (await openFullList()) return; } finally { preparing = false; }
-    if (initialSource !== sourceId() || !ownPage()) return;
+    var initialSource = sourceId(), epoch = entryEpoch; preparing = true;
+    try {
+      if (await openFullList()) return;
+      // Hydrated VK may mount its actual scroll container AFTER DOMContentLoaded.
+      // Pinning documentElement before that would scroll the wrong element forever.
+      var waitMs = timing && Number.isFinite(timing.maxMs) ? Math.min(15000, timing.maxMs) : 15000;
+      var deadline = Date.now() + waitMs;
+      while (!rows().length && Date.now() < deadline && initialSource === sourceId() && epoch === entryEpoch) {
+        loadCache(); snapshot=Object.assign({}, cached, {status:'loading',complete:false,reason:'waiting-personal-rows'});
+        emit('library', snapshot);
+        await new Promise(function(resolve){setTimeout(resolve,100);});
+      }
+    } finally { preparing = false; }
+    if (epoch !== entryEpoch || initialSource !== sourceId() || !ownPage()) return;
     loadCache(); pinnedHost = host();
     collectorSource = sourceId();
     collector = Core.createCollector(adapter, Object.assign({}, timing || {}, { onProgress: onProgress }));
@@ -338,7 +357,7 @@
     if (link) return safeMusicLink(link);
     return new URL(ownPath(), location.origin);
   }
-  var navigating = false;
+  var navigating = false, entryEpoch = 0;
   function personalEntry() {
     var preview = selection();
     var full = preview.header && moreButton(true);
@@ -359,10 +378,11 @@
     if (session().authenticated !== true) { emit('library', viewSnapshot()); return false; }
     if (ownPage()) return collect();
     // Resolve the actual personal entry BEFORE the own-page gate.
-    var until = Date.now() + 8000, entry;
-    while (!(entry = personalEntry()) && Date.now() < until && session().authenticated === true) {
+    var epoch = entryEpoch, until = Date.now() + 30000, entry;
+    while (!(entry = personalEntry()) && Date.now() < until && session().authenticated === true && epoch === entryEpoch) {
       await new Promise(function (resolve) { setTimeout(resolve, 200); });
     }
+    if (epoch !== entryEpoch) return false;
     if (!entry) return sourceFailure('personal-entry-not-found');
     loadCache();
     var preview = read();
@@ -380,15 +400,15 @@
     navigating = true;
     try {
       entry.click();
-      until = Date.now() + 10000;
-      while (Date.now() < until && userId() === uid) {
+      until = Date.now() + 30000;
+      while (Date.now() < until && userId() === uid && epoch === entryEpoch) {
         if (ownPage() && nativeRows().length) {
           try { sessionStorage.removeItem(NAV_KEY); } catch (_) {}
           navigating = false; return collect();
         }
         await new Promise(function (resolve) { setTimeout(resolve, 200); });
       }
-      return sourceFailure('personal-navigation-timeout');
+      return epoch === entryEpoch ? sourceFailure('personal-navigation-timeout') : false;
     } finally { navigating = false; }
   }
   function playback() {
@@ -492,19 +512,24 @@
     c = c || {};
     if (c.type === 'collectMy' || c.type === 'openMy') return collectMy();
     if (c.type === 'collectAll') return collectMy();
-    if (c.type === 'cancelCollect') { if (collector) collector.cancel(); return; }
+    if (c.type === 'cancelCollect') { cancel(); return; }
     if (c.type === 'playKey' || c.type === 'playRow') return playKey(c.key, c);
     if (c.type === 'pause' || c.type === 'stop') runToken++;
     return original(c);
   };
   function diagnostics() {
     var s = selection(), h = host();
-    return { page: location.pathname, preview:!!s.preview, ownPage:ownPage(), entryFound:!!personalEntry(), personalRows: s.rows.length, excludedRows: s.excluded || 0,
+    return { visibility: document.visibilityState, documentReady: document.readyState, nativeRowCount: nativeRows().length, page: location.pathname, preview:!!s.preview, ownPage:ownPage(), entryFound:!!personalEntry(), personalRows: s.rows.length, excludedRows: s.excluded || 0,
       header: s.header ? ownLabel(s.header) : '', scrollTop: Math.round(h.scrollTop),
       scrollHeight: h.scrollHeight, viewport: h.clientHeight, expected: total(),
       scrollElement: h.tagName + (h.id ? '#' + h.id : ''), hasMore: !!moreButton(false) };
   }
-  window.DekaLibrary = { collect: collect, collectMy: collectMy, cancel: function () { if (collector) collector.cancel(); },
+  function cancel() {
+    entryEpoch++; runToken++; pendingIntent = null;
+    try { sessionStorage.removeItem(NAV_KEY); } catch (_) {}
+    if (collector) collector.cancel();
+  }
+  window.DekaLibrary = { collect: collect, collectMy: collectMy, cancel: cancel,
     get: viewSnapshot, diagnostics: diagnostics, adapter: adapter, userId: userId, ownURL: ownURL, ownPage: ownPage, landing: landing,
     preferred: collectMy, playKey: playKey, takePendingPlay: takePendingPlay, isRunning: function () { return loading || preparing || navigating; } };
   // Retire the old same-origin-only flag before the old bridge's DOMContentLoaded callback.
@@ -523,9 +548,10 @@
     }
     var nav = sessionValue(NAV_KEY);
     if (nav && nav.accountId === userId() && nav.origin === location.origin &&
-        Date.now() - nav.at >= 0 && Date.now() - nav.at < 20000) {
+        Date.now() - nav.at >= 0 && Date.now() - nav.at < 60000) {
+      var resumeEpoch = entryEpoch;
       var retry = function () {
-        if (userId() !== nav.accountId || Date.now() - nav.at >= 20000) return;
+        if (entryEpoch !== resumeEpoch || userId() !== nav.accountId || Date.now() - nav.at >= 60000) return;
         if (ownPage() && nativeRows().length && !loading && !preparing) {
           try { sessionStorage.removeItem(NAV_KEY); } catch (_) {}
           collect();

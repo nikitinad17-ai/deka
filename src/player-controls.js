@@ -128,12 +128,24 @@
     });
     window.addEventListener('deka2:library',function(e){var reasons={'end-unverified':'Загруженные треки доступны. Общее количество VK не подтверждено — это может быть не весь список.','no-personal-rows':'Личный раздел не найден. Откройте «Список в VK».','interrupted':'Загрузка прервалась; уже найденные треки сохранены.','identity-unknown':'Сначала войдите в свой VK','identity-conflict':'Аккаунт VK не подтверждён: откройте VK','login-required':'Войдите в свой аккаунт VK','open-own-library':'Рекомендации скрыты. Откройте «Моя библиотека VK»'};if(e.detail&&reasons[e.detail.reason])$('status').textContent=reasons[e.detail.reason];});
     // Library remains usable without a login for local files, but a detected login page is never covered.
-    window.DekaApp={engine:engine,library:window.DekaLibrary,version:'0.2.4'};
+    window.DekaApp={engine:engine,library:window.DekaLibrary,version:'0.2.5'};
     if(window.DEKA_DESKTOP_SHELL){
       $('vkBtn').onclick=function(){DekaDesktop.showSource();};
       $('myBtn').onclick=function(){DekaDesktop.refresh();};
       $('backBtn').hidden=true;nativeList.textContent='Проверить соединение VK';
       $('accountPage').textContent='Аккаунт VK';
+      // Diagnostic result is persistent and exportable, not a disappearing toast.
+      diag.onclick=function(){
+        var previous=sh.getElementById('sourceReport');if(previous)previous.remove();
+        var panel=document.createElement('section');panel.id='sourceReport';panel.style.cssText='position:absolute;inset:70px 12px 70px;z-index:50;background:#121b27;border:1px solid #516478;padding:16px;overflow:auto;border-radius:9px';
+        var title=document.createElement('h3');title.textContent='Состояние загрузки · Дека 2 0.2.5';panel.appendChild(title);
+        var text=document.createElement('textarea');text.readOnly=true;text.style.cssText='width:100%;height:65%;font:13px monospace;color:#dbe9f7;background:#0c121b';
+        text.value=JSON.stringify(DekaDesktop.report(),null,2);panel.appendChild(text);
+        var save=document.createElement('button');save.textContent='Сохранить отчёт';save.onclick=function(){
+          var u=URL.createObjectURL(new Blob([text.value],{type:'application/json'}));var a=document.createElement('a');a.href=u;a.download='Deka2-source-report.json';a.click();setTimeout(function(){URL.revokeObjectURL(u);},1000);
+        };panel.appendChild(save);
+        var close=document.createElement('button');close.textContent='Закрыть';close.onclick=function(){panel.remove();};panel.appendChild(close);app.appendChild(panel);
+      };
       var splash=document.getElementById('startup');if(splash)splash.remove();
     }
     window.addEventListener('pagehide',function(){stopped=true;cancelAnimationFrame(frame);},{once:true});

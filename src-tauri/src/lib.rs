@@ -38,15 +38,23 @@ fn source_cmd(caller: tauri::WebviewWindow, app: tauri::AppHandle,
     if url.scheme() != "https" || !(host == "vk.ru" || host.ends_with(".vk.ru") || host == "vk.com" || host.ends_with(".vk.com") || host == "vkvideo.ru" || host.ends_with(".vkvideo.ru")) {
         return Err("Источник вне VK".into());
     }
+    // Hidden WebView2 reports document.hidden to VK. Timer flags do not make
+    // a hidden page visible. Keep its real viewport alive for native lazy loading.
+    #[cfg(windows)]
+    if matches!(kind, "sync" | "playKey") {
+        source.unminimize().map_err(|e| e.to_string())?;
+        source.show().map_err(|e| e.to_string())?;
+        let _ = caller.set_focus();
+    }
     let id = serde_json::to_string(&request_id).map_err(|e| e.to_string())?;
     source.eval(&format!("window.DekaSource && window.DekaSource.receive({}, {});", cmd, id)).map_err(|e| e.to_string())
 }
 #[tauri::command]
-fn source_show(caller: tauri::WebviewWindow, app: tauri::AppHandle, show: bool) -> Result<(), String> {
+fn source_show(caller: tauri::WebviewWindow, app: tauri::AppHandle, show: bool, keep_visible: Option<bool>) -> Result<(), String> {
     require_local(&caller)?;
     let source = app.get_webview_window("vk").ok_or("Источник VK не создан")?;
     if show { source.show().map_err(|e| e.to_string())?; let _ = source.set_focus(); }
-    else { source.hide().map_err(|e| e.to_string())?; let _ = caller.set_focus(); }
+    else { if !keep_visible.unwrap_or(false) { source.hide().map_err(|e| e.to_string())?; } let _ = caller.set_focus(); }
     Ok(())
 }
 #[tauri::command]
@@ -101,7 +109,7 @@ pub fn run() {
             #[cfg(windows)]
             {
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("desktop.html".into()))
-                    .title("Дека 2 · 0.2.4").inner_size(1200.0, 760.0).min_inner_size(720.0, 480.0)
+                    .title("Дека 2 · 0.2.5").inner_size(1200.0, 760.0).min_inner_size(720.0, 480.0)
                     .additional_browser_args(BROWSER_ARGS).build()?;
                 let script = [VK_SESSION, LIBRARY_CORE, VK_BRIDGE, MIXER_POLICY, LIBRARY_RUNTIME, SOURCE_LINK].join("\n;\n");
                 WebviewWindowBuilder::new(app, "vk", WebviewUrl::External(VK_URL.parse().unwrap()))

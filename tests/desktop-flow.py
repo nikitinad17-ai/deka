@@ -26,9 +26,9 @@ def fixture(full=False,login=False):
  if not full:return header+'<section><h2>Слушать VK Микс</h2><p>Рекомендации для вас</p></section><section id="my-preview"><div class="CatalogBlock__header"><span class="CatalogBlock__title">Мои треки</span><a id="show-all" href="/audio?section=all">Показать все</a></div><div>'+''.join(row(i) for i in range(12))+'</div></section>'+rec+audio
  data=json.dumps([row(i) for i in range(240)],ensure_ascii=False)
  return header+'<section><h2>Все мои треки · 240</h2><div id="host" data-total-count="240"><div id="mine"></div><div id="sentinel" style="height:24px">Загрузка</div></div></section>'+rec+audio+'''<script>
- const tracks=%s;let count=0,busy=false;window.batches=0;
+ const tracks=%s;let count=0,busy=false;window.batches=0;window.hiddenBatchAttempts=0;
  function append(){mine.insertAdjacentHTML('beforeend',tracks.slice(count,count+24).join(''));count+=24;window.batches++;if(count>=tracks.length)sentinel.remove();}
- append();new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)&&!busy&&count<tracks.length){busy=true;setTimeout(()=>{append();busy=false;},40);}},{root:host}).observe(sentinel);
+ append();new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)&&!busy&&count<tracks.length){if(document.hidden){window.hiddenBatchAttempts++;return;}busy=true;setTimeout(()=>{append();busy=false;},40);}},{root:host}).observe(sentinel);
  </script>'''%data
 SOURCE_NAMES=['vk-session.js','library-engine.js','vk-bridge.js','vk-mixer-policy.js','library-runtime.js','source-link.js']
 async def main():
@@ -96,6 +96,7 @@ async def main():
   await wait_ui('DekaLibrary.get().complete&&DekaLibrary.get().items.length===240',90000)
   check('240 DOM entries cross the source-player link in order',await ui.evaluate('DekaLibrary.get().items.every((t,i)=>t.key==="42_"+i)'))
   check('Lazy loading happened in source',await source.evaluate('window.batches')==10)
+  check('Native source was visible throughout lazy loading',await source.evaluate('window.hiddenBatchAttempts')==0)
   prefix='#deka2-overlay '
   await ui.locator(prefix+'#searchmain').fill('Personal 239')
   await ui.locator(prefix+'#listmain .vlrow').first.click()
