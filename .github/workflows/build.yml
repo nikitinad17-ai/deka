@@ -1,7 +1,7 @@
 name: Deka 2 - build and test
 on:
   push:
-    branches: [deka2, fix/deka2-0.2.1-personal-vk]
+    branches: [deka2, fix/deka2-0.2.2-library-access]
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,6 +23,7 @@ jobs:
       - run: python tests/browser.py
       - run: python tests/mixer-browser.py
       - run: python tests/vk-reliability-browser.py
+      - run: python tests/library-boundaries-browser.py
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: deka2-browser-tests, path: test-output/}
@@ -112,7 +113,7 @@ jobs:
           aapt=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)
           "$aapt" dump badging "$APK_NAME" > Deka2-package.txt
           grep -q "package: name='ru.deka2.player'" Deka2-package.txt
-          grep -q "versionName='0.2.1'" Deka2-package.txt
+          grep -q "versionName='0.2.2'" Deka2-package.txt
           grep -q "application-label:'Deka 2'" Deka2-package.txt
           if [ "$APK_NAME" = Deka2.apk ]; then
             signer=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
@@ -144,15 +145,15 @@ jobs:
         with: {name: deka2-android-build, path: out}
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: deka2-v0.2.1
+          tag_name: deka2-v0.2.2
           target_commitish: ${{ github.sha }}
-          name: Дека 2 - 0.2.1
+          name: Дека 2 - 0.2.2
           prerelease: true
           make_latest: false
           body: |
-            Personal VK library only; verified viewer identity; reliable native playback and resume.
+            Personal-list boundary and preview expansion hotfix. No new DJ features.
             Two local decks; VK is one shared stream. No claims of a real VK-account test.
-            Includes account isolation, no-op-click rejection, playback confirmation, resume and fader regression tests.
+            Includes regression tests for recommendations tail, clipped preview, native pagination and IntersectionObserver lazy loading.
             Android signing mode: ${{ needs.android.outputs.kind }}.
             Unsigned Android build artifacts are NOT installers and are not released here.
             With offline signing, the installable APK is delivered separately after signature verification.

@@ -16,8 +16,8 @@ test('VK user ID falls back to non-secret ID cookie without reading credentials'
   assert.equal(w.DekaSession.userId(),'777');assert.equal(w.DekaSession.read().authenticated,true);
 });
 test('Own saved library is restored on landing page and isolated across users',()=>{
-  const storage=new Map([['deka2:own-library:v3:777',JSON.stringify({schema:3,accountId:'777',sourcePath:'/audios777',source:'777|/audios777',items:[track],complete:true,count:1})]]);
-  const w={location:{hostname:'vk.ru',pathname:'/audio',search:'',origin:'https://vk.ru'},document:{cookie:'',readyState:'loading',addEventListener(){}},vk:{id:777},DekaLibraryCore:require('../src/library-engine.js'),URL,localStorage:{getItem:k=>storage.get(k)||null},sessionStorage:{removeItem(){}}};
+  const storage=new Map([['deka2:own-library:v4:777',JSON.stringify({schema:4,accountId:'777',sourcePath:'/audios777',source:'777|/audios777',items:[track],complete:true,count:1})]]);
+  const w={location:{hostname:'vk.ru',pathname:'/audio',search:'',origin:'https://vk.ru'},document:{cookie:'',querySelectorAll:()=>[],readyState:'loading',addEventListener(){}},vk:{id:777},URLSearchParams,DekaLibraryCore:require('../src/library-engine.js'),URL,localStorage:{getItem:k=>storage.get(k)||null},sessionStorage:{removeItem(){}}};
   w.window=w;w.top=w;w.__deka={cmd:()=>{}};vm.runInNewContext(fs.readFileSync('src/library-runtime.js','utf8'),w);
   assert.equal(w.DekaLibrary.get().count,1);assert.equal(w.DekaLibrary.ownURL().pathname,'/audios777');
   w.vk.id=888;assert.equal(w.DekaLibrary.get().count,0);

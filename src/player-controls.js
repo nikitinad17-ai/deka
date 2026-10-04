@@ -5,6 +5,7 @@
     var sh=o.shadow, app=o.app,engine=o.engine,$=function(id){return sh.getElementById(id);};
     var style=document.createElement('style');
     style.textContent=`
+    .app.scanview{inset:0 0 auto;height:auto;max-height:56px;padding:0}.app.scanview>header,.app.scanview>.library,.app.scanview>.dj,.app.scanview>.transport,.app.scanview>.accountbar{display:none}.app.scanview>.status{display:block}.scanStop{display:none}.app.scanview>.scanStop{display:block;position:absolute;right:4px;top:3px;font-size:11px;min-height:24px}.app.scanview>.status{padding-right:75px}
       .tools{flex-wrap:wrap}.mixer output{font-size:10px;color:#f5b44b;display:block}
       .mixer input[type=range]{touch-action:none}.mix-extra{display:flex;gap:3px;width:100%;justify-content:center}
       .mix-extra button{min-width:28px}.mute-on{background:#623623!important;color:#fff}
@@ -100,6 +101,20 @@
     if(location.hash==='#deka2-native'){app.classList.add('vkview');$('backBtn').hidden=false;}
     var oldBack=$('backBtn').onclick;
     $('backBtn').onclick=function(){oldBack();if(window.DekaSession){var s=DekaSession.refresh();if(s.authenticated===true&&DekaLibrary.landing())DekaLibrary.collectMy();}};
+    // Keep the real native list visible during loading: do not cover lazy-load sentinels.
+    var scanStop=document.createElement('button');scanStop.className='scanStop';scanStop.textContent='Стоп';app.appendChild(scanStop);scanStop.onclick=function(){DekaLibrary.cancel();};
+    function scanView(on){app.classList.toggle('scanview',!!on);}
+    window.addEventListener('deka2:library-scan',function(e){scanView(e.detail.active);});
+    scanView(DekaLibrary.isRunning());
+    var nativeList=document.createElement('button');nativeList.id='nativeListBtn';nativeList.textContent='Список в VK';
+    $('myBtn').after(nativeList);
+    nativeList.onclick=function(){
+      DekaLibrary.cancel();
+      if(DekaLibrary.ownPage()){$('vkBtn').click();return;}
+      var u=DekaLibrary.ownURL();if(u){u.hash='deka2-native';location.assign(u.href);}else $('vkBtn').click();
+    };
+    var diag=document.createElement('button');diag.id='libraryDetailsBtn';diag.textContent='О списке';nativeList.after(diag);
+    diag.onclick=function(){var d=DekaLibrary.diagnostics();o.message('VK: '+d.page+' · личных строк на странице: '+d.personalRows+' · исключено: '+d.excludedRows+' · прокрутка '+d.scrollTop+'/'+d.scrollHeight+(d.expected?' · ожидается '+d.expected:''));};
     $('myBtn').textContent='Моя библиотека VK';
     $('syncBtn').onclick=function(){DekaLibrary.collectMy();};
     window.addEventListener('deka2:playback-error',function(e){
@@ -108,9 +123,9 @@
         'play-button-unavailable':'VK не показывает кнопку запуска этого трека.', 'track-not-found':'Трек не найден в вашей библиотеке VK.'};
       o.message(messages[e.detail.reason]||'VK не подтвердил запуск трека.');
     });
-    window.addEventListener('deka2:library',function(e){var reasons={'identity-unknown':'Сначала войдите в свой VK','identity-conflict':'Аккаунт VK не подтверждён: откройте VK','login-required':'Войдите в свой аккаунт VK','open-own-library':'Рекомендации скрыты. Откройте «Моя библиотека VK»'};if(e.detail&&reasons[e.detail.reason])$('status').textContent=reasons[e.detail.reason];});
+    window.addEventListener('deka2:library',function(e){var reasons={'end-unverified':'Загруженные треки доступны. Общее количество VK не подтверждено — это может быть не весь список.','no-personal-rows':'Личный раздел не найден. Откройте «Список в VK».','interrupted':'Загрузка прервалась; уже найденные треки сохранены.','identity-unknown':'Сначала войдите в свой VK','identity-conflict':'Аккаунт VK не подтверждён: откройте VK','login-required':'Войдите в свой аккаунт VK','open-own-library':'Рекомендации скрыты. Откройте «Моя библиотека VK»'};if(e.detail&&reasons[e.detail.reason])$('status').textContent=reasons[e.detail.reason];});
     // Library remains usable without a login for local files, but a detected login page is never covered.
-    window.DekaApp={engine:engine,library:window.DekaLibrary,version:'0.2.1'};
+    window.DekaApp={engine:engine,library:window.DekaLibrary,version:'0.2.2'};
     window.addEventListener('pagehide',function(){stopped=true;cancelAnimationFrame(frame);},{once:true});
   }};
   // The inherited UI has one engine. Attach extensions after it has mounted its DOM.

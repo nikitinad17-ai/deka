@@ -15,12 +15,15 @@ test('Deka 2 has a separate native identity, name and executable', () => {
 });
 test('library and UI use isolated Deka 2 names without reading original storage', () => {
   const runtime = read('src/library-runtime.js');
-  assert.ok(runtime.includes('deka2:own-library:v3:'));
+  assert.ok(runtime.includes('deka2:own-library:v4:'));
   assert.ok(!runtime.includes("'deka:library:"));
   const ui = read('src/mobile-overlay.js');
   assert.ok(ui.includes('ДЕКА 2'));
   assert.ok(ui.includes('deka2-overlay'));
   assert.ok(!ui.includes("'deka:"));
+  const fallback = read('src/index.html');
+  assert.ok(!fallback.includes('const DEMOS ='));
+  assert.ok(!fallback.includes('renderDemo('));
 });
 test('desktop and Android both inject the two-deck interface', () => {
   const native = read('src-tauri/src/lib.rs');
