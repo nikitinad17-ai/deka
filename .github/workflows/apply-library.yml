@@ -1,0 +1,32 @@
+name: Apply verified library source patch
+on:
+  push:
+    branches: [fix/deka2-0.2.2-library-access]
+    paths: [.hotfix/**, .github/workflows/apply-library.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact public source patch and apply
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64, zlib, hashlib
+          parts = sorted(Path('.hotfix').glob('part*.b64'))
+          assert len(parts) == 5
+          payload = ''.join(p.read_text().strip() for p in parts)
+          patch = zlib.decompress(base64.b64decode(payload, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == 'a0c81b3d3c525aed02ebe33602f43bcf4859177ef67f153008b9b8b747d06243'
+          Path('/tmp/library.patch').write_bytes(patch)
+          PY
+          git apply --check --index /tmp/library.patch
+          git apply --index /tmp/library.patch
+          git rm .hotfix/part*.b64
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Deka 2 0.2.2: scoped personal playlist and real pagination regressions'
+          git push origin HEAD:fix/deka2-0.2.2-library-access
