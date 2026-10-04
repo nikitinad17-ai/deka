@@ -8,6 +8,7 @@ from __future__ import annotations
 import ctypes as C
 from ctypes import wintypes as W
 import json
+import msvcrt
 import os
 from pathlib import Path
 import shutil
@@ -25,8 +26,8 @@ def main() -> None:
     if exe.name.lower() != 'deka2.exe':
         raise RuntimeError('Only the installed Deka 2 executable is accepted')
     out = Path('test-output'); out.mkdir(exist_ok=True)
-    profile = Path(os.environ['RUNNER_TEMP']) / ('deka2-standard-' + str(uuid.uuid4()))
-    profile.mkdir()
+    # WebView2 itself creates this empty profile under the ordinary user's tree.
+    profile = Path(os.environ['LOCALAPPDATA']) / ('Deka2-CI-' + str(uuid.uuid4()))
     kernel = C.WinDLL('kernel32', use_last_error=True)
     adv = C.WinDLL('advapi32', use_last_error=True)
     PTR = C.c_void_p
@@ -88,13 +89,17 @@ def main() -> None:
         return {'integrity': integrity, 'elevated': bool(elevated.value)}
 
     original = W.HANDLE(); reduced = W.HANDLE(); medium_sid = PTR()
-    process = PROCESS_INFORMATION(); launched = False
+    process = PROCESS_INFORMATION(); launched = False; streams = []
     try:
         # Rights to query, duplicate, assign the reduced token and lower its integrity.
         check(open_token(current(), 0x0001 | 0x0002 | 0x0008 | 0x0080, C.byref(original)), 'Open own token')
         parent_info = token_info(original)
-        # DISABLE_MAX_PRIVILEGE | LUA_TOKEN; never SANDBOX_INERT.
-        check(restrict(original, 0x1 | 0x4, 0, None, 0, None, 0, None, C.byref(reduced)), 'Reduce own token')
+        # Prefer the OS's standard-user token from the same logon session.
+        linked_size = W.DWORD()
+        linked = get_token(original, 19, C.byref(reduced), C.sizeof(reduced), C.byref(linked_size))
+        if not linked:
+            # DISABLE_MAX_PRIVILEGE | LUA_TOKEN; never SANDBOX_INERT.
+            check(restrict(original, 0x1 | 0x4, 0, None, 0, None, 0, None, C.byref(reduced)), 'Reduce own token')
         check(sid_from_string('S-1-16-8192', C.byref(medium_sid)), 'Create medium integrity label')
         label = SID_AND_ATTRIBUTES(medium_sid, 0x20)  # SE_GROUP_INTEGRITY
         check(set_token(reduced, 25, C.byref(label), C.sizeof(label) + sid_length(medium_sid)), 'Lower integrity')
@@ -104,10 +109,17 @@ def main() -> None:
         env = dict(os.environ)
         env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = '--remote-debugging-address=127.0.0.1 --remote-debugging-port=9225'
         env['WEBVIEW2_USER_DATA_FOLDER'] = str(profile)
+        env['RUST_BACKTRACE'] = '1'
         env_block = C.create_unicode_buffer('\0'.join(k + '=' + v for k, v in sorted(env.items(), key=lambda p: p[0].upper())) + '\0\0')
         command = C.create_unicode_buffer('"' + str(exe) + '"')
         startup = STARTUPINFO(); startup.cb = C.sizeof(startup)
-        check(create_process(reduced, str(exe), command, None, None, False, 0x400,
+        startup.lpDesktop = r'winsta0\default'
+        startup.dwFlags = 0x100  # STARTF_USESTDHANDLES: retain actual startup failure text
+        for file in [open(os.devnull, 'rb'), open(out/'native-stdout.txt', 'wb'), open(out/'native-stderr.txt', 'wb')]:
+            streams.append(file)
+            os.set_handle_inheritable(msvcrt.get_osfhandle(file.fileno()), True)
+        startup.hStdInput, startup.hStdOutput, startup.hStdError = [msvcrt.get_osfhandle(f.fileno()) for f in streams]
+        check(create_process(reduced, str(exe), command, None, None, True, 0x400,
                              env_block, str(exe.parent), C.byref(startup), C.byref(process)), 'Launch standard-user app')
         launched = True
         # Verify the real child's primary token, not just the prepared one.
@@ -118,7 +130,7 @@ def main() -> None:
         finally:
             close(actual_token)
         (out / 'native-integrity.json').write_text(json.dumps({'parent': parent_info, 'child': actual_info,
-                                                              'pid': process.dwProcessId}, indent=2))
+                                                              'linkedToken': bool(linked), 'pid': process.dwProcessId}, indent=2))
         if actual_info['elevated'] or actual_info['integrity'] > 8192:
             raise RuntimeError('Actual browser host is elevated')
         print('Installed GUI PID', process.dwProcessId, 'at standard-user integrity', actual_info, flush=True)
@@ -145,6 +157,9 @@ def main() -> None:
         for handle in [process.hThread, process.hProcess, reduced, original]:
             if handle: close(handle)
         if medium_sid: local_free(medium_sid)
+        for file in streams: file.close()
+        err = out/'native-stderr.txt'
+        if err.exists(): print(err.read_text(errors='replace'), flush=True)
         shutil.rmtree(profile, ignore_errors=True)
 
 
