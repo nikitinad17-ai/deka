@@ -1,0 +1,26 @@
+from pathlib import Path
+import json
+r=Path.cwd()
+def patch(name,old,new):
+ p=r/name;s=p.read_text();assert s.count(old)==1,(name,old[:70],s.count(old));p.write_text(s.replace(old,new))
+patch('src-tauri/src/lib.rs','const VK_URL: &str = "https://vk.ru/audio";', '#[cfg(windows)]\nconst NATIVE_VIEW: &str = include_str!("../../src/windows-native-view.js");\nconst VK_URL: &str = "https://vk.ru/audio";')
+patch('src-tauri/src/lib.rs','            let builder = WebviewWindowBuilder::new(app,', '            #[cfg(windows)]\n            let script = [NATIVE_VIEW, script.as_str()].join("\\n;\\n");\n            let builder = WebviewWindowBuilder::new(app,')
+patch('src/mobile-overlay.js',"    $('vkBtn').onclick = function () { vkView = true; app.classList.add('vkview'); $('backBtn').hidden = false; };", "    $('vkBtn').onclick = function () { if (window.DekaNativeView) { DekaNativeView.showVK(); return; } vkView = true; app.classList.add('vkview'); $('backBtn').hidden = false; };\n    window.addEventListener('deka2:view', function (e) {\n      vkView = !!e.detail.native;\n      app.classList.remove('vkview','scanview'); $('backBtn').hidden = true;\n      if (!vkView) { setMode('library'); rotationOpened = false; }\n    });")
+patch('src/mobile-overlay.js','function rotate() { if (vkView) return;', 'function rotate() { if (window.DEKA_MANUAL_VK || vkView) return;')
+patch('src/mobile-overlay.js',"  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true }); else mount();", "  if (window.DekaNativeView) DekaNativeView.register(mount);\n  else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true }); else mount();")
+patch('src/player-controls.js','    function autoLibrary(s){\n      if(s.authenticated', '    function autoLibrary(s){\n      if(window.DEKA_MANUAL_VK)return;\n      if(s.authenticated')
+patch('src/player-controls.js',"    $('backBtn').onclick=function(){oldBack();if(window.DekaSession)", "    $('backBtn').onclick=function(){if(window.DekaNativeView){DekaNativeView.showDeka();return;}oldBack();if(window.DekaSession)")
+patch('src/player-controls.js',"    function scanView(on){app.classList.toggle('scanview',!!on);}","    function scanView(on){if(window.DEKA_MANUAL_VK)return;app.classList.toggle('scanview',!!on);}")
+patch('src/player-controls.js',"    $('syncBtn').onclick=function(){DekaLibrary.collectMy();};", "    $('syncBtn').onclick=function(){DekaLibrary.collectMy();};\n    if(window.DekaNativeView){\n      // Manual native-page selection must never guess a personal URL.\n      nativeList.onclick=$('myBtn').onclick=function(){DekaNativeView.showVK();};\n      $('myBtn').textContent='Открыть VK вручную';\n      $('syncBtn').textContent='Считать открытый список';\n      $('syncBtn').onclick=function(){\n        var own=DekaLibrary.ownPage();DekaNativeView.showVK();\n        if(own)DekaLibrary.collect();\n      };\n    }")
+patch('src/player-controls.js',"version:'0.2.2'", "version:'0.2.3'")
+patch('src/library-runtime.js',"      if (ownPage()) collect();", "      if (!window.DEKA_MANUAL_VK && ownPage()) collect();")
+patch('src/library-runtime.js',"    get: viewSnapshot, diagnostics:","    cancelInteraction: function () { runToken++; if (collector) collector.cancel(); pendingIntent = null; },\n    get: viewSnapshot, diagnostics:")
+patch('src/vk-mixer-policy.js','  function apply(el){if(!el)return;', '  function nativeView(){return window.DekaNativeView&&DekaNativeView.isNative();}\n  window.addEventListener("deka2:view",function(e){if(e.detail.native)desired=null;});\n  function apply(el){if(!el||nativeView())return;')
+patch('src/vk-mixer-policy.js',"if(el===media&&desired!==null&&Math.abs(el.volume-desired)>.001)","if(!nativeView()&&el===media&&desired!==null&&Math.abs(el.volume-desired)>.001)")
+patch('src/deck-engine.js',"    function vk(c) { return opts.vk(c); }", "    function vk(c) {\n      if (win.DekaNativeView && win.DekaNativeView.isNative()) return false;\n      return opts.vk(c);\n    }")
+patch('src/deck-engine.js','    function endedVK() {\n      var side', '    function endedVK() {\n      if (win.DekaNativeView && win.DekaNativeView.isNative()) return;\n      var side')
+patch('src/deck-engine.js','    function noteVK(data) {\n      if (win.DekaSession', '    function noteVK(data) {\n      if (win.DekaNativeView && win.DekaNativeView.isNative()) return;\n      if (win.DekaSession')
+for n in ['package.json','src-tauri/tauri.conf.json']:
+ p=r/n;j=json.loads(p.read_text());j['version']='0.2.3';p.write_text(json.dumps(j,ensure_ascii=False,indent=2)+'\n')
+patch('src-tauri/Cargo.toml','version = "0.2.2"','version = "0.2.3"')
+print('Windows manual navigation source edits applied. Android bootstrap unchanged.')
