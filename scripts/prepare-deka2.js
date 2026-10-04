@@ -23,6 +23,14 @@ for (const dir of ['src', 'tests']) {
     if (after !== before) fs.writeFileSync(file, after);
   }
 }
+// The inherited local fallback page must not inject synthetic songs into any list.
+// The live two-deck UI does not use that demo page, but it is still packaged as an asset.
+const legacy = path.join(root, 'src/index.html');
+let legacyBefore = fs.readFileSync(legacy, 'utf8');
+let legacyAfter = legacyBefore.replace(/  \/\/ ---------- demo tracks \(synthesized locally\) ----------[\s\S]*?(?=  \/\/ ---------- playlist ----------)/, '');
+legacyAfter = legacyAfter.replace('if (!t.url){ setState("ЗАГРУЗКА"); setMarquee("СИНТЕЗ ДЕМО-ТРЕКА…"); t.url = await renderDemo(t.demo); }',
+  'if (!t.url){ setState("НЕТ ФАЙЛА"); setMarquee("ДОБАВЬТЕ СВОЙ АУДИОФАЙЛ"); return; }');
+if (legacyAfter !== legacyBefore) fs.writeFileSync(legacy, legacyAfter);
 const native = path.join(root, 'scripts/android-webview.js');
 let before = fs.readFileSync(native, 'utf8');
 let after = before.replaceAll('ru.volna.player.action.', 'ru.deka2.player.action.')

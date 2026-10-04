@@ -21,6 +21,9 @@ test('library and UI use isolated Deka 2 names without reading original storage'
   assert.ok(ui.includes('ДЕКА 2'));
   assert.ok(ui.includes('deka2-overlay'));
   assert.ok(!ui.includes("'deka:"));
+  const fallback = read('src/index.html');
+  assert.ok(!fallback.includes('const DEMOS ='));
+  assert.ok(!fallback.includes('renderDemo('));
 });
 test('desktop and Android both inject the two-deck interface', () => {
   const native = read('src-tauri/src/lib.rs');
