@@ -1,0 +1,14 @@
+name: Source export for local regression
+on:
+  push:
+    branches: [fix/deka2-0.2.5-reliable-source]
+    paths: [.github/workflows/source-export.yml]
+permissions: {contents: read}
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: git archive --format=zip --output=source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with: {name: source-025, path: source.zip, retention-days: 3}
