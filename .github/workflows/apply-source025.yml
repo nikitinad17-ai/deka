@@ -1,0 +1,47 @@
+name: Apply verified Windows source edits
+on:
+  push:
+    branches: [fix/deka2-0.2.5-reliable-source]
+    paths: [.github/workflows/apply-source025.yml]
+permissions: {contents: write}
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Verify input and output checksums
+        shell: python
+        run: |
+          import base64,gzip,hashlib,json,pathlib,subprocess
+          data=gzip.decompress(base64.b64decode(''.join(pathlib.Path('.transfer/windows025-'+str(i)+'.b64').read_text() for i in range(3)),validate=True))
+          assert hashlib.sha256(data).hexdigest()=='1272ffd163356cb4314a026eb15d7d0326d0c0184317c171c4a53a0e02a4fc26'
+          change=json.loads(data)
+          subprocess.run(['git','merge-base','--is-ancestor',change['base'],'HEAD'],check=True)
+          allowed={'.github/workflows/reliable-source.yml','.github/workflows/source-export.yml','docs/WINDOWS-0.2.5.md','package.json','src-tauri/Cargo.toml','src-tauri/src/lib.rs','src-tauri/tauri.conf.json','src/desktop-link.js','src/library-runtime.js','src/mobile-overlay.js','src/player-controls.js','src/source-link.js','tests/cards-boundary-browser.py','tests/desktop-flow.py','tests/hydration-browser.py','tests/source-transport.test.js'}
+          assert {c['path'] for c in change['files']}==allowed
+          for c in change['files']:
+            p=pathlib.Path(c['path'])
+            if 'old_sha256' in c:
+              old=p.read_text()
+              assert hashlib.sha256(old.encode()).hexdigest()==c['old_sha256'],str(p)
+              if c.get('delete'):p.unlink();continue
+              text=old
+              for start,end,new in reversed(c['edits']):
+                assert 0<=start<=end<=len(old)
+                text=text[:start]+new+text[end:]
+            else:
+              assert not p.exists(),str(p)
+              text=c['content']
+            assert hashlib.sha256(text.encode()).hexdigest()==c['sha256'],str(p)
+            p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text)
+          for p in pathlib.Path('.transfer').glob('windows025-*.b64'):p.unlink()
+          pathlib.Path('.github/workflows/apply-source025.yml').unlink()
+      - name: Commit verified source only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'Deka 2 0.2.5: repair source visibility, readiness and personal list boundaries'
+          git push origin HEAD:fix/deka2-0.2.5-reliable-source
