@@ -8,7 +8,12 @@ from playwright.sync_api import sync_playwright
 R=Path(__file__).resolve().parents[1];O=R/'test-output';O.mkdir(exist_ok=True)
 results=[];errors=[]
 def check(name,ok):
- results.append({'test':name,'passed':bool(ok)});print(('PASS ' if ok else 'FAIL ')+name,flush=True);assert ok,name
+ results.append({'test':name,'passed':bool(ok)});print(('PASS ' if ok else 'FAIL ')+name,flush=True)
+ (O/'windows-navigation-report.json').write_text(json.dumps({'tests':results,'errors':errors,'scope':'localhost synthetic documents and simulated VK hostname; actual Chromium navigation and local audio; not a real VK session'},ensure_ascii=False,indent=2))
+ if not ok:
+  page.screenshot(path=str(O/'windows-navigation-failure.png'))
+  print('Visibility:',page.evaluate('''()=>{let h=document.getElementById('deka2-overlay'),a=h&&h.shadowRoot.querySelector('.app');return {native:DekaNativeView.isNative(),hostRect:h&&h.getBoundingClientRect().toJSON(),appRect:a&&a.getBoundingClientRect().toJSON(),hostDisplay:h&&getComputedStyle(h).display}}'''),flush=True)
+ assert ok,name
 names=['windows-native-view.js','vk-session.js','library-engine.js','deck-engine.js','vk-bridge.js','vk-mixer-policy.js','library-runtime.js','virtual-list.js','player-controls.js','mobile-overlay.js']
 shim="""window.fixtureLocation={get hostname(){return window.location.pathname.startsWith('/vk-id')?'id.vk.ru':'vk.ru'},get pathname(){return window.location.pathname.replace('/vk-id','')},get search(){return window.location.search},get hash(){return window.location.hash},get origin(){return 'https://'+this.hostname},get href(){return this.origin+this.pathname+this.search+this.hash},assign:function(url){var u=new URL(url,this.origin);window.location.assign((u.hostname==='id.vk.ru'?'/vk-id':'')+u.pathname+u.search+u.hash);}};"""
 scripts=shim+'\n;\n'+'\n;\n'.join('(function(location){\n'+(R/'src'/n).read_text()+'\n})(window.fixtureLocation);' for n in names)
@@ -34,7 +39,9 @@ with sync_playwright() as p:
  c.route('**/*',intercept);c.add_init_script(scripts)
  page=c.new_page();page.on('pageerror',lambda e:errors.append(str(e)))
  native=lambda:page.evaluate('DekaNativeView.isNative()')
- shown=lambda:page.locator('#deka2-overlay').count()>0 and page.locator('#deka2-overlay').is_visible()
+ # The shadow host has no intrinsic box: its child .app is position:fixed.
+ # Inspect the actual UI, not the host's zero-size bounding rectangle.
+ shown=lambda:page.locator('#deka2-overlay .app').count()>0 and page.locator('#deka2-overlay .app').is_visible()
  page.goto(origin+'/audio');page.locator('#deka2-native-toolbar #returnToDeka').wait_for()
  check('Windows boots into VK rather than empty DJ',native() and not shown())
  check('No app is mounted on a wide desktop before user choice',not page.locator('#deka2-overlay').count())
@@ -69,7 +76,7 @@ with sync_playwright() as p:
  page.locator('#deka2-native-toolbar #returnToDeka').click()
  check('Return cannot cover a detected login form',native() and not shown())
  page.locator('#deka2-native-toolbar #details').click();text=page.locator('#deka2-native-toolbar #report').input_value()
- check('Diagnostics exclude password, cookies, identity and song names','PRIVATE_SENTINEL' not in text and 'Local fixture track' not in text and 'cookie' not in text and 'accountId' not in text)
+ check('Diagnostics exclude password, cookies, accountId and song names','PRIVATE_SENTINEL' not in text and 'Local fixture track' not in text and 'cookie' not in text and 'accountId' not in text)
  page.locator('#back-login').click();page.wait_for_timeout(1700)
  check('Return from VK ID keeps native music page open',native() and not shown() and page.url==origin+'/audio')
  page.goto(origin+'/audios42#deka-library=collect');page.wait_for_timeout(1600)
@@ -82,4 +89,3 @@ with sync_playwright() as p:
  check('No external network requests',not external)
  b.close()
 server.shutdown()
-(O/'windows-navigation-report.json').write_text(json.dumps({'tests':results,'errors':errors,'scope':'localhost synthetic documents and simulated VK hostname; actual Chromium navigation and local audio; not a real VK session'},ensure_ascii=False,indent=2))
