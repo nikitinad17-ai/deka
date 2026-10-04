@@ -43,6 +43,21 @@ jobs:
         with: {workspaces: src-tauri}
       - run: npm install
       - run: npm run build
+      - name: Record binary provenance
+        shell: pwsh
+        run: |
+          '${{ github.sha }}' | Set-Content source-commit.txt
+          Get-FileHash Deka2.exe,Deka2-setup.exe -Algorithm SHA256 | ConvertTo-Json | Set-Content checksums.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: INTERNAL-unverified-candidate
+          retention-days: 3
+          path: |
+            Deka2.exe
+            Deka2-setup.exe
+            source-commit.txt
+            checksums.json
+          if-no-files-found: error
       - name: Verify installer and actual shortcut target
         run: ./scripts/verify-windows-install.ps1
         shell: pwsh
@@ -50,11 +65,6 @@ jobs:
       - name: Verify installed application, two WebViews, real IPC and audio
         run: ./scripts/verify-desktop-source.ps1
         shell: pwsh
-      - name: Record binary provenance
-        shell: pwsh
-        run: |
-          '${{ github.sha }}' | Set-Content source-commit.txt
-          Get-FileHash Deka2.exe,Deka2-setup.exe -Algorithm SHA256 | ConvertTo-Json | Set-Content checksums.json
       - uses: actions/upload-artifact@v4
         with:
           name: Deka2-0.2.4-Windows
