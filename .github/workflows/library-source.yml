@@ -1,0 +1,18 @@
+name: Library hotfix source
+on:
+  push:
+    branches: [fix/deka2-0.2.2-library-access]
+    paths: [.github/workflows/library-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: git archive --format=zip HEAD -o source.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: library-hotfix-source
+          path: source.zip
+          retention-days: 7
