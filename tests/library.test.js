@@ -39,10 +39,10 @@ test('count mismatch at the bottom is partial, not a successful full list', asyn
   const r = await C.createCollector(f.a, f.opts).run();
   assert.equal(r.complete, false); assert.equal(r.count, 40); assert.equal(r.reason, 'missing-tracks');
 });
-test('unknown total reports end-observed rather than count-matched', async () => {
+test('unknown total remains partial: bottom alone cannot prove completeness', async () => {
   const f = fixture(40); f.a.total = () => null;
   const r = await C.createCollector(f.a, f.opts).run();
-  assert.equal(r.complete, true); assert.equal(r.reason, 'end-observed'); assert.equal(r.count,40);
+  assert.equal(r.complete, false); assert.equal(r.reason, 'end-unverified'); assert.equal(r.count,40);
 });
 test('cancel returns a partial snapshot and does not fabricate success', async () => {
   const f = fixture(1000); let col;

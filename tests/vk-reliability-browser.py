@@ -77,8 +77,8 @@ with sync_playwright() as pw:
     record('Personal-list adapter excludes the recommendation tail', [t['key'] for t in own.evaluate('DekaLibrary.adapter.read()')]==['42_7'])
     old=mount(browser,path='/audio',saved={'deka2:own-library:42':json.dumps({'source':'42|/audios42','count':1,'items':[track('9_9','Old unverified cache')]})})
     record('Previously unverified v2 cache is not silently treated as personal music',len(old.evaluate('DekaLibrary.get().items'))==0)
-    cache={'schema':3,'accountId':'42','sourcePath':'/audios42','source':'42|/audios42','items':[track()],'count':1,'complete':False}
-    cached=mount(browser,path='/audio',rows=row('9_9','Recommended'),saved={'deka2:own-library:v3:42':json.dumps(cache)})
+    cache={'schema':4,'accountId':'42','sourcePath':'/audios42','source':'42|/audios42','items':[track()],'count':1,'complete':False}
+    cached=mount(browser,path='/audio',rows=row('9_9','Recommended'),saved={'deka2:own-library:v4:42':json.dumps(cache)})
     record('Verified personal cache restores on landing',[t['key'] for t in cached.evaluate('DekaLibrary.get().items')]==['42_7'])
     cached.evaluate('DekaLibrary.playKey("42_7",{side:"B",accountId:"42"})')
     target=cached.evaluate('window.navigation||""')
@@ -106,7 +106,7 @@ with sync_playwright() as pw:
     record('Account change clears remote decks instead of keeping old user tracks',audio.evaluate('DekaApp.engine.state.A.track===null&&DekaApp.engine.state.B.track===null'))
     record('Account change exposes no previous user cache',len(audio.evaluate('DekaLibrary.get().items'))==0)
     record('A stale account playback request is rejected',audio.evaluate('DekaLibrary.playKey("42_7",{accountId:"42",confirmMs:100,searchMs:100})') is False)
-    record('Previously saved personal cache is retained, not destructively removed',audio.evaluate('!!testStore["deka2:own-library:v3:42"]'))
+    record('Previously saved personal cache is retained, not destructively removed',audio.evaluate('!!testStore["deka2:own-library:v4:42"]'))
     # Test intent consumption separately (no fake server navigation).
     intent={'version':1,'accountId':'42','sourcePath':'/audios42','side':'B','createdAt':0,'track':track()}
     import time, urllib.parse

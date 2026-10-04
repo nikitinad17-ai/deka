@@ -63,14 +63,16 @@
             if (bottomSince === null) bottomSince = now;
             // With an advertised total, missing rows are an error, not "success".
             if (map.size && now - bottomSince >= opts.endMs && !expected)
-              return report('complete', true, 'end-observed');
+              return report('partial', false, 'end-unverified');
           } else bottomSince = null;
           if (now - lastChange >= opts.stalledMs)
             return report('partial', false, expected ? 'missing-tracks' : (map.size ? 'stalled' : 'no-rows'), expected);
           if (now - start >= opts.maxMs || map.size >= opts.maxTracks)
             return report('partial', false, 'limit', expected);
+          // Personal pagination can appear before a recommendations tail, not
+          // just at document bottom. Adapter restricts this to the own section.
+          if (!busy && adapter.expand) adapter.expand();
           if (bottom) {
-            if (adapter.expand) adapter.expand();
             // Re-enter the loading sentinel without skipping a viewport of rows.
             if (expected && now - lastChange > opts.endMs / 2) {
               adapter.scrollTo(Math.max(0, m.top - 1));

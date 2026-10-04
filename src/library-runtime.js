@@ -4,9 +4,9 @@
   if (window.top !== window || !/(^|\.)(vk\.(ru|com)|vkvideo\.ru)$/.test(location.hostname)) return;
   if (window.DekaLibrary || !window.DekaLibraryCore || !window.__deka) return;
   var Core = window.DekaLibraryCore, original = window.__deka.cmd.bind(window.__deka);
-  var SELECTOR = "[data-testid='MusicTrackRow'],[data-audio],.audio_item,.audio_row,[data-testid='audio-row'],[class*='AudioRow__root']";
+  var SELECTOR = "[data-testid='MusicTrackRow'],[data-audio-id],[data-full-id],[data-audio],.audio_item,.audio_row,[data-testid='audio-row'],[class*='AudioRow__root']";
   var rowMap = new Map(), cached = null, scope = '', runToken = 0, loading = false, snapshot = null, timer;
-  var CACHE_VERSION = 3, activeAccount = '', lastPlay = null, pendingIntent = null;
+  var CACHE_VERSION = 4, activeAccount = '', lastPlay = null, pendingIntent = null, preparing = false, lastSaved = 0;
   function session() {
     if (window.DekaSession) return window.DekaSession.read();
     var id = String((window.vk || {}).id || '');
@@ -14,14 +14,11 @@
   }
   function userId() { var s = session(); return s.authenticated === true && s.id ? s.id : ''; }
   function ownPath() { return userId() ? '/audios' + userId() : ''; }
-  function ownPage() {
-    return !!ownPath() && location.pathname.replace(/\/$/, '') === ownPath() &&
-      !/[?&](q|z|owner_id|playlist_id|act)=/.test(location.search || '');
-  }
+  function ownPage() { return personalRoute(); }
   function landing() { return /^\/(audio|music)\/?$/.test(location.pathname); }
   function sourceId() { return (userId() || 'unknown') + '|' + location.pathname + (location.search || ''); }
   function readStore(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch (_) { return fallback; } }
-  function cacheKey() { return 'deka2:own-library:v3:' + userId(); }
+  function cacheKey() { return 'deka2:own-library:v4:' + userId(); }
   function empty(reason) {
     return { schema: CACHE_VERSION, accountId: userId(), items: [], count: 0, complete: false,
       reason: reason || 'not-loaded', status: 'saved', source: (userId() || 'unknown') + '|' + ownPath(), sourcePath: ownPath() };
@@ -38,7 +35,7 @@
     cached = valid ? Object.assign({}, saved, { items: Core.merge([], saved.items) }) : empty();
     cached.count = cached.items.length;
     snapshot = Object.assign({}, cached, { status: 'saved' });
-    if (changedAccount) { runToken++; lastPlay = null; if (collector) collector.cancel(); }
+    if (changedAccount) { pinnedHost = null; lastScope = null; runToken++; lastPlay = null; if (collector) collector.cancel(); }
   }
   function viewSnapshot() {
     loadCache();
@@ -64,23 +61,104 @@
     for (var i = 0; i < selectors.length; i++) { var n = el.querySelector(selectors[i]); if (n && n.textContent.trim()) return n.textContent.trim(); }
     return '';
   }
-  function rows() {
-    if (!ownPage()) return [];
-    return Array.from(document.querySelectorAll(SELECTOR)).filter(function (r, i, all) {
-      if (/(рекоменд|похож|для вас|вам понрав|популярн|recommend|similar|for you)/i.test(section(r))) return false;
-      if (!r.getClientRects().length) return false;
-      // Prefer MusicTrackRow when its wrapper also contains data-audio.
-      if (!r.matches("[data-testid='MusicTrackRow']") && r.querySelector("[data-testid='MusicTrackRow']")) return false;
-      return !all.some(function (other) { return other !== r && other.contains(r) && !other.querySelector("[data-testid='MusicTrackRow']"); });
-    });
-  }
-  function section(el) {
-    for (var p = el.parentElement, depth = 0; p && p !== document.body && depth < 14; p = p.parentElement, depth++) {
-      var h = p.querySelector('h1,h2,h3,h4,[data-testid*=BlockHeader],[data-testid=headerlayout]');
-      if (h && !h.closest(SELECTOR)) return h.textContent.trim();
-    }
+  // A row belongs to its nearest preceding section boundary, never to the
+  // first heading found somewhere inside a shared page ancestor.
+  var HEADINGS = 'h1,h2,h3,h4,[role=heading],[data-testid*=BlockHeader],[data-testid=headerlayout],.audio_block__title,.CatalogBlock__header,.page_block_h2';
+  var PERSONAL = /^(мои (треки|аудиозаписи|песни)|моя (музыка|библиотека)|my (music|tracks|audio)|your (music|tracks)|все (мои )?(треки|аудиозаписи)|all tracks|треки|аудиозаписи|tracks)(?:\s|$|[·:(])/i;
+  var DISCOVERY = /(рекоменд|похож|для вас|вам (?:может )?понрав|популярн|недавно прослуш|вы слушали|собран[оы] для|новинки|чарт|recommend|similar|for you|suggest|related|recently played|you may|you might|based on|chart)/i;
+  var boundaryMemo = new WeakMap();
+  var pinnedHost = null, lastScope = null, pagingClick = { element: null, at: 0 };
+  function shown(n) { return !!(n && n.isConnected && n.getClientRects().length && !n.closest('[hidden],[aria-hidden="true"]')); }
+  function ownLabel(n) { return (n && n.textContent || '').trim().replace(/\s+/g, ' '); }
+  function marker(n) {
+    if (!n || n === document.body || n === document.documentElement || n.matches(SELECTOR)) return '';
+    var token = [n.id, String(n.className || ''), n.getAttribute('data-testid'), n.getAttribute('data-section'), n.getAttribute('aria-label')].join(' ');
+    if (DISCOVERY.test(token)) return 'recommendations';
     return '';
   }
+  function boundary(node) {
+    if (!node || !shown(node) || node.matches(SELECTOR)) return null;
+    if (marker(node)) return { node: node, label: 'recommendations', recommendation: true };
+    var h = node.matches(HEADINGS) ? node : Array.from(node.querySelectorAll(HEADINGS)).find(function (h) {
+      return shown(h) && !h.closest(SELECTOR);
+    });
+    // A preceding block with its own tracks is a separate section, not our label.
+    if (!h || (!node.matches(HEADINGS) && node.querySelector(SELECTOR))) return null;
+    var label = ownLabel(h);
+    return label ? { node: h, label: label, recommendation: DISCOVERY.test(label) } : null;
+  }
+  function rowBoundary(row) {
+    if (boundaryMemo.has(row)) return boundaryMemo.get(row);
+    function found(b) { boundaryMemo.set(row, b); return b; }
+    // Attribute-labelled recommendation containers win over generic "My music" headings.
+    for (var p = row.parentElement; p && p !== document.body; p = p.parentElement) {
+      if (marker(p)) return found({ node: p, label: 'recommendations', recommendation: true });
+    }
+    for (var current = row, depth = 0; current && current !== document.body && depth < 20; current = current.parentElement, depth++) {
+      for (var prev = current.previousElementSibling; prev; prev = prev.previousElementSibling) {
+        if (boundaryMemo.has(prev)) return found(boundaryMemo.get(prev));
+        var b = boundary(prev); if (b) return found(b);
+      }
+      var label = current.getAttribute('aria-label');
+      if (label && !current.matches(SELECTOR) && (PERSONAL.test(label) || DISCOVERY.test(label)))
+        return found({ node: current, label: label, recommendation: DISCOVERY.test(label) });
+    }
+    return found({ node: null, label: '', recommendation: false });
+  }
+  function nativeRows() {
+    var all = Array.from(document.querySelectorAll(SELECTOR));
+    return all.filter(function (r) {
+      if (!shown(r)) return false;
+      if (!r.matches("[data-testid='MusicTrackRow']") && r.querySelector("[data-testid='MusicTrackRow']")) return false;
+      var outer = r.parentElement && r.parentElement.closest(SELECTOR);
+      return !outer || !!outer.querySelector("[data-testid='MusicTrackRow']");
+    });
+  }
+  function personalRoute() {
+    var path = location.pathname.replace(/\/$/, ''), query = new URLSearchParams(location.search || '');
+    if (!userId() || query.has('q') || query.has('z') || query.has('playlist_id') ||
+        (query.has('owner_id') && query.get('owner_id') !== userId())) return false;
+    if (path === ownPath()) return true;
+    if (!/^\/(audio|music)(\/my|\/my_music|\/tracks)?$/.test(path)) return false;
+    var active = Array.from(document.querySelectorAll('[role=tab][aria-selected=true],a[aria-current=page]')).filter(shown);
+    if (active.some(function (n) { return DISCOVERY.test(ownLabel(n)); })) return false;
+    var explicitRoute = /\/(my|my_music|tracks)$/.test(path) || /^(my|my_music|all|tracks)$/.test(query.get('section') || query.get('act') || '');
+    return active.some(function (n) { return PERSONAL.test(ownLabel(n)); }) || explicitRoute &&
+      Array.from(document.querySelectorAll(HEADINGS)).some(function (n) { return shown(n) && !n.closest(SELECTOR) && PERSONAL.test(ownLabel(n)); });
+  }
+  function selection() {
+    boundaryMemo = new WeakMap();
+    if (!ownPage()) return { rows: [], all: [], header: null, box: null, reason: 'open-own-library' };
+    var all = nativeRows(), entries = all.map(function (r) { return { row: r, boundary: rowBoundary(r) }; });
+    var personal = entries.find(function (e) { return !e.boundary.recommendation && PERSONAL.test(e.boundary.label); });
+    var chosen = entries.filter(function (e) {
+      if (e.boundary.recommendation) return false;
+      // Once an explicit personal list exists, unknown/other sections do not join it.
+      return personal ? e.boundary.node === personal.boundary.node : !e.boundary.label || /^(аудиозаписи|музыка)(?:\s|$)/i.test(e.boundary.label);
+    }).map(function (e) { return e.row; });
+    var box = chosen[0] && chosen[0].parentElement;
+    // Grow within this list only; stop before any sibling recommendation/other section.
+    while (box && box.parentElement && box.parentElement !== document.body) {
+      var parent = box.parentElement;
+      if (all.some(function (r) { return parent.contains(r) && !chosen.includes(r); })) break;
+      box = parent;
+    }
+    var end = box;
+    // Include the native loading sentinel / pagination after the final row.
+    // Stopping one pixel before the sentinel prevents IntersectionObserver loading.
+    for (var next = box && box.nextElementSibling; next; next = next.nextElementSibling) {
+      var edge = boundary(next);
+      if (marker(next) || (edge && (edge.recommendation || !PERSONAL.test(edge.label)))) break;
+      if (all.some(function (r) { return next.contains(r) && !chosen.includes(r); })) break;
+      end = next;
+    }
+    var result = { end: end, rows: chosen, all: all, header: personal && personal.boundary.node, box: box,
+      excluded: all.length - chosen.length, reason: chosen.length ? '' : 'no-personal-rows' };
+    if (chosen.length) lastScope = result;
+    return result;
+  }
+  function rows() { return selection().rows; }
+  function section(el) { return rowBoundary(el).label; }
   function parseDur(t) { var m = String(t || '').match(/(\d+):(\d{2})(?::(\d{2}))?/); return m ? (m[3] ? +m[1] * 3600 + +m[2] * 60 + +m[3] : +m[1] * 60 + +m[2]) : 0; }
   function read() {
     rowMap.clear();
@@ -88,13 +166,11 @@
       var data = null;
       try { var dataNode = r.closest('[data-audio]'); data = dataNode ? JSON.parse(dataNode.getAttribute('data-audio')) : null; } catch (_) {}
       var holder = r.closest('[data-audio-id],[data-full-id]');
-      var key = holder ? (holder.getAttribute('data-audio-id') || holder.getAttribute('data-full-id')) : r.getAttribute('data-id');
+      var key = holder ? (holder.getAttribute('data-audio-id') || holder.getAttribute('data-full-id')) : r.getAttribute('data-id') || r.id;
       var title = text(r, ["[data-testid='MusicTrackRow_Title']", '.audio_row__title_inner', '.ai_title', '[class*=Title]', '[class*=title]']);
       var artist = text(r, ["[data-testid='MusicTrackRow_Authors']", '.audio_row__performers', '.ai_artist', '[class*=Performer]', '[class*=artist]']);
       var dur = parseDur(text(r, ["[data-testid='MusicTrackRow_Duration']", '.audio_row__duration', '.ai_dur', '[class*=duration]']));
-      if (Array.isArray(data) && data.length >= 6) {
-        key = data[1] + '_' + data[0]; title = title || data[3]; artist = artist || data[4]; dur = +data[5] || dur;
-      }
+      if (Array.isArray(data) && data.length >= 6) { key = data[1] + '_' + data[0]; title = title || data[3]; artist = artist || data[4]; dur = +data[5] || dur; }
       if (key) { var numeric = /^(?:audio)?(-?\d+_\d+)(?:#\d+)?$/.exec(String(key)); if (numeric) key = numeric[1]; }
       var t = Core.clean({ key: key, title: title, artist: artist, duration: dur, section: section(r) });
       if (t) rowMap.set(t.key, r);
@@ -102,59 +178,137 @@
     }).filter(Boolean);
   }
   function host() {
-    var rs = rows(), first = rs.find(function (r) { return r.getClientRects().length; }) || rs[0];
+    if (loading && pinnedHost && pinnedHost.isConnected) return pinnedHost;
+    var first = rows()[0], candidate = null;
     for (var p = first && first.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
       var s = getComputedStyle(p);
-      if (/(auto|scroll|overlay|hidden)/.test(s.overflowY) && p.clientHeight > 0 && p.scrollHeight > p.clientHeight + 2) return p;
+      // overflow:hidden is a clip/preview, not the native scrolling list.
+      if (/^(auto|scroll|overlay)$/.test(s.overflowY) && p.clientHeight > 0) {
+        if (!candidate) candidate = p;
+        if (p.scrollHeight > p.clientHeight + 2) return p;
+      }
     }
-    return document.scrollingElement || document.documentElement;
+    return candidate || document.scrollingElement || document.documentElement;
   }
   function total() {
-    var h = host();
-    var nodes = [h].concat(Array.from(h.querySelectorAll('[aria-rowcount],[data-total-count],.audio_page__count')));
+    var s = selection(), root = s.box, heading = s.header;
+    if (!root) return null;
+    var selector = '[aria-rowcount],[data-total-count],.audio_page__count,.page_block_header_count,[data-testid=MusicTracksCount]';
+    var nodes = [root].concat(Array.from(root.querySelectorAll(selector)));
+    // A count on a shared scroll host may include recommendations. Do not use it.
+    if (heading && heading.parentElement && !heading.parentElement.querySelector(SELECTOR)) nodes = nodes.concat(Array.from(heading.parentElement.querySelectorAll(selector)));
     for (var i = 0; i < nodes.length; i++) {
-      var n = nodes[i], raw = n.getAttribute('aria-rowcount') || n.getAttribute('data-total-count');
-      if (!raw && n.matches('.audio_page__count')) raw = n.textContent.replace(/[\s\u00a0]/g, '');
+      var n = nodes[i];
+      if (s.all.some(function (r) { return n.contains(r) && !s.rows.includes(r); }) || marker(n)) continue;
+      var raw = n.getAttribute('aria-rowcount') || n.getAttribute('data-total-count');
+      if (!raw && n.matches('.audio_page__count,.page_block_header_count,[data-testid=MusicTracksCount]')) raw = n.textContent.replace(/[\s\u00a0]/g, '');
       if (/^\d+$/.test(raw || '') && +raw > 0 && +raw < 1000000) return +raw;
+    }
+    if (heading) {
+      var m = ownLabel(heading).match(/(?:\(|·|:|\s)([\d\s\u00a0]+)\)?$/);
+      if (m && PERSONAL.test(ownLabel(heading))) { var count = +m[1].replace(/\s/g, ''); if (count > 0 && count < 1000000) return count; }
     }
     return null;
   }
-  function measure() { var h = host(); return { top: h.scrollTop, height: h.clientHeight || innerHeight, fullHeight: h.scrollHeight }; }
+  function measure() {
+    var h = host(), s = selection(), height = h.clientHeight || innerHeight, full = h.scrollHeight;
+    // Stop at the personal list boundary, not at the bottom of an infinite
+    // recommendation feed that happens to share the same page scroll host.
+    if (s.excluded && s.box && s.box !== h && s.rows.length) {
+      var top = h === document.scrollingElement ? 0 : h.getBoundingClientRect().top + h.clientTop;
+      full = Math.min(full, Math.max(height, Math.ceil(h.scrollTop + (s.end || s.box).getBoundingClientRect().bottom - top)));
+    }
+    return { top: h.scrollTop, height: height, fullHeight: full };
+  }
   function scrollTo(top) { var h = host(); h.scrollTop = Math.max(0, top); h.dispatchEvent(new Event('scroll')); }
-  function busy() { var h = host(); if (h.matches('[aria-busy=true]')) return true; return Array.from(h.querySelectorAll('[aria-busy=true],[role=progressbar]')).some(function (n) { return n.getClientRects().length; }); }
+  function busy() {
+    var s = selection(), h = s.box || (lastScope && lastScope.box);
+    if (!h || !h.isConnected) return false;
+    return h.matches('[aria-busy=true]') || Array.from(h.querySelectorAll('[aria-busy=true],[role=progressbar]')).some(shown);
+  }
+  function moreButton(full) {
+    var s = selection(), box = s.box || (lastScope && lastScope.box);
+    if (!box) return null;
+    var candidates = Array.from(box.querySelectorAll('a,button,[role=button],.audio_more,.show_more'));
+    // Controls can be siblings of a clipped preview or of the header. Keep the
+    // same section boundary rather than accidentally using a global 'more' button.
+    if (s.header) candidates = candidates.concat(Array.from(document.querySelectorAll('a,button,[role=button],.audio_more,.show_more')).filter(function (el) {
+      var b = rowBoundary(el); return b.node === s.header && !b.recommendation;
+    }));
+    return candidates.find(function (el) {
+      if (!shown(el) || el.closest(SELECTOR) || el.disabled || el.getAttribute('aria-disabled') === 'true' || rowBoundary(el).recommendation || marker(el)) return false;
+      var value = ownLabel(el).replace(/[·:()\d]/g, '').trim();
+      if (full) return /^(показать|посмотреть|смотреть|открыть|все|все мои|show|see|view)(?:\s+(?:все|всё|треки|аудиозаписи|мои треки|аудио|all|tracks|music))*$/i.test(value);
+      return /^(показать|загрузить|ещ[её]|show|load)(?:\s+(?:ещ[её]|больше|треки|аудиозаписи|more))*$/i.test(value);
+    }) || null;
+  }
+  function safeMusicLink(button) {
+    if (!button || !button.hasAttribute('href')) return null;
+    try {
+      var url = new URL(button.getAttribute('href'), location.href), params = url.searchParams;
+      if (url.protocol !== 'https:' || !/(^|\.)vk\.(ru|com)$/.test(url.hostname)) return null;
+      var owner = /^\/audios(-?\d+)\/?$/.exec(url.pathname);
+      if (owner && owner[1] !== userId()) return null;
+      if (!owner && !/^\/(audio|music)(\/|$)/.test(url.pathname)) return null;
+      if (params.has('q') || params.has('z') || params.has('playlist_id') || (params.has('owner_id') && params.get('owner_id') !== userId())) return null;
+      return url;
+    } catch (_) { return null; }
+  }
   function expand() {
-    // Only real pagination buttons inside the list, never global recommendation links.
-    var b = Array.from(host().querySelectorAll('button,[role=button]')).find(function (el) { return /^(Показать ещё|Загрузить ещё|Load more)$/i.test(el.textContent.trim()) && el.getClientRects().length; });
-    if (b) b.click();
+    var b = moreButton(false), now = Date.now();
+    if (!b || (pagingClick.element === b && now - pagingClick.at < 1000)) return;
+    // Only the selected list's pagination, never the next recommendation block.
+    pagingClick = { element: b, at: now }; b.click();
+  }
+  async function openFullList() {
+    var b = moreButton(true); if (!b) return false;
+    var u = safeMusicLink(b);
+    if (b.hasAttribute('href') && !u) return false;
+    if (u && u.pathname + u.search !== location.pathname + (location.search || '')) {
+      u.hash = 'deka-library=collect'; location.assign(u.href); return true;
+    }
+    b.click(); await new Promise(function (resolve) { setTimeout(resolve, 500); });
+    return false;
   }
   var adapter = { identity: sourceId, read: read, measure: measure, scrollTo: scrollTo, total: total, busy: busy, expand: expand };
   var collector = null;
   function onProgress(p) {
     if (p.source !== scope || p.source !== sourceId() || !ownPage()) return;
     snapshot = Object.assign({}, p, { schema: CACHE_VERSION, accountId: userId(), sourcePath: ownPath(), items: Core.merge(cached.items, p.items), scanned: p.count });
-    snapshot.count = snapshot.items.length;
+    snapshot.count = snapshot.items.length; snapshot.diagnostics = diagnostics();
+    if (Date.now() - lastSaved > 1000) {
+      lastSaved = Date.now(); cached = Object.assign({}, snapshot, { complete: false, reason: 'partial', updatedAt: lastSaved }); persist();
+    }
     emit('library', snapshot);
   }
   async function collect(timing) {
-    if (loading) return;
+    if (loading || preparing) return;
     if (session().authenticated !== true || !ownPage()) { emit('library', viewSnapshot()); return; }
+    var initialSource = sourceId(); preparing = true;
+    try { if (await openFullList()) return; } finally { preparing = false; }
+    if (initialSource !== sourceId() || !ownPage()) return;
+    loadCache(); pinnedHost = host();
     collector = Core.createCollector(adapter, Object.assign({}, timing || {}, { onProgress: onProgress }));
-    loadCache(); loading = true;
+    loadCache(); loading = true; emit('library-scan', { active: true });
     try {
       var result = await collector.run();
       if (result.source !== sourceId()) return;
       cached = Object.assign({}, result, { schema: CACHE_VERSION, accountId: userId(), sourcePath: ownPath(), items: Core.saveResult(cached.items, result), updatedAt: Date.now() });
       cached.count = cached.items.length; cached.source=scope;
-      snapshot = Object.assign({}, cached); persist();
+      snapshot = Object.assign({}, cached, { diagnostics: diagnostics() }); persist();
       emit('library', snapshot);
       // Preserve the desktop CSV interface, but expose completeness separately.
       emit('vk:collect', Object.assign({}, snapshot, { done: true, page: location.pathname }));
       emit('vk:playlist', { items: cached.items, page: location.pathname });
-    } finally { loading = false; }
+    } finally { loading = false; pinnedHost = null; emit('library-scan', { active: false }); }
   }
   function ownURL() {
     // Never take a profile/playlist owner or arbitrary "my music" link as the viewer's ID.
-    return userId() ? new URL(ownPath(), location.origin) : null;
+    if (!userId()) return null;
+    if (ownPage()) return new URL(location.pathname + (location.search || ''), location.origin);
+    var link = Array.from(document.querySelectorAll('a[href]')).find(function (n) { return shown(n) && PERSONAL.test(ownLabel(n)) && safeMusicLink(n); });
+    if (link) return safeMusicLink(link);
+    return new URL(ownPath(), location.origin);
   }
   function collectMy() {
     var u = ownURL();
@@ -269,9 +423,16 @@
     if (c.type === 'pause' || c.type === 'stop') runToken++;
     return original(c);
   };
+  function diagnostics() {
+    var s = selection(), h = host();
+    return { page: location.pathname, personalRows: s.rows.length, excludedRows: s.excluded || 0,
+      header: s.header ? ownLabel(s.header) : '', scrollTop: Math.round(h.scrollTop),
+      scrollHeight: h.scrollHeight, viewport: h.clientHeight, expected: total(),
+      scrollElement: h.tagName + (h.id ? '#' + h.id : ''), hasMore: !!moreButton(false) };
+  }
   window.DekaLibrary = { collect: collect, collectMy: collectMy, cancel: function () { if (collector) collector.cancel(); },
-    get: viewSnapshot, adapter: adapter, userId: userId, ownURL: ownURL, ownPage: ownPage, landing: landing,
-    preferred: collectMy, playKey: playKey, takePendingPlay: takePendingPlay, isRunning: function () { return loading; } };
+    get: viewSnapshot, diagnostics: diagnostics, adapter: adapter, userId: userId, ownURL: ownURL, ownPage: ownPage, landing: landing,
+    preferred: collectMy, playKey: playKey, takePendingPlay: takePendingPlay, isRunning: function () { return loading || preparing; } };
   // Retire the old same-origin-only flag before the old bridge's DOMContentLoaded callback.
   try { ['dekaCollect','dekaAutoplay','dekaFind','dekaPlayKey'].forEach(function(k){ sessionStorage.removeItem(k); }); } catch (_) {}
   function boot() {
@@ -290,7 +451,7 @@
     function refresh() {
       timer = null;
       if (sourceId() !== lastSource) {
-        if (collector) collector.cancel(); runToken++; lastSource = sourceId();
+        if (collector) collector.cancel(); pinnedHost = null; lastScope = null; runToken++; lastSource = sourceId();
         loadCache(); emit('library', viewSnapshot());
       }
       // Never accumulate discovery/recommendations or a visited user's page as "my music".
@@ -307,9 +468,9 @@
     window.addEventListener('deka2:session', refresh);
     var observer = new MutationObserver(function () { if (timer == null) timer = setTimeout(refresh, 300); });
     observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true,
-      attributeFilter: ['data-audio-id','data-full-id','data-id','aria-busy'] });
+      attributeFilter: ['data-audio-id','data-full-id','data-id','aria-busy','aria-selected'] });
     refresh();
-    window.addEventListener('pagehide', function () { runToken++; if (collector) collector.cancel(); observer.disconnect(); clearTimeout(timer); }, { once: true });
+    window.addEventListener('pagehide', function () { if (loading && snapshot && snapshot.items) { cached = Object.assign({}, snapshot, { complete: false, reason: 'interrupted' }); persist(); } runToken++; if (collector) collector.cancel(); observer.disconnect(); clearTimeout(timer); }, { once: true });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
 })();
