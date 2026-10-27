@@ -141,6 +141,7 @@
     font:500 12px var(--f-mono);color:var(--ink-2);font-variant-numeric:tabular-nums;flex-wrap:wrap}
   .badge{font:600 10px/1 var(--f-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--cyan);border:1px solid rgba(114,214,232,.35);border-radius:4px;padding:3px 5px;margin-left:6px;vertical-align:1px}
 
+  [hidden]{display:none!important}
   .vk{padding:18px 16px 20px;display:grid;gap:14px;line-height:1.55;color:var(--ink)}
   .vk h3{margin:0;font:700 15px/1.3 var(--f-brand);letter-spacing:.02em;text-wrap:balance}
   .vk p{margin:0;max-width:62ch;color:var(--ink-2)}
@@ -160,6 +161,16 @@
   .vk-link input{flex:1;min-width:0;height:30px;font:500 12px var(--f-mono);color:var(--ink);background:#0f1115;border:1px solid var(--edge);border-radius:6px;padding:0 8px}
   .vk-link input:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
   .vkapp .list{margin-top:10px}
+  .item.chap{grid-template-columns:64px minmax(0,1fr)}
+  .item.chap .n{text-align:left}
+  .item.chap.cur{background:#122027;color:var(--cyan)}
+  .item.chap.cur .n{color:var(--cyan)}
+  .set-now{font:500 12px var(--f-mono);color:var(--ink);padding:8px 12px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .set-now b{color:var(--cyan)}
+  .set-paste{padding:8px 12px 0}
+  .set-paste textarea{width:100%;min-height:130px;box-sizing:border-box;font:12px/1.45 var(--f-mono);color:var(--ink);background:#0f1115;border:1px solid var(--edge);border-radius:6px;padding:8px;resize:vertical}
+  .set-paste textarea:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+  #chapList{max-height:300px}
   .keys{font:12px var(--f-mono);color:var(--ink-2);max-width:1080px;margin:18px auto 0;display:flex;gap:14px;flex-wrap:wrap}
   .keys kbd{font:500 11px var(--f-mono);border:1px solid var(--edge);border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--ink);background:var(--chassis)}
   .android .keys{display:none}
@@ -236,6 +247,7 @@
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" id="tabFiles" aria-selected="true" aria-controls="paneFiles">Мои файлы</button>
       <button class="tab" role="tab" id="tabVk" aria-selected="false" aria-controls="paneVk">VK Музыка</button>
+      <button class="tab" role="tab" id="tabSets" aria-selected="false" aria-controls="paneSets">Сеты</button>
     </div>
     <div class="pane" id="paneFiles" role="tabpanel">
       <div class="drop" id="drop">Перетащите сюда MP3, FLAC, OGG, WAV или нажмите «Открыть»</div>
@@ -276,6 +288,39 @@
         <p class="note">В браузерном прототипе это не работает: чужие сайты нельзя встроить в страницу. Сейчас можно открыть <a href="https://vk.ru/audio" target="_blank" rel="noopener">vk.ru/audio</a> в соседней вкладке.</p>
       </div>
     </div>
+    <div class="pane" id="paneSets" role="tabpanel" hidden>
+      <div class="vkapp" id="setApp" hidden>
+        <div class="vk-bar">
+          <form class="vk-link" id="setForm" novalidate>
+            <input id="setLink" type="url" placeholder="Ссылка на сет в VK Видео" aria-label="Ссылка на сет в VK Видео">
+            <button class="btn" type="submit">Добавить</button>
+          </form>
+        </div>
+        <div class="vk-bar"><span class="vk-status" id="setStatus">Звук сета идёт через скрытое окно VK Видео, картинка не нужна. «Дека» помнит, где вы остановились.</span></div>
+        <ol class="list" id="setList"></ol>
+        <div id="setNow" hidden>
+          <div class="vk-bar">
+            <span class="vk-status ok" id="setNowTitle">Сет</span><span class="spacer"></span>
+            <button class="btn" id="setPrev" title="Предыдущий трек сета">⏮ Трек</button>
+            <button class="btn" id="setNext" title="Следующий трек сета">Трек ⏭</button>
+            <button class="btn" id="setRestart" hidden>С начала</button>
+            <button class="btn" id="setPasteBtn" title="Вставить треклист с таймкодами">Свой треклист</button>
+            <button class="btn" id="setScanBtn" title="Ещё раз поискать таймкоды в описании видео">Искать в описании</button>
+          </div>
+          <div class="set-now" id="setNowTrack"></div>
+          <div class="set-paste" id="setPaste" hidden>
+            <textarea id="setPasteText" aria-label="Треклист с таймкодами" placeholder="00:00 Исполнитель — Название&#10;03:15 Исполнитель — Название&#10;…"></textarea>
+            <div class="vk-bar" style="padding-left:0"><button class="btn" id="setPasteSave">Сохранить</button><button class="btn" id="setPasteClear">Убрать свой</button></div>
+          </div>
+          <ol class="list" id="chapList" aria-label="Треклист сета"></ol>
+        </div>
+        <div class="foot"><span id="setCount">0 сетов</span><span id="setHint">⏮ ⏭ на пульте листают треки сета</span></div>
+      </div>
+      <div class="vk" id="setInfo">
+        <h3>Сеты из VK Видео</h3>
+        <p>В приложении для Windows сюда добавляются ссылки на сеты VK Видео. Звук играет через скрытое окно ВК, «Дека» запоминает место и показывает треклист по таймкодам из описания.</p>
+      </div>
+    </div>
   </section>
 </div>
 
@@ -284,6 +329,7 @@
   <span><kbd>↑</kbd><kbd>↓</kbd> громкость</span><span><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><kbd>B</kbd> назад · играть · пауза · стоп · вперёд</span>
 </div>
 
+<script src="set-core.js"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id);
@@ -305,6 +351,7 @@
   let preGain = store.get("pre", 0);
   let mode = "files", vkS = {paused:true,currentTime:0,duration:0}, vkAt = 0, vkSpec = null;
   let tracks = [], cur = -1, showRemain = false, vizMode = 0, shuffle = false, repeat = true;
+  let setStep = null; // листание треков сета, есть только в приложении для Windows
 
   // ---------- audio graph ----------
   function ensureCtx(){
@@ -460,6 +507,7 @@
   function toggle(){ if (mode==="vk") return vk({type:"toggle"}); if (cur<0) return play(0); audio.paused ? play(cur) : audio.pause(); }
   function stop(){ if (mode==="vk") return vk({type:"stop"}); audio.pause(); try{audio.currentTime=0;}catch(e){} setState("СТОП"); }
   function step(d){
+    if (mode==="vk" && vkS.setId && setStep) return setStep(d);
     if (mode==="vk") return vk({type: d>0?"next":"prev"});
     if (!tracks.length) return;
     let n;
@@ -499,7 +547,7 @@
   $("vol").addEventListener("input",applyVol); $("bal").addEventListener("input",applyBal);
   $("bal").addEventListener("dblclick",()=>{ $("bal").value=0; applyBal(); });
   paint($("vol")); paint($("bal")); paint($("seek"));
-  $("bPlay").onclick=toggle; $("bStop").onclick=stop; $("bNext").onclick=()=>step(1); $("bPrev").onclick=()=>{ if (mode==="vk") return vk({type:"prev"}); if(audio.currentTime>3) audio.currentTime=0; else step(-1); };
+  $("bPlay").onclick=toggle; $("bStop").onclick=stop; $("bNext").onclick=()=>step(1); $("bPrev").onclick=()=>{ if (mode==="vk" && vkS.setId && setStep) return setStep(-1); if (mode==="vk") return vk({type:"prev"}); if(audio.currentTime>3) audio.currentTime=0; else step(-1); };
   $("bShuf").onclick=()=>{ shuffle=!shuffle; $("bShuf").setAttribute("aria-pressed",shuffle); };
   $("bRep").onclick=()=>{ repeat=!repeat; $("bRep").setAttribute("aria-pressed",repeat); };
   $("bOpen").onclick=()=>$("file").click();
@@ -511,7 +559,7 @@
   $("drop").addEventListener("click",()=>$("file").click());
 
   // tabs
-  [["tabFiles","paneFiles"],["tabVk","paneVk"]].forEach(([t,p],_,all)=>$(t).addEventListener("click",()=>{
+  [["tabFiles","paneFiles"],["tabVk","paneVk"],["tabSets","paneSets"]].forEach(([t,p],_,all)=>$(t).addEventListener("click",()=>{
     all.forEach(([t2,p2])=>{ $(t2).setAttribute("aria-selected", t2===t); $(p2).hidden = p2!==p; });
   }));
 
@@ -775,6 +823,140 @@
       el.textContent = p.ok ? "Эквалайзер и спектр работают со звуком ВК" : "Эквалайзер ВК недоступен для этого трека";
       el.classList.toggle("ok", !!p.ok);
       if (p.ok) sendFx(); });
+
+    // ---------- Сеты VK Видео ----------
+    // Сохраняется ссылка, название, длительность и место остановки. Звук не сохраняется.
+    const S = window.DekaSets;
+    if (S){
+      $("setApp").hidden = false; $("setInfo").hidden = true;
+      let sets = store.get("sets", []).filter(x => x && S.parseLink(x.url)).map(x => ({...x, id:S.parseLink(x.url).id, kind:S.parseLink(x.url).kind}));
+      let setAuto = store.get("setAuto", {}), setManual = store.get("setTracks", {});
+      let liveId = "", savedAt = 0, chapSig = "", chapCur = -2;
+      const chaptersOf = id => (setManual[id] && setManual[id].length ? setManual[id] : setAuto[id]) || [];
+      const saveSets = () => store.set("sets", sets);
+      const setStatus = (t, ok) => { $("setStatus").textContent = t; $("setStatus").classList.toggle("ok", !!ok); };
+      function renderSets(){
+        const ol = $("setList"); ol.innerHTML = "";
+        sets.forEach((x,i)=>{
+          const li=document.createElement("li"); li.className="item"+(x.id===liveId?" cur":""); li.tabIndex=0; li.setAttribute("role","button");
+          li.innerHTML=`<span class="n">${i+1}.</span><span class="t"></span><span class="d">${x.duration?S.fmt(x.duration):"--:--"}</span><button class="x" aria-label="Убрать сет">×</button>`;
+          const tt=li.querySelector(".t"); tt.textContent=x.title||"Сет VK Видео";
+          const sm=document.createElement("small"); const n=chaptersOf(x.id).length;
+          sm.textContent = (x.pos ? "остановились на "+S.fmt(x.pos) : "VK Видео") + (n ? " · "+n+" "+plural(n,["трек","трека","треков"]) : "");
+          tt.appendChild(sm);
+          li.addEventListener("click",e=>{ if(e.target.closest(".x")) return; openSet(x); });
+          li.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); openSet(x); } });
+          li.querySelector(".x").addEventListener("click",()=>{ sets.splice(i,1); saveSets(); renderSets(); });
+          ol.appendChild(li);
+        });
+        $("setCount").textContent = sets.length+" "+plural(sets.length,["сет","сета","сетов"]);
+      }
+      function openSet(x){
+        if (!audio.paused) audio.pause();
+        mode="vk"; setState("ЗАГРУЗКА"); $("tKbps").textContent="VK";
+        setMarquee(`СЕТ · ${x.title||"VK Видео"}${x.pos?" · продолжаю с "+S.fmt(x.pos):""}`);
+        setStatus("Открываю сет в окне VK Видео…", true);
+        vk({type:"openSet", id:x.id, kind:x.kind});
+      }
+      $("setForm").addEventListener("submit", e=>{
+        e.preventDefault();
+        const link = S.parseLink($("setLink").value);
+        if (!link){ setStatus("Нужна ссылка на видео VK: vkvideo.ru/video-… или vk.ru/video-…"); return; }
+        $("setLink").value="";
+        let x = sets.find(y=>y.id===link.id);
+        if (!x){ x = {url:link.url, id:link.id, kind:link.kind, title:"", duration:0, pos:0}; sets.push(x); saveSets(); }
+        renderSets(); openSet(x);
+      });
+      function renderChapters(id, force){
+        const list = chaptersOf(id), sig = id+"|"+JSON.stringify(list)+(setManual[id]?"m":"");
+        if (!force && sig===chapSig) return;
+        chapSig = sig; chapCur = -2;
+        const ol=$("chapList"); ol.innerHTML="";
+        if (!list.length){ const li=document.createElement("li"); li.className="set-now"; li.textContent="В описании пока не нашлось таймкодов. ⏮ ⏭ перематывают на 30 секунд; треклист можно вставить вручную."; ol.appendChild(li); return; }
+        list.forEach((t,i)=>{
+          const li=document.createElement("li"); li.className="item chap"; li.tabIndex=0; li.setAttribute("role","button"); li.dataset.index=i;
+          li.innerHTML=`<span class="n">${S.fmt(t.time)}</span><span class="t"></span>`; li.querySelector(".t").textContent=t.title;
+          const go=()=>{ seekSet(t.time); if (vkS.paused) vk({type:"play"}); };
+          li.addEventListener("click",go); li.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); go(); } });
+          ol.appendChild(li);
+        });
+      }
+      function renderNow(){
+        const id = vkS.setId; $("setNow").hidden = !id; if (!id) return;
+        const list = chaptersOf(id), t = vkNow(), i = S.chapterAt(list, t);
+        $("setNowTitle").textContent = (vkS.title||"Сет")+" · "+S.fmt(t)+" / "+(vkS.duration?S.fmt(vkS.duration):"—");
+        $("setNowTrack").textContent = i>=0 ? (i+1)+". "+list[i].title : "";
+        if (i!==chapCur){ chapCur=i; $("chapList").querySelectorAll(".chap").forEach(li=>li.classList.toggle("cur", +li.dataset.index===i)); }
+      }
+      // Перемотка сразу видна на экране, не дожидаясь отчёта окна ВК.
+      const seekSet = t => { vk({type:"seek", time:t}); vkS = {...vkS, currentTime:t}; vkAt = performance.now(); renderNow(); };
+      setStep = d => {
+        const list = chaptersOf(vkS.setId);
+        if (!list.length) return vk({type:"skip", by: d>0?30:-30});
+        const to = S.stepTime(list, vkNow(), d);
+        if (to===null){ setStatus("Это последний трек сета", true); return; }
+        seekSet(to);
+      };
+      $("setPrev").onclick = ()=>setStep(-1);
+      $("setNext").onclick = ()=>setStep(1);
+      $("setRestart").onclick = ()=>{ seekSet(0); $("setRestart").hidden = true; };
+      $("setScanBtn").onclick = ()=>{ vk({type:"setScan"}); setStatus("Ищу таймкоды в описании видео…", true); };
+      $("setPasteBtn").onclick = ()=>{
+        const box=$("setPaste"); box.hidden=!box.hidden;
+        if (!box.hidden){ const m=setManual[vkS.setId]; $("setPasteText").value = m ? m.map(t=>S.fmt(t.time)+" "+t.title).join("\n") : ""; $("setPasteText").focus(); }
+      };
+      $("setPasteSave").onclick = ()=>{
+        const id=vkS.setId; if (!id) return;
+        const list=S.parseTracklist($("setPasteText").value, vkS.duration);
+        if (!list.length){ setStatus("Не нашёл треклист: нужно минимум 3 строки вида «03:15 Исполнитель — Название»"); return; }
+        setManual[id]=list; store.set("setTracks", setManual); $("setPaste").hidden=true;
+        setStatus("Свой треклист сохранён: "+list.length+" "+plural(list.length,["трек","трека","треков"]), true);
+        renderChapters(id, true); renderSets(); renderNow();
+      };
+      $("setPasteClear").onclick = ()=>{
+        const id=vkS.setId; if (!id) return;
+        delete setManual[id]; store.set("setTracks", setManual); $("setPaste").hidden=true; $("setPasteText").value="";
+        renderChapters(id, true); renderSets(); renderNow();
+      };
+      T.event.listen("vk:settracks", e=>{
+        const p=e.payload||{}; if (!p.id || !S.parseLink("https://vkvideo.ru/video"+p.id)) return;
+        const list = Array.isArray(p.tracks) ? p.tracks.filter(t=>t && isFinite(t.time) && typeof t.title==="string").slice(0,500) : [];
+        if (list.length) setAuto[p.id]=list; else delete setAuto[p.id];
+        // Храним треклисты только своих сетов, чтобы список не разрастался.
+        Object.keys(setAuto).forEach(k=>{ if (!sets.some(x=>x.id===k)) delete setAuto[k]; });
+        store.set("setAuto", setAuto);
+        if (vkS.setId===p.id){ renderChapters(p.id, false); renderNow(); }
+        if (list.length) setStatus("Треклист из описания: "+list.length+" "+plural(list.length,["трек","трека","треков"]), true);
+        renderSets();
+      });
+      T.event.listen("vk:setresume", e=>{
+        const p=e.payload||{}; if (!p.id) return;
+        setStatus("Продолжаю с "+S.fmt(p.time)+" — там, где вы остановились", true);
+        $("setRestart").hidden = false; setTimeout(()=>{ $("setRestart").hidden = true; }, 20000);
+      });
+      T.event.listen("vk:state", e=>{
+        const s=e.payload||{}, id=s.setId||"";
+        if (id!==liveId){ liveId=id; chapSig=""; renderSets(); }
+        if (!id){ $("setNow").hidden = true; return; }
+        let x = sets.find(y=>y.id===id);
+        if (!x){ // сет открыли прямо в окне ВК: тоже запоминаем
+          const link=S.parseLink("https://vkvideo.ru/video"+id); if (!link) return;
+          x={url:link.url, id, kind:link.kind, title:"", duration:0, pos:0}; sets.push(x); renderSets();
+        }
+        let changed=false;
+        if (s.title && s.title!==x.title){ x.title=s.title; changed=true; }
+        if (s.duration && Math.abs((x.duration||0)-s.duration)>1){ x.duration=Math.floor(s.duration); changed=true; }
+        if (!s.paused && performance.now()-savedAt>5000){
+          savedAt=performance.now();
+          const pos = S.resumePoint(s.currentTime, s.duration);
+          if (pos!==x.pos){ x.pos=pos; changed=true; }
+        }
+        if (changed){ saveSets(); renderSets(); }
+        renderChapters(id, false); renderNow();
+      });
+      setInterval(()=>{ if (mode==="vk" && vkS.setId && !$("setNow").hidden) renderNow(); }, 1000);
+      renderSets();
+    }
   } else {
     $("vkApp").hidden = true;
   }

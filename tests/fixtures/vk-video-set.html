@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rooftop Session 07 | VK Видео</title></head>
+<body>
+<!-- Synthetic VK Video page for offline tests. No VK markup is copied; only the shape matters. -->
+<h1 class="VideoTitle">Rooftop Session 07</h1>
+<video id="v" playsinline></video>
+<div class="VideoDescription">
+  <div class="text">Сет записан на крыше. Стрим начался в 21:00<br>
+    <a href="#" class="tc">0:00</a> Intro — Opening<br>
+    <a href="#" class="tc">0:40</a> Artist One – Night Drive<br>
+    <span class="rest" hidden><a href="#" class="tc">1:20</a> Artist Two — Deep Water<br>
+    <a href="#" class="tc">2:10</a> Artist Three | Last Train<br>
+    <a href="#" class="tc">3:05</a> ID - ID</span>
+  </div>
+  <button type="button" class="more">Показать полностью</button>
+</div>
+<section class="comments"><p>Лучший момент на 1:22 🔥</p></section>
+<script>
+  document.querySelector('.more').addEventListener('click', function () { document.querySelector('.rest').hidden = false; this.remove(); });
+  document.querySelectorAll('.tc').forEach(function (a) { a.addEventListener('click', function (e) { e.preventDefault(); }); });
+  // 240 s of quiet 8 kHz mono tone as a blob, like VK serves media through MSE blobs.
+  (function () {
+    var rate = 8000, seconds = 240, n = rate * seconds, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf), p = 0;
+    function str(s) { for (var i = 0; i < s.length; i++) v.setUint8(p++, s.charCodeAt(i)); }
+    function u32(x) { v.setUint32(p, x, true); p += 4; } function u16(x) { v.setUint16(p, x, true); p += 2; }
+    str('RIFF'); u32(36 + n * 2); str('WAVE'); str('fmt '); u32(16); u16(1); u16(1); u32(rate); u32(rate * 2); u16(2); u16(16); str('data'); u32(n * 2);
+    for (var i = 0; i < n; i++) { v.setInt16(p, Math.round(800 * Math.sin(2 * Math.PI * 220 * i / rate)), true); p += 2; }
+    document.getElementById('v').src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  })();
+</script>
+</body>
+</html>

@@ -86,5 +86,99 @@ with sync_playwright() as p:
         page.locator('#deka-overlay #playA').click(); page.wait_for_timeout(100)
         record('Pause A does not pause B', 'playing' not in page.locator('#deka-overlay #discA').get_attribute('class') and 'playing' in page.locator('#deka-overlay #discB').get_attribute('class'))
     record('No browser runtime exceptions', not errors)
+
+    # ---- VK Video set screen: synthetic pages served in-process via routing, no network ----
+    set_html = (ROOT / 'tests/fixtures/vk-video-set.html').read_text()
+    music_html = '<!doctype html><html><head><meta charset="utf-8"></head><body><h1>Музыка</h1></body></html>'
+    sctx = browser.new_context(viewport={'width':390,'height':844}, has_touch=True)
+    sctx.route('https://vkvideo.ru/**', lambda r: r.fulfill(status=200, content_type='text/html; charset=utf-8', body=set_html))
+    sctx.route('https://vk.ru/**', lambda r: r.fulfill(status=200, content_type='text/html; charset=utf-8', body=music_html))
+    # Same order as the Android shell: one init script for every page of the WebView.
+    bundle = '\n;\n'.join((ROOT/'src'/n).read_text() for n in
+        ['library-engine.js','deck-engine.js','set-core.js','vk-bridge.js','library-runtime.js','virtual-list.js','mobile-overlay.js'])
+    sctx.add_init_script(bundle)
+    sp = sctx.new_page(); serrors = []
+    sp.on('pageerror', lambda err: serrors.append(str(err)))
+    sp.goto('https://vkvideo.ru/video-77_88')
+    ov = lambda sel: sp.locator('#deka-overlay ' + sel)
+    ov('#setView').wait_for(state='visible')
+    record('VK Video page opens the set screen instead of the library', ov('.library').is_hidden())
+    ov('#chaps .chap').nth(4).wait_for(timeout=15000)
+    titles = ov('#chaps .chap .trackmeta b').all_inner_texts()
+    record('Tracklist read from collapsed description, stray times ignored',
+        titles == ['Intro — Opening','Artist One – Night Drive','Artist Two — Deep Water','Artist Three | Last Train','ID - ID'])
+    sp.wait_for_function("() => { const v=document.getElementById('v'); return v && !v.paused && v.readyState>=1; }", timeout=15000)
+    record('Set audio starts automatically', True)
+    ov('#chaps .chap').nth(2).click()
+    sp.wait_for_function("() => Math.abs(document.getElementById('v').currentTime - 80) < 3")
+    record('Tapping a track of the set seeks the video to its timestamp')
+    sp.wait_for_function("() => document.querySelector('#deka-overlay').shadowRoot.querySelector('.chap.current')?.dataset.index === '2'")
+    record('Current track of the set is highlighted', 'Artist Two' in ov('#setNow').inner_text())
+    ov('[data-set="next"]').click()
+    sp.wait_for_function("() => Math.abs(document.getElementById('v').currentTime - 130) < 3")
+    record('Next-track button jumps to the following timestamp')
+    ov('[data-set="prev"]').click()
+    sp.wait_for_function("() => Math.abs(document.getElementById('v').currentTime - 80) < 3")
+    record('Previous-track button at a track start goes to the previous track')
+    sp.evaluate("() => { document.getElementById('v').currentTime = 150; }")
+    sp.wait_for_function("() => { try { const p=JSON.parse(localStorage.getItem('deka:setpos'))['-77_88']; return p && p.t >= 148 && p.d === 240; } catch (e) { return false; } }", timeout=10000)
+    record('Position of the set is remembered while it plays')
+    sp.reload()
+    ov('#setNote').wait_for(state='visible', timeout=15000)
+    sp.wait_for_function("() => document.getElementById('v').currentTime >= 145", timeout=10000)
+    record('Reopening the set continues from the saved place', 'Продолжаю с 2:' in ov('#setNoteText').inner_text())
+    ov('[data-set="restart"]').click()
+    sp.wait_for_function("() => document.getElementById('v').currentTime < 5")
+    record('"С начала" restarts the set')
+    ov('#pasteBtn').click()
+    ov('#pasteText').fill('0:00 Мой первый\n1:00 Мой второй\n2:00 Мой третий\n3:00 Мой четвёртый')
+    ov('#pasteSave').click()
+    record('Own tracklist replaces the one from the description',
+        ov('#chaps .chap .trackmeta b').all_inner_texts() == ['Мой первый','Мой второй','Мой третий','Мой четвёртый'])
+    sp.reload(); ov('#chaps .chap').first.wait_for()
+    record('Own tracklist survives reopening', ov('#chaps .chap').count() == 4)
+    sp.evaluate("() => { document.getElementById('v').currentTime = 100; }")
+    sp.wait_for_timeout(600)
+    sp.screenshot(path=str(OUT/'set-screen.png'))
+    ov('#setBack').click()
+    sp.wait_for_url('https://vk.ru/audio**')
+    sp.wait_for_function("() => { try { return (JSON.parse(localStorage.getItem('deka:sets'))||[]).length === 1; } catch (e) { return false; } }")
+    saved = sp.evaluate("() => JSON.parse(localStorage.getItem('deka:sets'))[0]")
+    record('Back to music hands over title and place of the set to vk.ru',
+        saved['url'] == 'https://vkvideo.ru/video-77_88' and saved['title'] == 'Rooftop Session 07' and 95 <= saved['pos'] <= 110 and saved['duration'] == 240)
+    record('Handover fragment is removed from the address', '#' not in sp.url)
+    record('No runtime exceptions on set pages', not serrors)
+    if serrors: print(serrors)
+    sctx.close()
+
+    # ---- Windows UI: Sets tab against a stand-in for the Tauri bridge (no VK, no network) ----
+    dctx = browser.new_context(viewport={'width':1200,'height':900})
+    dctx.add_init_script('''
+      window.__calls = []; window.__ls = {};
+      window.__TAURI__ = { core: { invoke: async (cmd, args) => { window.__calls.push([cmd, args]); } },
+        event: { listen: (name, fn) => { (window.__ls[name] = window.__ls[name] || []).push(fn); return Promise.resolve(() => {}); } } };
+      window.__fire = (name, payload) => (window.__ls[name] || []).forEach(fn => fn({ payload }));
+    ''')
+    dp = dctx.new_page(); derrors = []
+    dp.on('pageerror', lambda err: derrors.append(str(err)))
+    dp.goto((ROOT / 'src/index.html').as_uri())
+    dp.click('#tabSets')
+    record('Windows: Sets tab is available in the app', dp.locator('#setApp').is_visible())
+    dp.fill('#setLink', 'https://vk.com/videos-1?z=video-77_88%2Fpl_-1_-2'); dp.click('#setForm button[type=submit]')
+    calls = dp.evaluate('() => window.__calls.filter(c => c[0] === "vk_cmd").map(c => c[1].cmd)')
+    record('Windows: adding a link opens the set through the VK window', {'type':'openSet','id':'-77_88','kind':'video'} in calls)
+    dp.evaluate('''() => { __fire('vk:state', { setId:'-77_88', title:'Rooftop Session 07', artist:'VK Видео', video:true, currentTime:85, duration:240, paused:false, loggedIn:true, hasMedia:true });
+      __fire('vk:settracks', { id:'-77_88', title:'Rooftop Session 07', tracks:[{time:0,title:'Intro'},{time:40,title:'Night Drive'},{time:80,title:'Deep Water'},{time:130,title:'Last Train'}] }); }''')
+    dp.locator('#chapList .chap').nth(3).wait_for()
+    record('Windows: tracklist and current track of the set are shown',
+        'Deep Water' in dp.locator('#setNowTrack').inner_text() and 'cur' in dp.locator('#chapList .chap').nth(2).get_attribute('class'))
+    dp.click('#bNext')
+    last = dp.evaluate('() => window.__calls.filter(c => c[0] === "vk_cmd").map(c => c[1].cmd).pop()')
+    record('Windows: transport next jumps to the next track of the set', last == {'type':'seek','time':130})
+    record('Windows: set is listed with its title', 'Rooftop Session 07' in dp.locator('#setList').inner_text())
+    dp.screenshot(path=str(OUT/'windows-sets.png'))
+    record('Windows: no runtime exceptions', not derrors)
+    if derrors: print(derrors)
+    dctx.close()
     browser.close()
 (OUT/'report.json').write_text(json.dumps({'tests':results,'errors':errors,'fixture':'synthetic VK DOM; no real VK session'},ensure_ascii=False,indent=2))

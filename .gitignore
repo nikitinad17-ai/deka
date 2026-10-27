@@ -10,3 +10,6 @@ android/*.jks
 android/*.keystore
 android/signing.json
 **/keystore.properties
+
+# Local test results (CI uploads them as an artifact).
+test-output/

@@ -2,7 +2,7 @@ name: Build and test
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/v0.9.0-landscape-library]
+    branches: [main, feature/v0.10.0-sets]
   pull_request:
     branches: [main]
 permissions:
@@ -133,7 +133,7 @@ jobs:
           "$aapt" dump badging "$APK_NAME" > "$RUNNER_TEMP/deka-badging.txt"
           head -n 1 "$RUNNER_TEMP/deka-badging.txt"
           grep -q "package: name='$APK_PACKAGE'" "$RUNNER_TEMP/deka-badging.txt"
-          grep -q "versionName='0.9.0'" "$RUNNER_TEMP/deka-badging.txt"
+          grep -q "versionName='$(node -p "require('./package.json').version")'" "$RUNNER_TEMP/deka-badging.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: deka-android
@@ -143,7 +143,8 @@ jobs:
         run: |
           rm -f "$RUNNER_TEMP/deka-signing.p12" src-tauri/gen/android/keystore.properties
   release:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # main publishes vX.Y.Z; the feature branch publishes a separate test prerelease vX.Y.Z-test.
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/v0.10.0-sets')
     needs: [quality, windows, android]
     runs-on: ubuntu-latest
     permissions:
@@ -151,7 +152,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: ver
-        run: node -e 'require("fs").appendFileSync(process.env.GITHUB_OUTPUT,"version="+require("./package.json").version+"\n")'
+        run: |
+          v=$(node -p 'require("./package.json").version')
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then tag="v$v"; title="Дека $v — проверочная версия"; else tag="v$v-test"; title="Дека $v — тест сетов"; fi
+          { echo "version=$v"; echo "tag=$tag"; echo "title=$title"; } >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
           pattern: deka-*
@@ -159,15 +163,17 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.ver.outputs.version }}
+          tag_name: ${{ steps.ver.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: Дека ${{ steps.ver.outputs.version }} — проверочная версия
+          name: ${{ steps.ver.outputs.title }}
           prerelease: true
           make_latest: false
           body: |
             Коммит: ${{ github.sha }}. Android build: ${{ needs.android.outputs.kind }}.
-            Полная накопительная библиотека, два списка и две деки при повороте телефона.
-            Сведение двух файлов работает независимо; VK остаётся одним общим потоком.
+            Сеты VK Видео: экран сета, продолжение с места остановки, треклист по таймкодам из описания или свой, листание треков сета.
+            Windows: вкладка «Сеты» в медиатеке, ⏮ ⏭ на пульте листают треки сета.
+            Звук сетов не скачивается: играет через страницу VK Видео, сохраняются только место и названия.
+            Полная накопительная библиотека, два списка и две деки при повороте телефона; VK остаётся одним общим потоком.
             Deka-Preview.apk — отдельное приложение рядом с 0.8; не обновление поверх него.
             Deka.apk появляется только при настроенных защищённых signing secrets.
             Тесты используют синтетическую VK-разметку; реальная сессия VK и физический сон телефона здесь не проверены.

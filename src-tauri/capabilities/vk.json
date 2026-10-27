@@ -10,7 +10,9 @@
       "https://vk.ru/*",
       "https://*.vk.ru/*",
       "https://vk.com/*",
-      "https://*.vk.com/*"
+      "https://*.vk.com/*",
+      "https://vkvideo.ru/*",
+      "https://*.vkvideo.ru/*"
     ]
   },
   "permissions": [

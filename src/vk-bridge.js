@@ -11,6 +11,13 @@
   // Страница VK Видео: здесь звук берём из <video> (вкладка «Сеты» на телефоне).
   function isVideoPage() { return /vkvideo\.ru$/.test(location.hostname) || /^\/(video|clip)/.test(location.pathname); }
   if (window.__deka) return;
+  var SETS = window.DekaSets || null;
+  // id сета (видео) на текущей странице: «-123_456» или "".
+  function setId() {
+    if (!SETS || !isVideoPage()) return "";
+    var l = SETS.parseLink(location.href);
+    return l ? l.id : "";
+  }
 
   // ---------- связь с окном плеера ----------
   function emit(event, payload) {
@@ -84,6 +91,7 @@
       title: md && md.title ? md.title : (isVideoPage() ? videoTitle() : ""),
       artist: md && md.artist ? md.artist : (isVideoPage() ? "VK Видео" : ""),
       video: isVideoPage(),
+      setId: setId(),
       album: md ? md.album : "",
       artwork: art,
       currentTime: media ? media.currentTime : 0,
@@ -522,6 +530,9 @@
     return m ? m[1] : "";
   }
 
+  // Музыка живёт на vk.ru: со страницы VK Видео относительный адрес увёл бы на vkvideo.ru/audio.
+  function vkUrl(path) { return /(^|\.)vk\.(ru|com)$/.test(location.hostname) ? path : "https://vk.ru" + path; }
+
   // Открыть полный список «Мои треки» (там на странице только ваши треки).
   function openMy() {
     // Мобильный ВК пишет полный адрес (https://m.vk.ru/audios…), компьютерный — короткий.
@@ -535,7 +546,7 @@
     }
     if (a) { location.href = a.getAttribute("href"); return; }
     var id = myId();
-    location.href = id ? "/audios" + id : "/audio";
+    location.href = vkUrl(id ? "/audios" + id : "/audio");
   }
 
   // Что мост видит на странице: для подстройки под новую вёрстку ВК по скриншоту.
@@ -561,6 +572,111 @@
     };
   }
 
+  // ---------- сеты VK Видео: продолжение с места и треклист ----------
+  // Храним только позицию (секунды) и название, чтобы открыть сет с того же места.
+  // Треклист читаем из описания видео, которое и так видно на странице.
+  var setStore = null;
+  try { if (SETS) setStore = SETS.positions(window.localStorage); } catch (e) { setStore = null; }
+  var resumeFor = "", resumeAt = 0, resumeChecked = false, setTracksSig = "", setTracks = [], expandTried = "";
+  function setDuration() { return media && isFinite(media.duration) ? media.duration : 0; }
+  function saveSetPos() {
+    var id = setId();
+    if (!id || !setStore || !media || resumeFor !== id) return; // до решения о продолжении ничего не перезаписываем
+    var t = media.currentTime, d = setDuration();
+    if (d && t > d - SETS.END_MARGIN) setStore.clear(id);
+    else if (t >= SETS.MIN_RESUME) setStore.set(id, t, d, videoTitle());
+  }
+  function setTick() {
+    var id = setId();
+    if (!id || !media || media.tagName !== "VIDEO") return;
+    if (resumeFor !== id) {
+      if (media.paused || media.readyState < 1) return;
+      resumeFor = id; resumeAt = 0; resumeChecked = false;
+      var saved = setStore && setStore.get(id);
+      var at = saved ? SETS.resumePoint(saved.t, setDuration() || saved.d) : 0;
+      // Ссылка со своим временем (?t=) или уже продолженный самим ВК просмотр — не трогаем.
+      if (at && media.currentTime < 10 && !/[?&#]t=/.test(location.href)) {
+        resumeAt = at;
+        try { media.currentTime = at; } catch (e) {}
+        emit("vk:setresume", { id: id, time: at });
+      }
+      return;
+    }
+    // Плеер ВК мог вернуть видео к началу после нашей перемотки: повторяем один раз.
+    if (resumeAt && !resumeChecked) {
+      resumeChecked = true;
+      if (media.currentTime < resumeAt - 15 && media.currentTime < 20) { try { media.currentTime = resumeAt; } catch (e) {} }
+    }
+    if (!media.paused) saveSetPos();
+  }
+  var SET_DESC = [
+    "[data-testid*='description' i]", "[data-testid*='video_info' i]", "[data-testid*='videoinfo' i]",
+    "[class*='escription']", "[class*='VideoInfo']", "[class*='video_info']", "#mv_description"
+  ];
+  var MORE = /^(показать (полностью|ещё|больше)|ещё|подробнее|развернуть|show more|read more|more)$/i;
+  function setCandidates() {
+    var out = [];
+    SET_DESC.forEach(function (sel) {
+      try { Array.prototype.forEach.call(document.querySelectorAll(sel), function (e) { if (out.indexOf(e) < 0) out.push(e); }); } catch (e) {}
+    });
+    // ВК превращает таймкоды описания в ссылки: берём общий блок большинства из них.
+    var stamps = Array.prototype.filter.call(document.querySelectorAll("a, button, [role='button'], span"), function (e) {
+      return e.children.length === 0 && /^\s*(\d{1,2}:)?\d{1,2}:\d{2}\s*$/.test(e.textContent || "");
+    });
+    if (stamps.length >= 3) {
+      var p = stamps[0].parentElement, need = Math.ceil(stamps.length * 0.6);
+      for (var depth = 0; p && p !== document.body && depth < 8; depth++, p = p.parentElement) {
+        var inside = 0;
+        for (var i = 0; i < stamps.length; i++) if (p.contains(stamps[i])) inside++;
+        if (inside >= Math.min(need, 3) && inside >= 3) { if (out.indexOf(p) < 0) out.push(p); break; }
+      }
+    }
+    return out.filter(function (e) { return (e.textContent || "").length < 60000; }).slice(0, 40);
+  }
+  // Свёрнутое описание раскрываем один раз: только кнопки без перехода на другую страницу.
+  function expandDescription(list, id) {
+    if (expandTried === id) return;
+    expandTried = id;
+    list.forEach(function (box) {
+      Array.prototype.forEach.call(box.querySelectorAll("button, a, [role='button'], span"), function (b) {
+        if (!MORE.test((b.textContent || "").trim()) || b.children.length > 2) return;
+        var link = b.closest("a[href]"), href = link ? (link.getAttribute("href") || "") : "";
+        if (href && href !== "#" && !/^javascript:/i.test(href)) return;
+        try { b.click(); } catch (e) {}
+      });
+    });
+  }
+  function scanSet(force) {
+    var id = setId();
+    if (!id) return;
+    var boxes = setCandidates();
+    expandDescription(boxes, id);
+    var best = [], d = setDuration();
+    boxes.forEach(function (b) {
+      var list = SETS.parseTracklist(b.innerText || b.textContent || "", d);
+      if (list.length > best.length) best = list;
+    });
+    var sig = id + "|" + JSON.stringify(best);
+    if (force || sig !== setTracksSig) {
+      setTracksSig = sig; setTracks = best;
+      emit("vk:settracks", { id: id, title: videoTitle(), tracks: best });
+    }
+  }
+  var setScans = 0;
+  function setLoop() {
+    if (!SETS || !isVideoPage()) return;
+    setInterval(setTick, 2000);
+    (function again() {
+      scanSet(false);
+      setScans++;
+      setTimeout(again, setScans < 30 ? 3000 : 20000); // описание догружается после видео
+    })();
+    window.addEventListener("pagehide", saveSetPos);
+    document.addEventListener("visibilitychange", saveSetPos);
+  }
+  // Пауза — тоже повод запомнить место.
+  document.addEventListener("pause", function (e) { if (e.target === media && media && media.tagName === "VIDEO") saveSetPos(); }, true);
+
   window.__deka = {
     cmd: function (c) {
       c = c || {};
@@ -579,15 +695,22 @@
         case "volume": if (media && isFinite(c.value)) media.volume = Math.max(0, Math.min(1, c.value)); break;
         case "playRow": clickRow(c.key); break;
         case "playKey": playKey(c.key); break;
-        case "open": if (c.path && c.path.charAt(0) === "/") location.href = c.path; break;
+        case "open": if (c.path && c.path.charAt(0) === "/" && c.path.charAt(1) !== "/") location.href = vkUrl(c.path); break;
         case "openPlay":
           // Открыть трек по ссылке и включить его, когда страница загрузится.
-          if (c.path && c.path.charAt(0) === "/") {
+          if (c.path && c.path.charAt(0) === "/" && c.path.charAt(1) !== "/") {
             try { sessionStorage.setItem("dekaAutoplay", c.id || "*"); } catch (e) {}
-            location.href = c.path;
+            location.href = vkUrl(c.path);
           }
           break;
         case "refresh": lastListJson = ""; sendList(); break;
+        case "openSet": {
+          // Только сеты VK Видео по проверенному id, без произвольных адресов.
+          var link = SETS && SETS.parseLink("https://vkvideo.ru/" + (c.kind === "clip" ? "clip" : "video") + String(c.id || ""));
+          if (link && link.id === String(c.id)) location.href = link.url;
+          break;
+        }
+        case "setScan": scanSet(true); break;
         case "collectAll": collectAll(); break;
         case "collectMy": collectMy(); break;
         case "more":
@@ -676,6 +799,7 @@
   function startObserver() {
     if (!document.body) return setTimeout(startObserver, 200);
     autoplayVideo();
+    setLoop();
     autoplayFromLink();
     findFromQueue();
     collectFromFlag();

@@ -4,6 +4,7 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 const VK_BRIDGE: &str = include_str!("../../src/vk-bridge.js");
 const LIBRARY_CORE: &str = include_str!("../../src/library-engine.js");
 const LIBRARY_RUNTIME: &str = include_str!("../../src/library-runtime.js");
+const SET_CORE: &str = include_str!("../../src/set-core.js");
 #[cfg(mobile)]
 const DECK_ENGINE: &str = include_str!("../../src/deck-engine.js");
 #[cfg(mobile)]
@@ -78,7 +79,7 @@ pub fn run() {
         .setup(|app| {
             #[cfg(desktop)]
             {
-                let script = [LIBRARY_CORE, VK_BRIDGE, LIBRARY_RUNTIME].join("\n;\n");
+                let script = [LIBRARY_CORE, SET_CORE, VK_BRIDGE, LIBRARY_RUNTIME].join("\n;\n");
                 let builder = WebviewWindowBuilder::new(app, "vk", WebviewUrl::External(VK_URL.parse().unwrap()))
                     .title("ВКонтакте · Дека").inner_size(1100.0, 760.0).visible(false)
                     .initialization_script(script);
@@ -89,7 +90,7 @@ pub fn run() {
             #[cfg(mobile)]
             {
                 // One script guarantees ordering. Native audio play is captured BEFORE the VK hook.
-                let script = [LIBRARY_CORE, DECK_ENGINE, VK_BRIDGE, LIBRARY_RUNTIME, VIRTUAL_LIST, MOBILE_OVERLAY].join("\n;\n");
+                let script = [LIBRARY_CORE, DECK_ENGINE, SET_CORE, VK_BRIDGE, LIBRARY_RUNTIME, VIRTUAL_LIST, MOBILE_OVERLAY].join("\n;\n");
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::External(VK_URL.parse().unwrap()))
                     .initialization_script(script).build()?;
             }
