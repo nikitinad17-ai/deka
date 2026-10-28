@@ -1,0 +1,18 @@
+# Дека · Android.
+# wry генерирует RustWebView.kt (окно WebView) при сборке и вставляет этот код в его класс.
+# Когда гаснет экран, Android говорит окну «тебя не видно» — и Chromium считает страницу VK
+# скрытой: VK ставит паузу, видео сетов останавливается, таймеры подгрузки душатся.
+# Плееру это не нужно: окно всегда сообщает странице, что оно видно.
+# Проверка в CI ищет метку DEKA_KEEP_VISIBLE в сгенерированном файле.
+# На сборку для Windows не влияет: wry использует эти переменные только для Android.
+[env]
+WRY_RUSTWEBVIEW_CLASS_EXTENSION = '''
+    // DEKA_KEEP_VISIBLE: страница не «уходит в фон» вместе с экраном.
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(android.view.View.VISIBLE)
+    }
+
+    override fun onVisibilityChanged(changedView: android.view.View, visibility: Int) {
+        super.onVisibilityChanged(changedView, android.view.View.VISIBLE)
+    }
+'''

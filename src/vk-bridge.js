@@ -11,6 +11,22 @@
   // Страница VK Видео: здесь звук берём из <video> (вкладка «Сеты» на телефоне).
   function isVideoPage() { return /vkvideo\.ru$/.test(location.hostname) || /^\/(video|clip)/.test(location.pathname); }
   if (window.__deka) return;
+  // Android: когда гаснет экран, страница VK не должна узнавать, что её «скрыли»,
+  // иначе её плеер сам ставит паузу. Основное лечение — в нативной оболочке
+  // (WebView не уходит в фон); это — страховка от собственных проверок страницы.
+  (function keepPageVisible() {
+    if (!/Android/i.test(navigator.userAgent || "")) return;
+    try {
+      var D = Document.prototype;
+      Object.defineProperty(D, "hidden", { configurable: true, get: function () { return false; } });
+      Object.defineProperty(D, "webkitHidden", { configurable: true, get: function () { return false; } });
+      Object.defineProperty(D, "visibilityState", { configurable: true, get: function () { return "visible"; } });
+      Object.defineProperty(D, "webkitVisibilityState", { configurable: true, get: function () { return "visible"; } });
+      var swallow = function (e) { e.stopImmediatePropagation(); };
+      window.addEventListener("visibilitychange", swallow, true);
+      window.addEventListener("webkitvisibilitychange", swallow, true);
+    } catch (e) {}
+  })();
   var SETS = window.DekaSets || null;
   // id сета (видео) на текущей странице: «-123_456» или "".
   function setId() {

@@ -28,6 +28,14 @@ try {
   const manifest=fs.readFileSync(path.join(main,'AndroidManifest.xml'),'utf8');
   assert.equal((manifest.match(/DekaPlaybackService/g)||[]).length,1);
   assert.ok(manifest.includes('FOREGROUND_SERVICE_MEDIA_PLAYBACK'));
-  assert.ok(fs.readFileSync(path.join(dir,'DekaPlaybackService.kt'),'utf8').includes('PARTIAL_WAKE_LOCK'));
+  const svc=fs.readFileSync(path.join(dir,'DekaPlaybackService.kt'),'utf8'), act=fs.readFileSync(path.join(dir,'MainActivity.kt'),'utf8');
+  assert.ok(svc.includes('PARTIAL_WAKE_LOCK') && svc.includes('createWifiLock') && svc.includes('IDLE_GRACE_MS'), 'service keeps CPU and Wi-Fi and survives short pauses');
+  assert.equal((act.match(/DEKA_BACKGROUND_V2/g)||[]).length,1,'activity patched exactly once');
+  assert.ok(/override fun onPause\(\)[\s\S]*dekaWebView\?\.onResume\(\)/.test(act),'WebView pause from wry is undone');
+  assert.ok(act.includes('RENDERER_PRIORITY_IMPORTANT') && act.includes('ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'));
+  assert.ok(manifest.includes('REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'));
+  // The WebView window must not report itself hidden when the screen turns off.
+  const cargo=read('.cargo/config.toml');
+  assert.ok(/WRY_RUSTWEBVIEW_CLASS_EXTENSION\s*=\s*'''[\s\S]*DEKA_KEEP_VISIBLE[\s\S]*onWindowVisibilityChanged[\s\S]*View\.VISIBLE[\s\S]*onVisibilityChanged[\s\S]*'''/.test(cargo));
 } finally { fs.rmSync(tmp,{recursive:true,force:true}); }
 console.log('Syntax, version consistency, absence of signing material and native generator checks passed.');

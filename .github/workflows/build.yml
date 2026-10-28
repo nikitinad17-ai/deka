@@ -126,6 +126,11 @@ jobs:
       - name: Build and verify APK
         run: |
           $REPORT npx tauri android build --apk --target aarch64 --ci
+          # The screen-off fix must really be inside the built app, not only in the repo.
+          java=src-tauri/gen/android/app/src/main/java
+          grep -rlq "DEKA_KEEP_VISIBLE" "$java" || { echo "::error::RustWebView.kt was generated without DEKA_KEEP_VISIBLE (.cargo/config.toml not applied)"; exit 1; }
+          grep -rlq "DEKA_BACKGROUND_V2" "$java" || { echo "::error::MainActivity.kt is missing the background patch"; exit 1; }
+          grep -rl "DEKA_KEEP_VISIBLE" "$java"
           apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -n 1)
           test -n "$apk"
           cp "$apk" "$APK_NAME"
@@ -156,7 +161,7 @@ jobs:
       - id: ver
         run: |
           v=$(node -p 'require("./package.json").version')
-          if [ "$GITHUB_REF" = "refs/heads/main" ]; then tag="v$v"; title="Дека $v — проверочная версия"; else tag="v$v-test"; title="Дека $v — тест сетов"; fi
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then tag="v$v"; title="Дека $v — проверочная версия"; else tag="v$v-test"; title="Дека $v — тест"; fi
           { echo "version=$v"; echo "tag=$tag"; echo "title=$title"; } >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
@@ -172,6 +177,8 @@ jobs:
           make_latest: false
           body: |
             Коммит: ${{ github.sha }}. Android build: ${{ needs.android.outputs.kind }}.
+            Android: музыка и сеты продолжают играть при выключенном экране (WebView не уходит в фон, сервис переживает паузы между треками, Wi‑Fi не засыпает; один раз спрашивается снятие экономии батареи).
+            «Треки VK» — только ваш список «Мои треки» целиком: главная страница с рекомендациями в библиотеку больше не попадает; «Загрузить всё» открывает ваш список и догружает его до конца. Кнопка «Отчёт» — технический отчёт о странице без названий треков.
             Сеты VK Видео: экран сета, продолжение с места остановки, треклист по таймкодам из описания или свой, листание треков сета.
             Windows: вкладка «Сеты» в медиатеке, ⏮ ⏭ на пульте листают треки сета.
             Звук сетов не скачивается: играет через страницу VK Видео, сохраняются только место и названия.

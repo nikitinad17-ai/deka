@@ -151,6 +151,55 @@ with sync_playwright() as p:
     if serrors: print(serrors)
     sctx.close()
 
+    # ---- Own library: landing page recommendations never enter it; lazy-loaded own list is complete ----
+    music_fixture = (ROOT / 'tests/fixtures/vk-music.html').read_text()
+    lctx = browser.new_context(viewport={'width':390,'height':844}, has_touch=True)
+    lctx.route('https://m.vk.ru/**', lambda r: r.fulfill(status=200, content_type='text/html; charset=utf-8', body=music_fixture))
+    lctx.add_init_script(bundle)
+    lp = lctx.new_page(); lerrors = []
+    lp.on('pageerror', lambda err: lerrors.append(str(err)))
+    lo = lambda sel: lp.locator('#deka-overlay ' + sel)
+    lp.goto('https://m.vk.ru/audio')
+    lo('#countmain').wait_for()
+    lp.wait_for_timeout(1200)  # passive accumulation would have happened by now
+    record('Landing page: preview and recommendations are not taken as the library', lo('#countmain').inner_text().startswith('0 '))
+    record('Landing page: status explains how to load own tracks', 'Мои треки' in lo('#statusText').inner_text())
+    lo('#syncBtn').click()
+    lp.wait_for_url('https://m.vk.ru/audios42**')
+    lp.wait_for_function("() => { const l = window.DekaLibrary && DekaLibrary.get(); return l && l.complete; }", timeout=60000)
+    lib = lp.evaluate("() => DekaLibrary.get()")
+    keys = [t['key'] for t in lib['items']]
+    record('"Загрузить всё" from landing opens own list and loads all 95, past the first 30', keys == ['42_' + str(i) for i in range(95)])
+    record('Own list: no recommendation tracks after the end of own list', not any(k.startswith('-') for k in keys))
+    record('Own list: completeness confirmed by the count in its heading', lib['reason'] == 'count-matched')
+    record('Recommendation feed "Показать ещё" is never pressed', lp.evaluate('window.__recMore') == 0)
+    lo('#countmain').wait_for()
+    record('Library list shows 95 tracks', lo('#countmain').inner_text().startswith('95 '))
+    lo('#reportBtn').click()
+    rep = json.loads(lo('#reportText').input_value())
+    record('Report: own page, chosen rows and excluded recommendations, no titles',
+        rep['kind'] == 'personal' and rep['chosen'] > 0 and any(k.startswith('✕') for k in rep['sections']) and 'Мой трек' not in lo('#reportText').input_value())
+    lo('#reportClose').click()
+    lp.goto('https://m.vk.ru/audio'); lo('#countmain').wait_for(); lp.wait_for_timeout(800)
+    record('Back on landing the own library stays, recommendations do not join', lo('#countmain').inner_text().startswith('95 '))
+    lp.goto('https://m.vk.ru/audios42?nocount=1'); lp.wait_for_function('() => !!window.DekaLibrary')
+    r2 = lp.evaluate("async () => { await DekaLibrary.collect({stepMs:40, settleMs:80, endMs:900, stalledMs:8000}); const l = DekaLibrary.get(); return {count:l.count, reason:l.reason, rec:l.items.filter(t=>t.key.startsWith('-')).length}; }")
+    record('Without a count: stops at the end of own list, not in the endless recommendations', r2 == {'count':95, 'reason':'end-observed', 'rec':0})
+    record('No runtime exceptions on music pages', not lerrors)
+    if lerrors: print(lerrors)
+    lctx.close()
+
+    # ---- Android: VK page must not see the screen turning off ----
+    actx = browser.new_context(viewport={'width':390,'height':844}, user_agent='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36 wv')
+    actx.route('https://m.vk.ru/**', lambda r: r.fulfill(status=200, content_type='text/html; charset=utf-8', body=music_fixture))
+    actx.add_init_script(bundle)
+    ap = actx.new_page(); ap.goto('https://m.vk.ru/audio')
+    vis = ap.evaluate("""() => { let heard = 0; document.addEventListener('visibilitychange', () => heard++);
+      document.dispatchEvent(new Event('visibilitychange'));
+      return { heard, hidden: document.hidden, state: document.visibilityState }; }""")
+    record('Android: page keeps "visible" and VK never hears visibilitychange', vis == {'heard':0, 'hidden':False, 'state':'visible'})
+    actx.close()
+
     # ---- Windows UI: Sets tab against a stand-in for the Tauri bridge (no VK, no network) ----
     dctx = browser.new_context(viewport={'width':1200,'height':900})
     dctx.add_init_script('''

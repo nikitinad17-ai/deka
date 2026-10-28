@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Музыка</title>
+<style>body{margin:0;font:14px sans-serif}.row{height:48px;box-sizing:border-box;border-bottom:1px solid #ddd;display:flex;align-items:center;gap:8px;padding:0 8px}.preview{max-height:290px;overflow:hidden}h2,h3{margin:12px 8px}#sentinel{height:4px}</style>
+</head>
+<body>
+<!-- Synthetic VK-like music pages for offline tests: shapes only, no VK markup copied.
+     /audio      — landing: preview of own tracks, then recommendation and new-release blocks.
+     /audios42   — own list: 30 rows per load (IntersectionObserver), then a recommendation feed
+                   with its own "Показать ещё" in the same page scroll. ?nocount hides the count. -->
+<div id="app"></div>
+<script>
+window.vk = { id: 42 };
+window.__recMore = 0;
+const app = document.getElementById('app'), q = new URLSearchParams(location.search);
+function row(id, title) {
+  const w = document.createElement('div'); w.setAttribute('data-audio-id', id);
+  w.innerHTML = '<div data-testid="MusicTrackRow" class="row"><div data-testid="audiorow-tappable" role="button">▶</div>' +
+    '<span data-testid="MusicTrackRow_Title"></span><span data-testid="MusicTrackRow_Authors"></span><span data-testid="MusicTrackRow_Duration">3:00</span></div>';
+  w.querySelector('[data-testid=MusicTrackRow_Title]').textContent = title;
+  w.querySelector('[data-testid=MusicTrackRow_Authors]').textContent = 'Artist';
+  return w;
+}
+function block(tag, heading, cls) {
+  const s = document.createElement('section'); if (cls) s.className = cls;
+  const h = document.createElement(tag); h.textContent = heading; s.appendChild(h); app.appendChild(s); return s;
+}
+// Like VK, content is rendered by script after the document has loaded.
+function render() {
+if (/^\/audios42\/?$/.test(location.pathname)) {
+  const TOTAL = 95, own = block('h2', q.has('nocount') ? 'Мои треки' : 'Мои треки 95');
+  const list = document.createElement('div'); own.appendChild(list);
+  const sentinel = document.createElement('div'); sentinel.id = 'sentinel'; own.appendChild(sentinel);
+  let loaded = 0, pending = false;
+  function more() { const n = Math.min(TOTAL, loaded + 30); for (let i = loaded; i < n; i++) list.appendChild(row('42_' + i, 'Мой трек ' + i)); loaded = n; }
+  more();
+  new IntersectionObserver(es => {
+    if (!es.some(e => e.isIntersecting) || pending || loaded >= TOTAL) return;
+    pending = true; setTimeout(() => { more(); pending = false; }, 150);
+  }).observe(sentinel);
+  const rec = block('h2', 'Рекомендации для вас'), recList = document.createElement('div'); rec.appendChild(recList);
+  let r = 0; const addRec = n => { for (let i = 0; i < n; i++, r++) recList.appendChild(row('-1_' + (200 + r), 'Чужой трек ' + r)); };
+  addRec(40);
+  const btn = document.createElement('button'); btn.textContent = 'Показать ещё'; btn.onclick = () => { window.__recMore++; addRec(20); }; rec.appendChild(btn);
+} else {
+  const own = block('h2', 'Мои треки'), prev = document.createElement('div'); prev.className = 'preview'; own.appendChild(prev);
+  for (let i = 0; i < 30; i++) prev.appendChild(row('42_' + i, 'Мой трек ' + i));
+  const all = document.createElement('a'); all.href = '/audios42'; all.textContent = 'Показать все'; own.appendChild(all);
+  const rec = block('h2', 'Рекомендации'); for (let i = 0; i < 20; i++) rec.appendChild(row('-1_' + (100 + i), 'Рекомендация ' + i));
+  const fresh = block('h3', 'Новинки', 'NewReleasesBlock'); for (let i = 0; i < 10; i++) fresh.appendChild(row('-2_' + i, 'Новинка ' + i));
+}
+}
+window.addEventListener('load', () => setTimeout(render, 250));
+</script>
+</body>
+</html>
