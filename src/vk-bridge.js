@@ -27,6 +27,44 @@
       window.addEventListener("webkitvisibilitychange", swallow, true);
     } catch (e) {}
   })();
+  // Журнал входа (Android): что нажималось на страницах VK, что перекрывало нажатие, ошибки
+  // страницы и попытки открыть окно. Без введённого текста; цифры в адресах скрыты. Виден в «Отчёте».
+  (function loginJournal() {
+    var A = window.DekaAndroid; if (!A || typeof A.log !== "function") return;
+    var last = "";
+    function place() { return location.hostname + location.pathname.replace(/\d+/g, "#").slice(0, 40); }
+    function log(kind, detail) {
+      var line = kind + " " + place() + (detail ? " · " + String(detail).replace(/\s+/g, " ").slice(0, 140) : "");
+      if (line === last) return; last = line;
+      try { A.log(new Date().toTimeString().slice(0, 8) + " " + line); } catch (e) {}
+    }
+    function describe(el) {
+      if (!el || !el.tagName) return "?";
+      var d = el.tagName.toLowerCase(), role = el.getAttribute && el.getAttribute("role");
+      if (el.id) d += "#" + String(el.id).replace(/\d+/g, "#").slice(0, 20);
+      if (role) d += "[" + role + "]";
+      if (el.tagName === "IFRAME") { try { d += " " + new URL(el.src, location.href).hostname; } catch (e) {} }
+      else if (el.tagName === "INPUT") d += " type=" + (el.type || "");
+      else { var t = (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 24); if (t) d += " «" + t.replace(/\d/g, "#") + "»"; }
+      var href = el.getAttribute && el.getAttribute("href");
+      if (href) { try { var u = new URL(href, location.href); d += " → " + u.protocol + "//" + u.hostname + u.pathname.replace(/\d+/g, "#").slice(0, 30); } catch (e) { d += " → ?"; } }
+      if (el.disabled || (el.getAttribute && el.getAttribute("aria-disabled") === "true")) d += " (выключена)";
+      return d;
+    }
+    window.__dekaLog = function (detail) { log("app", detail); };
+    log("page", (document.referrer ? "из " + (function () { try { return new URL(document.referrer).hostname; } catch (e) { return "?"; } })() : "") + " UA:" + (/; wv\)/.test(navigator.userAgent) ? "wv" : "chrome"));
+    document.addEventListener("pointerdown", function (e) {
+      var path = e.composedPath ? e.composedPath() : [];
+      for (var i = 0; i < path.length; i++) if (path[i] && path[i].id === "deka-overlay") return; // свои кнопки не пишем
+      var t = e.target, el = t && t.closest ? (t.closest("a,button,[role=button],iframe,input,label,[tabindex]") || t) : t;
+      var under = document.elementFromPoint(e.clientX, e.clientY);
+      log("tap", describe(el) + (under && under !== t && !(t && t.contains && t.contains(under)) ? " (сверху: " + describe(under) + ")" : ""));
+    }, true);
+    window.addEventListener("error", function (e) { log("error", e.message || "?"); }, true);
+    var nativeOpen = window.open;
+    window.open = function (u) { log("window.open", u ? String(u).replace(/[?#].*$/, "") : "(пусто)"); return nativeOpen.apply(this, arguments); };
+    window.addEventListener("pagehide", function () { log("leave", ""); });
+  })();
   var SETS = window.DekaSets || null;
   // id сета (видео) на текущей странице: «-123_456» или "".
   function setId() {

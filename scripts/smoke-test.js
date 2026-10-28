@@ -30,7 +30,11 @@ try {
   assert.ok(manifest.includes('FOREGROUND_SERVICE_MEDIA_PLAYBACK'));
   const svc=fs.readFileSync(path.join(dir,'DekaPlaybackService.kt'),'utf8'), act=fs.readFileSync(path.join(dir,'MainActivity.kt'),'utf8');
   assert.ok(svc.includes('PARTIAL_WAKE_LOCK') && svc.includes('createWifiLock') && svc.includes('IDLE_GRACE_MS'), 'service keeps CPU and Wi-Fi and survives short pauses');
-  assert.equal((act.match(/DEKA_BACKGROUND_V2/g)||[]).length,1,'activity patched exactly once');
+  assert.equal((act.match(/DEKA_BACKGROUND_V3/g)||[]).length,1,'activity patched exactly once');
+  assert.ok(act.includes('setAcceptThirdPartyCookies(webView, true)'),'VK ID frame may use its cookies');
+  assert.ok(act.includes('replace("; wv)", ")")') && act.includes('replace(" Version/4.0", "")'),'VK must not take Deka for its own app');
+  assert.ok(act.includes('fun setBackChip') && act.includes('window.__dekaBack') && act.includes('decorView'),'native back chip over the WebView');
+  assert.ok(act.includes('fun readLog') && svc.includes('object DekaLog'),'login journal kept natively across VK pages');
   assert.ok(/override fun onPause\(\)[\s\S]*dekaWebView\?\.onResume\(\)/.test(act),'WebView pause from wry is undone');
   assert.ok(act.includes('RENDERER_PRIORITY_IMPORTANT') && act.includes('ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'));
   assert.ok(manifest.includes('REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'));

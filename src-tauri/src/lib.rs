@@ -73,6 +73,58 @@ fn show_export(window: tauri::WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
+// Android WebView не умеет открывать intent:// и ссылки приложений (vkontakte:// и т. п.):
+// такой переход молча пропадает, и кнопка «не нажимается». intent:// с запасной веб-ссылкой
+// открываем по ней, остальные не-веб ссылки не трогаем и записываем в журнал входа.
+#[cfg(mobile)]
+fn mobile_navigation(app: &tauri::AppHandle, url: &tauri::Url) -> bool {
+    match url.scheme() {
+        "http" | "https" | "about" | "data" | "blob" | "javascript" | "tauri" | "ipc" | "asset" => return true,
+        _ => {}
+    }
+    let fallback = if url.scheme() == "intent" { intent_fallback(url.as_str()) } else { None };
+    if let Some(w) = app.get_webview_window("main") {
+        let note = serde_json::to_string(&format!("{}: {}", if fallback.is_some() { "intent → веб" } else { "не открыть" }, url.scheme()))
+            .unwrap_or_else(|_| "\"\"".into());
+        let _ = w.eval(&format!("window.__dekaLog && window.__dekaLog({})", note));
+        if let Some(target) = fallback {
+            if let Ok(target) = serde_json::to_string(&target) {
+                let _ = w.eval(&format!("location.assign({})", target));
+            }
+        }
+    }
+    false
+}
+
+// S.browser_fallback_url из intent://…#Intent;…;S.browser_fallback_url=https%3A%2F%2F…;end
+#[cfg(mobile)]
+fn intent_fallback(raw: &str) -> Option<String> {
+    let fragment = raw.split_once("#Intent;")?.1;
+    let value = fragment.split(';').find_map(|part| part.strip_prefix("S.browser_fallback_url="))?;
+    let decoded = percent_decode(value);
+    let parsed = tauri::Url::parse(&decoded).ok()?;
+    if parsed.scheme() == "https" || parsed.scheme() == "http" { Some(parsed.to_string()) } else { None }
+}
+
+#[cfg(mobile)]
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(h), Some(l)) = ((bytes[i + 1] as char).to_digit(16), (bytes[i + 2] as char).to_digit(16)) {
+                out.push((h * 16 + l) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -91,8 +143,11 @@ pub fn run() {
             {
                 // One script guarantees ordering. Native audio play is captured BEFORE the VK hook.
                 let script = [LIBRARY_CORE, DECK_ENGINE, SET_CORE, VK_BRIDGE, LIBRARY_RUNTIME, VIRTUAL_LIST, MOBILE_OVERLAY].join("\n;\n");
+                let handle = app.handle().clone();
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::External(VK_URL.parse().unwrap()))
-                    .initialization_script(script).build()?;
+                    .initialization_script(script)
+                    .on_navigation(move |url| mobile_navigation(&handle, url))
+                    .build()?;
             }
             Ok(())
         })

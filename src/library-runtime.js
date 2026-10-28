@@ -369,7 +369,7 @@
       (h.className ? '.' + String(h.className).trim().split(/\s+/).slice(0, 2).join('.') : '');
     var l = snapshot || {};
     return {
-      deka: '0.10.3', site: location.hostname, page: mask(location.pathname) + (keys.length ? '?' + keys.join('&') : ''),
+      deka: '0.10.4', site: location.hostname, page: mask(location.pathname) + (keys.length ? '?' + keys.join('&') : ''),
       kind: pageKind(), signedIn: !!userId(), rowsOnPage: s.all.length, chosen: s.rows.length, sections: sections,
       scroller: mask(hostDesc), metrics: m, expected: total(), more: !!moreButton(false), showAll: !!moreButton(true),
       library: { count: l.count || 0, status: l.status || '', complete: !!l.complete, reason: l.reason || '', expected: l.expected || null }

@@ -233,6 +233,51 @@ with sync_playwright() as p:
     if gerrors: print(gerrors)
     gctx.close()
 
+    # ---- Android shell: VK ID login widget in a frame, guarded against anything covering it ----
+    widget_html = ('<!doctype html><meta charset=utf-8><body style="margin:0;height:100vh;background:#fff">'
+        '<div style="position:absolute;left:16px;right:16px;bottom:24px;display:flex;flex-direction:column;gap:8px">'
+        '<button id=in style="height:48px">Войти</button><button id=up style="height:44px">Зарегистрироваться</button></div><script>'
+        'window.vis={}; window.cin=0; window.cup=0;'
+        'const io=new IntersectionObserver(es=>{for(const e of es) window.vis[e.target.id]=e.isVisible;},{trackVisibility:true,delay:100});'
+        "['in','up'].forEach(id=>io.observe(document.getElementById(id)));"
+        "document.getElementById('in').onclick=()=>{ if (window.vis.in) window.cin++; };"
+        "document.getElementById('up').onclick=()=>{ if (window.vis.up) window.cup++; };</script>")
+    frame_page = ('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"><script>window.vk={id:0};</script>'
+        '<iframe id="f" src="https://id.vk.ru/widget" style="position:fixed;inset:0;width:100%;height:100%;border:0"></iframe></body></html>')
+    fake_android = ("window.DekaAndroid = { chip: null, toasts: [], lines: [], setBackChip(v){ this.chip = v; }, toast(t){ this.toasts.push(t); },"
+        " keepAwake(){}, backgroundAllowed(){ return true; }, openBackgroundSettings(){}, log(l){ this.lines.push(l); }, readLog(){ return this.lines.join('\\n'); } };")
+    nctx = browser.new_context(viewport={'width':390,'height':844}, has_touch=True)
+    nctx.route('https://m.vk.ru/**', lambda r: r.fulfill(status=200, content_type='text/html; charset=utf-8',
+        body=frame_page if '/login-frame' in r.request.url else music_fixture))
+    nctx.route('https://id.vk.ru/**', lambda r: r.fulfill(status=200, content_type='text/html; charset=utf-8', body=widget_html))
+    nctx.add_init_script(fake_android); nctx.add_init_script(bundle)
+    np_ = nctx.new_page(); nerrors = []
+    np_.on('pageerror', lambda err: nerrors.append(str(err)))
+    no = lambda sel: np_.locator('#deka-overlay ' + sel)
+    np_.goto('https://m.vk.ru/login-frame')
+    np_.wait_for_function('() => window.DekaAndroid.chip === true', timeout=8000)
+    record('Android: login inside a VK ID frame is recognised as "signed out"',
+        np_.evaluate("() => document.getElementById('deka-overlay').style.display") == 'none' and len(np_.evaluate('DekaAndroid.toasts')) == 1)
+    wf = [f for f in np_.frames if 'id.vk.ru' in f.url][0]
+    wf.wait_for_function('() => window.vis.in === true && window.vis.up === true', timeout=8000)  # the guard sees nothing covering the buttons
+    np_.wait_for_timeout(1000)  # headless Chromium drops input into a freshly loaded frame for a few hundred ms, with or without Deka
+    fr = np_.frame_locator('#f'); fr.locator('#in').click(); fr.locator('#up').click(); np_.wait_for_timeout(150)
+    record('Android: overlap-guarded "Войти" and "Зарегистрироваться" accept taps (nothing of Deka on the page)',
+        wf.evaluate('[window.cin, window.cup]') == [1, 1] and wf.evaluate('window.vis') == {'in': True, 'up': True})
+    np_.evaluate('window.__dekaBack()')
+    record('Android: the app\'s own «← Дека» button brings Deka back',
+        np_.evaluate('DekaAndroid.chip') is False and no('main.app').is_visible() and np_.evaluate("() => document.getElementById('deka-overlay').style.display") == '')
+    no('#vkBtn').click()
+    record('Android: «VK» hides Deka completely and shows the app\'s «← Дека» button',
+        np_.evaluate('DekaAndroid.chip') is True and np_.evaluate("() => document.getElementById('deka-overlay').style.display") == 'none' and no('#sideTab').is_hidden())
+    np_.evaluate('window.__dekaBack()'); no('#reportBtn').click()
+    rep = json.loads(no('#reportText').input_value())
+    record('Report carries the login journal and the signed-out state',
+        rep.get('guest') is True and rep.get('native') is True and any(' page m.vk.ru/login-frame' in l for l in rep.get('loginLog', [])))
+    record('No runtime exceptions in the Android shell scenario', not nerrors)
+    if nerrors: print(nerrors)
+    nctx.close()
+
     # ---- Android: VK page must not see the screen turning off ----
     actx = browser.new_context(viewport={'width':390,'height':844}, user_agent='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36 wv')
     actx.route('https://m.vk.ru/**', lambda r: r.fulfill(status=200, content_type='text/html; charset=utf-8', body=music_fixture))

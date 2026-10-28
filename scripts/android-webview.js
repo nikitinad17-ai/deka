@@ -10,7 +10,12 @@
 //    при подгрузке, при переходе по страницам VK): Android не даёт снова запустить его,
 //    пока экран выключен, поэтому гаснет он только через 3 минуты тишины;
 // 5) один раз просим снять для «Деки» экономию батареи (системный диалог),
-//    DekaAndroid.backgroundAllowed()/openBackgroundSettings() — для кнопки «Разрешить фон».
+//    DekaAndroid.backgroundAllowed()/openBackgroundSettings() — для кнопки «Разрешить фон»;
+// 6) вход в VK: виджету VK ID во встроенном окне разрешены куки (Android их по умолчанию режет),
+//    а из описания браузера убраны метки встроенного WebView («; wv», «Version/4.0») — иначе VK
+//    считает, что открыт внутри своего приложения, и кнопки входа уходят в несуществующий мост;
+// 7) язычок «← Дека» — это кнопка Android поверх WebView, а не элемент страницы: виджеты входа
+//    VK не принимают нажатия, если что-то из страницы их перекрывает (защита от подмены кликов).
 const fs = require("fs");
 const path = require("path");
 
@@ -50,7 +55,7 @@ if (!packageMatch) {
 }
 const packageName = packageMatch[1];
 
-const MARK = "DEKA_BACKGROUND_V2";
+const MARK = "DEKA_BACKGROUND_V3";
 if (!activity.includes(MARK)) {
   const override = `
   // ${MARK}: фоновая работа «Деки».
@@ -60,6 +65,12 @@ if (!activity.includes(MARK)) {
     super.onWebViewCreate(webView)
     dekaWebView = webView
     webView.settings.mediaPlaybackRequiresUserGesture = false
+    // Вход VK: куки для встроенного окна VK ID и обычный «мобильный Chrome» в описании браузера.
+    val cookies = android.webkit.CookieManager.getInstance()
+    cookies.setAcceptCookie(true)
+    cookies.setAcceptThirdPartyCookies(webView, true)
+    val ua = webView.settings.userAgentString ?: ""
+    webView.settings.userAgentString = ua.replace("; wv)", ")").replace(" Version/4.0", "")
     // Процесс страницы остаётся важным и при погасшем экране: Android не выгружает его ради памяти.
     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
       webView.setRendererPriorityPolicy(android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT, false)
@@ -77,7 +88,81 @@ if (!activity.includes(MARK)) {
       fun openBackgroundSettings() {
         runOnUiThread { dekaOpenBackgroundSettings() }
       }
+
+      @android.webkit.JavascriptInterface
+      fun setBackChip(show: Boolean) {
+        runOnUiThread { dekaShowChip(show) }
+      }
+
+      @android.webkit.JavascriptInterface
+      fun log(line: String) { DekaLog.add(line) }
+
+      @android.webkit.JavascriptInterface
+      fun readLog(): String = DekaLog.dump()
+
+      @android.webkit.JavascriptInterface
+      fun toast(text: String) {
+        runOnUiThread { android.widget.Toast.makeText(this@MainActivity, text, android.widget.Toast.LENGTH_LONG).show() }
+      }
     }, "DekaAndroid")
+  }
+
+  // «← Дека» поверх страницы VK. Касание — назад в Деку, перетаскивание — сдвинуть вверх/вниз.
+  private var dekaChip: android.widget.TextView? = null
+
+  private fun dekaShowChip(show: Boolean) {
+    if (dekaChip == null && show) {
+      val density = resources.displayMetrics.density
+      val chip = android.widget.TextView(this)
+      chip.text = "← Дека"
+      chip.textSize = 15f
+      chip.setTypeface(chip.typeface, android.graphics.Typeface.BOLD)
+      chip.setTextColor(0xFF101318.toInt())
+      val radius = 24f * density
+      val bg = android.graphics.drawable.GradientDrawable()
+      bg.setColor(0xFFF5B44B.toInt())
+      bg.setCornerRadii(floatArrayOf(radius, radius, 0f, 0f, 0f, 0f, radius, radius))
+      chip.background = bg
+      chip.setPadding((16 * density).toInt(), (11 * density).toInt(), (12 * density).toInt(), (11 * density).toInt())
+      chip.elevation = 8f * density
+      chip.contentDescription = "Вернуться в Деку"
+      chip.setOnClickListener {
+        val wv = dekaWebView
+        if (wv != null) {
+          wv.evaluateJavascript("(function(){ if (window.__dekaBack) { window.__dekaBack(); return 1; } return 0; })()") { result ->
+            // Страница без «Деки» (ушли с VK): просто возвращаемся к музыке VK.
+            if (result != "1") wv.loadUrl("https://vk.ru/audio")
+          }
+        }
+      }
+      var downY = 0f
+      var startY = 0f
+      var moved = false
+      chip.setOnTouchListener { v, e ->
+        when (e.actionMasked) {
+          android.view.MotionEvent.ACTION_DOWN -> { downY = e.rawY; startY = v.translationY; moved = false; true }
+          android.view.MotionEvent.ACTION_MOVE -> {
+            val dy = e.rawY - downY
+            if (Math.abs(dy) > 12f * density) moved = true
+            if (moved) {
+              val limit = Math.max(0f, v.rootView.height / 2f - v.height * 1.5f)
+              v.translationY = Math.max(-limit, Math.min(limit, startY + dy))
+            }
+            true
+          }
+          android.view.MotionEvent.ACTION_UP -> { if (!moved) v.performClick(); true }
+          else -> false
+        }
+      }
+      val lp = android.widget.FrameLayout.LayoutParams(
+        android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+        android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+        android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
+      )
+      (window.decorView as android.view.ViewGroup).addView(chip, lp)
+      dekaChip = chip
+    }
+    dekaChip?.visibility = if (show) android.view.View.VISIBLE else android.view.View.GONE
   }
 
   // wry вызывает webView.onPause() вместе с активностью — и когда гаснет экран.
@@ -155,6 +240,17 @@ if (!activity.includes(MARK)) {
 
 const serviceFile = path.join(path.dirname(activityFile), "DekaPlaybackService.kt");
 const service = `package ${packageName}
+
+// Журнал входа в VK для «Отчёта»: последние нажатия, переходы и ошибки страниц VK (без ввода).
+object DekaLog {
+  private val lines = java.util.ArrayDeque<String>()
+  @Synchronized fun add(line: String) {
+    if (lines.peekLast() == line) return
+    lines.addLast(line.take(200))
+    while (lines.size > 120) lines.removeFirst()
+  }
+  @Synchronized fun dump(): String = lines.joinToString("\\n")
+}
 
 class DekaPlaybackService : android.app.Service() {
   companion object {
@@ -342,6 +438,6 @@ if (!manifest.includes('android:name=".DekaPlaybackService"')) {
 fs.writeFileSync(manifestFile, manifest);
 
 console.log(
-  "Android настроен для фона: WebView не засыпает с экраном, foreground media service " +
-  "с wake/Wi‑Fi lock и 3‑минутной паузой, запрос на снятие экономии батареи."
+  "Android настроен: фон (WebView не засыпает, сервис с wake/Wi‑Fi lock), вход VK (куки VK ID, UA без wv), " +
+  "нативный язычок «← Дека», запрос на снятие экономии батареи."
 );
