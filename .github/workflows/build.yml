@@ -92,9 +92,9 @@ jobs:
             export ANDROID_KEYSTORE_PASSWORD="$(openssl rand -hex 32)"
             echo "::add-mask::$ANDROID_KEYSTORE_PASSWORD"
             keytool -genkeypair -noprompt -storetype PKCS12 -keystore "$ANDROID_KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" -keyalg RSA -keysize 3072 -validity 3650 -dname "CN=Deka Preview" -storepass:env ANDROID_KEYSTORE_PASSWORD -keypass:env ANDROID_KEYSTORE_PASSWORD
-            node -e "const fs=require('fs'),p='src-tauri/tauri.conf.json',c=JSON.parse(fs.readFileSync(p));c.identifier='ru.volna.player.preview';c.productName='Deka Preview';fs.writeFileSync(p,JSON.stringify(c,null,2));"
+            node -e "const fs=require('fs'),p='src-tauri/tauri.conf.json',c=JSON.parse(fs.readFileSync(p));c.identifier='ru.volna.player.preview';c.productName='DeKa preview 2.0';fs.writeFileSync(p,JSON.stringify(c,null,2));"
             echo "kind=preview" >> "$GITHUB_OUTPUT"
-            echo "APK_NAME=Deka-Preview.apk" >> "$GITHUB_ENV"
+            echo "APK_NAME=DeKa-preview-2.0.apk" >> "$GITHUB_ENV"
             echo "APK_PACKAGE=ru.volna.player.preview" >> "$GITHUB_ENV"
             echo "::warning::Preview is a separate installation. No update compatibility with 0.8 is claimed."
           fi
@@ -139,6 +139,7 @@ jobs:
           "$signer" verify --verbose --print-certs "$APK_NAME"
           "$aapt" dump badging "$APK_NAME" > "$RUNNER_TEMP/deka-badging.txt"
           head -n 1 "$RUNNER_TEMP/deka-badging.txt"
+          grep -m1 "^application-label:" "$RUNNER_TEMP/deka-badging.txt"
           grep -q "package: name='$APK_PACKAGE'" "$RUNNER_TEMP/deka-badging.txt"
           grep -q "versionName='$(node -p "require('./package.json').version")'" "$RUNNER_TEMP/deka-badging.txt"
       - uses: actions/upload-artifact@v4
@@ -183,7 +184,7 @@ jobs:
             Windows: вкладка «Сеты» в медиатеке, ⏮ ⏭ на пульте листают треки сета.
             Звук сетов не скачивается: играет через страницу VK Видео, сохраняются только место и названия.
             Полная накопительная библиотека, два списка и две деки при повороте телефона; VK остаётся одним общим потоком.
-            Deka-Preview.apk — отдельное приложение рядом с 0.8; не обновление поверх него.
+            DeKa-preview-2.0.apk — тестовое приложение «DeKa preview 2.0», ставится рядом со старой Декой; предыдущую Preview перед установкой удалить.
             Deka.apk появляется только при настроенных защищённых signing secrets.
             Тесты используют синтетическую VK-разметку; реальная сессия VK и физический сон телефона здесь не проверены.
           files: out/*
