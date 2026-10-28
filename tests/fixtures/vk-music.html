@@ -7,12 +7,13 @@
 <!-- Synthetic VK-like music pages for offline tests: shapes only, no VK markup copied.
      /audio      — landing: preview of own tracks, then recommendation and new-release blocks.
      /audios42   — own list: 30 rows per load (IntersectionObserver), then a recommendation feed
-                   with its own "Показать ещё" in the same page scroll. ?nocount hides the count. -->
+                   with its own "Показать ещё" in the same page scroll. ?nocount hides the count.
+     ?guest      — signed out: welcome screen with «Войти»/«Зарегистрироваться» fixed at the bottom. -->
 <div id="app"></div>
 <script>
-window.vk = { id: 42 };
-window.__recMore = 0;
 const app = document.getElementById('app'), q = new URLSearchParams(location.search);
+window.vk = { id: q.has('guest') ? 0 : 42 };
+window.__recMore = 0; window.__login = 0; window.__signup = 0;
 function row(id, title) {
   const w = document.createElement('div'); w.setAttribute('data-audio-id', id);
   w.innerHTML = '<div data-testid="MusicTrackRow" class="row"><div data-testid="audiorow-tappable" role="button">▶</div>' +
@@ -27,7 +28,13 @@ function block(tag, heading, cls) {
 }
 // Like VK, content is rendered by script after the document has loaded.
 function render() {
-if (/^\/audios42\/?$/.test(location.pathname)) {
+if (q.has('guest')) {
+  const h = document.createElement('h1'); h.textContent = 'ВКонтакте'; app.appendChild(h);
+  const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:16px;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px';
+  const login = document.createElement('button'); login.id = 'vkLogin'; login.textContent = 'Войти'; login.style.cssText = 'height:48px'; login.onclick = () => window.__login++;
+  const join = document.createElement('a'); join.id = 'vkJoin'; join.href = '#'; join.textContent = 'Зарегистрироваться'; join.style.cssText = 'display:block;height:44px;text-align:center'; join.onclick = e => { e.preventDefault(); window.__signup++; };
+  box.append(login, join); app.appendChild(box);
+} else if (/^\/audios42\/?$/.test(location.pathname)) {
   const TOTAL = 95, own = block('h2', q.has('nocount') ? 'Мои треки' : 'Мои треки 95');
   const list = document.createElement('div'); own.appendChild(list);
   const sentinel = document.createElement('div'); sentinel.id = 'sentinel'; own.appendChild(sentinel);

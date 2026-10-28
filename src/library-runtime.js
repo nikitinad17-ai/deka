@@ -24,7 +24,27 @@
     var v = window.vk || {}, ids = [];
     [v.id, v.uid].forEach(function (x) { x = String(x == null ? '' : x); if (/^[1-9]\d*$/.test(x) && ids.indexOf(x) < 0) ids.push(x); });
     try { var c = document.cookie.match(/(?:^|;\s*)remixmid=(\d+)/); if (c && /^[1-9]\d*$/.test(c[1]) && ids.indexOf(c[1]) < 0) ids.push(c[1]); } catch (_) {}
-    return ids.length === 1 ? ids[0] : '';
+    if (ids.length === 1) { remember(ids[0]); return ids[0]; }
+    if (ids.length > 1) return '';
+    // Мобильный VK может не отдавать id в данных страницы: ссылка «Профиль»/«Моя страница» в меню.
+    var nav = navId(); if (nav) { remember(nav); return nav; }
+    // Id, найденный раньше на этом сайте (сбрасывается, когда «Дека» видит, что вход не выполнен).
+    try { var l = localStorage.getItem('deka:uid'); if (/^[1-9]\d*$/.test(l || '')) return l; } catch (_) {}
+    return '';
+  }
+  function remember(id) { try { if (localStorage.getItem('deka:uid') !== id) localStorage.setItem('deka:uid', id); } catch (_) {} }
+  var navCache = { at: 0, id: '' };
+  function navId() {
+    var now = Date.now(); if (now - navCache.at < 2000) return navCache.id;
+    var found = [];
+    Array.prototype.forEach.call(document.querySelectorAll('a[href]'), function (a) {
+      var t = ((a.getAttribute('aria-label') || '') + ' ' + (a.textContent || '')).trim().replace(/\s+/g, ' ');
+      if (!/^(моя страница|мой профиль|профиль|my profile|profile)$/i.test(t) && !/^(моя страница|мой профиль|профиль|my profile|profile) /i.test(t)) return;
+      var m = /^(?:https?:\/\/(?:m\.)?vk\.(?:ru|com))?\/id(\d+)\/?$/.exec(a.getAttribute('href') || '');
+      if (m && found.indexOf(m[1]) < 0) found.push(m[1]);
+    });
+    navCache = { at: now, id: found.length === 1 ? found[0] : '' };
+    return navCache.id;
   }
   function query() { try { return new URLSearchParams(location.search || ''); } catch (_) { return new URLSearchParams(''); } }
   // personal — ваш полный список; list — конкретный плейлист/чужой список/прочая страница со строками;
@@ -242,9 +262,19 @@
   function ownURL() {
     var uid = userId();
     if (uid) return new URL('/audios' + uid, location.origin);
-    var a = Array.from(document.querySelectorAll('a[href]')).find(function (n) { return PERSONAL.test(label(n)) && /\/audios\d+/.test(n.getAttribute('href')); });
-    if (!a) return null;
-    try { var u = new URL(a.getAttribute('href'), location.href); return /(^|\.)vk\.(ru|com)$/.test(u.hostname) ? u : null; } catch (_) { return null; }
+    // Без id: ссылка на /audios<id> из раздела «Мои треки» (или подписанная так) — это ваш список.
+    memo = new WeakMap();
+    var ids = [];
+    Array.prototype.forEach.call(document.querySelectorAll('a[href]'), function (a) {
+      var u; try { u = new URL(a.getAttribute('href'), location.href); } catch (_) { return; }
+      var m = /^\/audios(\d+)\/?$/.exec(u.pathname);
+      if (!m || !/(^|\.)vk\.(ru|com)$/.test(u.hostname) || u.searchParams.has('z')) return;
+      var b = boundary(a);
+      if ((PERSONAL.test(label(a)) || PERSONAL.test(b.label)) && !b.recommendation && ids.indexOf(m[1]) < 0) ids.push(m[1]);
+    });
+    if (ids.length !== 1) return null;
+    remember(ids[0]);
+    return new URL('/audios' + ids[0], location.origin);
   }
   // Список свёрнут в превью со ссылкой «Показать все» на ваш же полный список — открываем его.
   function openFullList() {
@@ -295,6 +325,10 @@
   function collectMy() {
     if (pageKind() === 'personal') return collect();
     var u = ownURL();
+    if (!u && !/^\/(audio|music)\/?$/.test(location.pathname)) {
+      // Не видно, где ваш список: идём на главную музыки VK, там есть «Мои треки», и продолжаем оттуда.
+      location.assign(location.origin + '/audio#deka-library=collect'); return;
+    }
     if (!u) { emit('library', Object.assign({}, snapshot, { status: 'partial', complete: false, reason: 'choose-library' })); return; }
     u.hash = 'deka-library=collect'; // переживает переход vk.ru -> m.vk.ru, sessionStorage — нет
     location.assign(u.href);
@@ -335,7 +369,7 @@
       (h.className ? '.' + String(h.className).trim().split(/\s+/).slice(0, 2).join('.') : '');
     var l = snapshot || {};
     return {
-      deka: '0.10.2', site: location.hostname, page: mask(location.pathname) + (keys.length ? '?' + keys.join('&') : ''),
+      deka: '0.10.3', site: location.hostname, page: mask(location.pathname) + (keys.length ? '?' + keys.join('&') : ''),
       kind: pageKind(), signedIn: !!userId(), rowsOnPage: s.all.length, chosen: s.rows.length, sections: sections,
       scroller: mask(hostDesc), metrics: m, expected: total(), more: !!moreButton(false), showAll: !!moreButton(true),
       library: { count: l.count || 0, status: l.status || '', complete: !!l.complete, reason: l.reason || '', expected: l.expected || null }
@@ -353,7 +387,7 @@
     return original(c);
   };
   window.DekaLibrary = { collect: collect, collectMy: collectMy, cancel: function () { if (collector) collector.cancel(); },
-    get: function () { loadCache(); return snapshot; }, adapter: adapter, report: report, pageKind: pageKind,
+    get: function () { loadCache(); return snapshot; }, adapter: adapter, report: report, pageKind: pageKind, userId: userId,
     playKey: playKey, isRunning: function () { return loading; } };
   // Retire the old same-origin-only flag before the old bridge's DOMContentLoaded callback.
   try { sessionStorage.removeItem('dekaCollect'); } catch (_) {}
