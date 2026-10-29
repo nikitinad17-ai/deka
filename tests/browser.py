@@ -205,17 +205,18 @@ with sync_playwright() as p:
     record('VK ID login page: no Deka layer at all, "Войти" is clickable',
         gp.evaluate("() => !document.getElementById('deka-overlay')") and covered == 'b' and gp.evaluate('window.c') == 1)
     gp.goto('https://m.vk.ru/audio?guest=1')
-    go('#sideTab').wait_for(state='visible', timeout=8000)
-    record('Signed out: Deka steps aside and shows the VK page', go('main.app').is_hidden())
-    gp.click('#vkLogin', timeout=3000); gp.click('#vkJoin', timeout=3000)
-    record('Signed out: VK "Войти" and "Зарегистрироваться" are clickable', gp.evaluate('[window.__login, window.__signup]') == [1, 1])
-    note = go('#guestNote').bounding_box(); btn = gp.locator('#vkLogin').bounding_box()
-    record('Signed out: login hint is at the top and covers no VK buttons', go('#guestNote').is_visible() and note['y'] + note['height'] < btn['y'])
-    go('#sideTab').click()
-    record('Side tab "← Дека" returns to Deka from VK', go('main.app').is_visible() and go('#sideTab').is_hidden())
+    go('#loginView').wait_for(state='visible', timeout=8000)
+    record('Signed out: Deka shows its own sign-in screen, not the VK page',
+        go('main.app').is_visible() and go('#loginBtn').is_visible() and go('#openVkBtn').is_visible() and go('#sideTab').is_hidden())
     record('Deka tells to sign in first', 'не вошли' in go('#statusText').inner_text())
+    go('#openVkBtn').click()
+    record('"Открыть сайт VK" shows the VK site with «← Дека»', go('main.app').is_hidden() and go('#sideTab').is_visible())
+    gp.click('#vkLogin', timeout=3000); gp.click('#vkJoin', timeout=3000)
+    record('On the VK site "Войти" and "Зарегистрироваться" are clickable', gp.evaluate('[window.__login, window.__signup]') == [1, 1])
+    go('#sideTab').click()
+    record('Side tab "← Дека" returns to the Deka sign-in screen', go('main.app').is_visible() and go('#loginView').is_visible() and go('#sideTab').is_hidden())
     go('#vkBtn').click()
-    record('"VK" opens the VK page with the side tab visible', go('main.app').is_hidden() and go('#sideTab').is_visible())
+    record('"VK" in the header also opens the VK site', go('main.app').is_hidden() and go('#sideTab').is_visible())
     gp.reload(); go('#sideTab').wait_for(state='visible', timeout=8000)
     record('VK view survives navigation inside VK', go('main.app').is_hidden())
     tb = go('#sideTab').bounding_box()
@@ -223,6 +224,9 @@ with sync_playwright() as p:
     gp.mouse.move(tb['x'] + tb['width']/2, tb['y'] + tb['height']/2 - 150, steps=8); gp.mouse.up()
     tb2 = go('#sideTab').bounding_box()
     record('Side tab can be dragged out of the way without leaving VK', tb2['y'] < tb['y'] - 100 and go('main.app').is_hidden())
+    go('#sideTab').click(); go('#loginBtn').click()
+    gp.wait_for_url('https://m.vk.ru/login**', timeout=8000)
+    record('Without the Android app "Войти в VK" opens VK\'s login page', True)
     # "Signing in": VK returns to its site, now with a session.
     gp.goto('https://m.vk.ru/audio')
     gp.wait_for_url('https://m.vk.ru/audios42**', timeout=15000)
@@ -244,7 +248,8 @@ with sync_playwright() as p:
         "document.getElementById('up').onclick=()=>{ if (window.vis.up) window.cup++; };</script>")
     frame_page = ('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"><script>window.vk={id:0};</script>'
         '<iframe id="f" src="https://id.vk.ru/widget" style="position:fixed;inset:0;width:100%;height:100%;border:0"></iframe></body></html>')
-    fake_android = ("window.DekaAndroid = { chip: null, toasts: [], lines: [], setBackChip(v){ this.chip = v; }, toast(t){ this.toasts.push(t); },"
+    fake_android = ("window.DekaAndroid = { chip: null, toasts: [], lines: [], logins: 0, session: sessionStorage.getItem('fakeSession') === '1',"
+        " setBackChip(v){ this.chip = v; }, toast(t){ this.toasts.push(t); }, openLogin(){ this.logins++; }, hasSession(){ return this.session; },"
         " keepAwake(){}, backgroundAllowed(){ return true; }, openBackgroundSettings(){}, log(l){ this.lines.push(l); }, readLog(){ return this.lines.join('\\n'); } };")
     nctx = browser.new_context(viewport={'width':390,'height':844}, has_touch=True)
     nctx.route('https://m.vk.ru/**', lambda r: r.fulfill(status=200, content_type='text/html; charset=utf-8',
@@ -255,25 +260,32 @@ with sync_playwright() as p:
     np_.on('pageerror', lambda err: nerrors.append(str(err)))
     no = lambda sel: np_.locator('#deka-overlay ' + sel)
     np_.goto('https://m.vk.ru/login-frame')
-    np_.wait_for_function('() => window.DekaAndroid.chip === true', timeout=8000)
-    record('Android: login inside a VK ID frame is recognised as "signed out"',
-        np_.evaluate("() => document.getElementById('deka-overlay').style.display") == 'none' and len(np_.evaluate('DekaAndroid.toasts')) == 1)
+    no('#loginView').wait_for(state='visible', timeout=8000)
+    record('Android: signed out (login in a VK ID frame) → Deka\'s own sign-in screen, no VK page',
+        np_.evaluate('DekaAndroid.chip') is not True and no('main.app').is_visible())
+    no('#loginBtn').click()
+    record('Android: "Войти в VK" opens the separate clean login window of the app', np_.evaluate('DekaAndroid.logins') == 1 and np_.url.endswith('/login-frame'))
+    no('#openVkBtn').click()
+    record('Android: "Открыть сайт VK" hides Deka completely and shows the app\'s «← Дека» button',
+        np_.evaluate('DekaAndroid.chip') is True and np_.evaluate("() => document.getElementById('deka-overlay').style.display") == 'none')
     wf = [f for f in np_.frames if 'id.vk.ru' in f.url][0]
     wf.wait_for_function('() => window.vis.in === true && window.vis.up === true', timeout=8000)  # the guard sees nothing covering the buttons
     np_.wait_for_timeout(1000)  # headless Chromium drops input into a freshly loaded frame for a few hundred ms, with or without Deka
     fr = np_.frame_locator('#f'); fr.locator('#in').click(); fr.locator('#up').click(); np_.wait_for_timeout(150)
-    record('Android: overlap-guarded "Войти" and "Зарегистрироваться" accept taps (nothing of Deka on the page)',
+    record('Android: on the VK site overlap-guarded "Войти"/"Зарегистрироваться" accept taps',
         wf.evaluate('[window.cin, window.cup]') == [1, 1] and wf.evaluate('window.vis') == {'in': True, 'up': True})
     np_.evaluate('window.__dekaBack()')
-    record('Android: the app\'s own «← Дека» button brings Deka back',
-        np_.evaluate('DekaAndroid.chip') is False and no('main.app').is_visible() and np_.evaluate("() => document.getElementById('deka-overlay').style.display") == '')
-    no('#vkBtn').click()
-    record('Android: «VK» hides Deka completely and shows the app\'s «← Дека» button',
-        np_.evaluate('DekaAndroid.chip') is True and np_.evaluate("() => document.getElementById('deka-overlay').style.display") == 'none' and no('#sideTab').is_hidden())
-    np_.evaluate('window.__dekaBack()'); no('#reportBtn').click()
+    record('Android: «← Дека» brings back the sign-in screen',
+        np_.evaluate('DekaAndroid.chip') is False and no('#loginView').is_visible() and np_.evaluate("() => document.getElementById('deka-overlay').style.display") == '')
+    no('#reportBtn').click()
     rep = json.loads(no('#reportText').input_value())
     record('Report carries the login journal and the signed-out state',
         rep.get('guest') is True and rep.get('native') is True and any(' page m.vk.ru/login-frame' in l for l in rep.get('loginLog', [])))
+    no('#reportClose').click()
+    np_.evaluate("sessionStorage.setItem('fakeSession', '1')"); np_.reload()
+    no('#countmain').wait_for(state='attached'); np_.wait_for_timeout(800)
+    record('Android: with a VK session cookie Deka does not ask to sign in, even if VK shows login controls',
+        no('#loginView').is_hidden() and 'не вошли' not in no('#statusText').inner_text())
     record('No runtime exceptions in the Android shell scenario', not nerrors)
     if nerrors: print(nerrors)
     nctx.close()

@@ -30,9 +30,13 @@ try {
   assert.ok(manifest.includes('FOREGROUND_SERVICE_MEDIA_PLAYBACK'));
   const svc=fs.readFileSync(path.join(dir,'DekaPlaybackService.kt'),'utf8'), act=fs.readFileSync(path.join(dir,'MainActivity.kt'),'utf8');
   assert.ok(svc.includes('PARTIAL_WAKE_LOCK') && svc.includes('createWifiLock') && svc.includes('IDLE_GRACE_MS'), 'service keeps CPU and Wi-Fi and survives short pauses');
-  assert.equal((act.match(/DEKA_BACKGROUND_V3/g)||[]).length,1,'activity patched exactly once');
-  assert.ok(act.includes('setAcceptThirdPartyCookies(webView, true)'),'VK ID frame may use its cookies');
-  assert.ok(act.includes('replace("; wv)", ")")') && act.includes('replace(" Version/4.0", "")'),'VK must not take Deka for its own app');
+  assert.equal((act.match(/DEKA_BACKGROUND_V4/g)||[]).length,1,'activity patched exactly once');
+  // The main WebView is back to the stock settings that used to log in fine.
+  assert.ok(!act.includes('setAcceptThirdPartyCookies') && !act.includes('userAgentString'),'main WebView keeps stock UA and cookies');
+  // Login happens in a separate, plain WebView: no Deka scripts, closes itself after VK returns to its site.
+  assert.ok(act.includes('fun openLogin') && act.includes('android.webkit.WebView(this)') && act.includes('web.loadUrl("https://vk.ru/login")'));
+  assert.ok(act.includes('dekaCloseLogin(true)') && act.includes('dekaWebView?.loadUrl("https://vk.ru/audio")') && act.includes('OnBackPressedCallback'));
+  assert.ok(/remixn\?sid=/.test(act),'session cookie check');
   assert.ok(act.includes('fun setBackChip') && act.includes('window.__dekaBack') && act.includes('decorView'),'native back chip over the WebView');
   assert.ok(act.includes('fun readLog') && svc.includes('object DekaLog'),'login journal kept natively across VK pages');
   assert.ok(/override fun onPause\(\)[\s\S]*dekaWebView\?\.onResume\(\)/.test(act),'WebView pause from wry is undone');

@@ -11,11 +11,11 @@
 //    пока экран выключен, поэтому гаснет он только через 3 минуты тишины;
 // 5) один раз просим снять для «Деки» экономию батареи (системный диалог),
 //    DekaAndroid.backgroundAllowed()/openBackgroundSettings() — для кнопки «Разрешить фон»;
-// 6) вход в VK: виджету VK ID во встроенном окне разрешены куки (Android их по умолчанию режет),
-//    а из описания браузера убраны метки встроенного WebView («; wv», «Version/4.0») — иначе VK
-//    считает, что открыт внутри своего приложения, и кнопки входа уходят в несуществующий мост;
-// 7) язычок «← Дека» — это кнопка Android поверх WebView, а не элемент страницы: виджеты входа
-//    VK не принимают нажатия, если что-то из страницы их перекрывает (защита от подмены кликов).
+// 6) вход в VK — в ОТДЕЛЬНОМ чистом окне (DekaAndroid.openLogin): обычный android.webkit.WebView
+//    без скриптов «Деки», без подмены видимости и прочих добавок основного окна, как в старой Деке.
+//    Куки у всех WebView приложения общие, поэтому после входа основное окно уже авторизовано.
+//    Окно закрывается само, когда VK вернул на свой сайт; журнал окна — в «Отчёте»;
+// 7) язычок «← Дека» — это кнопка Android поверх WebView, а не элемент страницы VK.
 const fs = require("fs");
 const path = require("path");
 
@@ -55,7 +55,7 @@ if (!packageMatch) {
 }
 const packageName = packageMatch[1];
 
-const MARK = "DEKA_BACKGROUND_V3";
+const MARK = "DEKA_BACKGROUND_V4";
 if (!activity.includes(MARK)) {
   const override = `
   // ${MARK}: фоновая работа «Деки».
@@ -65,12 +65,6 @@ if (!activity.includes(MARK)) {
     super.onWebViewCreate(webView)
     dekaWebView = webView
     webView.settings.mediaPlaybackRequiresUserGesture = false
-    // Вход VK: куки для встроенного окна VK ID и обычный «мобильный Chrome» в описании браузера.
-    val cookies = android.webkit.CookieManager.getInstance()
-    cookies.setAcceptCookie(true)
-    cookies.setAcceptThirdPartyCookies(webView, true)
-    val ua = webView.settings.userAgentString ?: ""
-    webView.settings.userAgentString = ua.replace("; wv)", ")").replace(" Version/4.0", "")
     // Процесс страницы остаётся важным и при погасшем экране: Android не выгружает его ради памяти.
     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
       webView.setRendererPriorityPolicy(android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT, false)
@@ -101,10 +95,172 @@ if (!activity.includes(MARK)) {
       fun readLog(): String = DekaLog.dump()
 
       @android.webkit.JavascriptInterface
+      fun openLogin() {
+        runOnUiThread { dekaOpenLogin() }
+      }
+
+      @android.webkit.JavascriptInterface
+      fun hasSession(): Boolean = dekaHasSession()
+
+      @android.webkit.JavascriptInterface
       fun toast(text: String) {
         runOnUiThread { android.widget.Toast.makeText(this@MainActivity, text, android.widget.Toast.LENGTH_LONG).show() }
       }
     }, "DekaAndroid")
+  }
+
+  // ---------- окно входа VK: чистый WebView поверх «Деки» ----------
+  private var dekaLoginRoot: android.widget.LinearLayout? = null
+  private var dekaLoginView: android.webkit.WebView? = null
+  private var dekaLoginBack: androidx.activity.OnBackPressedCallback? = null
+  private var dekaLoginSawAuth = false
+
+  private fun dekaHasSession(): Boolean {
+    val cm = android.webkit.CookieManager.getInstance()
+    return listOf("https://vk.ru", "https://m.vk.ru", "https://vk.com", "https://m.vk.com")
+      .any { Regex("(^|;\\\\s*)remixn?sid=[^;\\\\s]").containsMatchIn(cm.getCookie(it) ?: "") }
+  }
+
+  private fun dekaLoginLog(line: String) {
+    DekaLog.add(java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date()) + " login " + line)
+  }
+
+  private fun dekaMasked(url: String): String {
+    val u = android.net.Uri.parse(url)
+    return (u.scheme ?: "") + "://" + (u.host ?: "") + (u.path ?: "").replace(Regex("\\\\d+"), "#").take(40)
+  }
+
+  @Suppress("DEPRECATION")
+  private fun dekaOpenLogin() {
+    if (dekaLoginRoot != null) return
+    val density = resources.displayMetrics.density
+    fun dp(v: Int) = (v * density).toInt()
+    val root = android.widget.LinearLayout(this)
+    root.orientation = android.widget.LinearLayout.VERTICAL
+    root.setBackgroundColor(0xFF101318.toInt())
+    root.isClickable = true
+    root.setOnApplyWindowInsetsListener { v, insets ->
+      v.setPadding(0, insets.systemWindowInsetTop, 0, insets.systemWindowInsetBottom)
+      insets
+    }
+
+    val bar = android.widget.LinearLayout(this)
+    bar.orientation = android.widget.LinearLayout.HORIZONTAL
+    bar.gravity = android.view.Gravity.CENTER_VERTICAL
+    bar.setPadding(dp(16), dp(8), dp(8), dp(8))
+    val title = android.widget.TextView(this)
+    title.text = "ДЕКА · вход в VK"
+    title.textSize = 16f
+    title.setTypeface(title.typeface, android.graphics.Typeface.BOLD)
+    title.setTextColor(0xFFF5B44B.toInt())
+    val cancel = android.widget.TextView(this)
+    cancel.text = "Закрыть"
+    cancel.textSize = 15f
+    cancel.setTextColor(0xFFE7ECF3.toInt())
+    cancel.setPadding(dp(14), dp(10), dp(14), dp(10))
+    val cancelBg = android.graphics.drawable.GradientDrawable()
+    cancelBg.setColor(0xFF262E3A.toInt())
+    cancelBg.cornerRadius = 8f * density
+    cancel.background = cancelBg
+    cancel.setOnClickListener { dekaCloseLogin(false) }
+    bar.addView(title, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    bar.addView(cancel)
+
+    val note = android.widget.TextView(this)
+    note.text = "Логин и пароль вводятся в форме VK — «Дека» их не видит и не хранит. После входа окно закроется само."
+    note.textSize = 12f
+    note.setTextColor(0xFFA7B6C8.toInt())
+    note.setPadding(dp(16), 0, dp(16), dp(8))
+
+    val web = android.webkit.WebView(this)
+    web.settings.javaScriptEnabled = true
+    web.settings.domStorageEnabled = true
+    web.webViewClient = object : android.webkit.WebViewClient() {
+      override fun shouldOverrideUrlLoading(view: android.webkit.WebView, request: android.webkit.WebResourceRequest): Boolean {
+        val url = request.url.toString()
+        val scheme = request.url.scheme ?: ""
+        if (scheme == "http" || scheme == "https") return false
+        val fallback = Regex("[#;]S\\\\.browser_fallback_url=([^;]+)").find(url)?.groupValues?.get(1)
+        val target = if (fallback != null) android.net.Uri.decode(fallback) else null
+        dekaLoginLog("ссылка " + scheme + (if (target != null) " → веб" else " — не открыть"))
+        if (target != null && (target.startsWith("https://") || target.startsWith("http://"))) view.loadUrl(target)
+        return true
+      }
+
+      override fun onPageStarted(view: android.webkit.WebView, url: String, favicon: android.graphics.Bitmap?) {
+        dekaLoginLog("открыто " + dekaMasked(url))
+      }
+
+      override fun onPageFinished(view: android.webkit.WebView, url: String) {
+        dekaLoginCheck(url)
+      }
+
+      override fun onReceivedError(view: android.webkit.WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
+        if (request.isForMainFrame) dekaLoginLog("ошибка " + error.errorCode + " " + dekaMasked(request.url.toString()))
+      }
+
+      override fun onReceivedHttpError(view: android.webkit.WebView, request: android.webkit.WebResourceRequest, response: android.webkit.WebResourceResponse) {
+        if (request.isForMainFrame) dekaLoginLog("HTTP " + response.statusCode + " " + dekaMasked(request.url.toString()))
+      }
+    }
+    web.webChromeClient = object : android.webkit.WebChromeClient() {
+      override fun onConsoleMessage(message: android.webkit.ConsoleMessage): Boolean {
+        if (message.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) dekaLoginLog("JS: " + message.message().take(120))
+        return false
+      }
+    }
+
+    root.addView(bar, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
+    root.addView(note, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
+    root.addView(web, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    (window.decorView as android.view.ViewGroup).addView(root, android.widget.FrameLayout.LayoutParams(
+      android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
+    root.requestApplyInsets()
+
+    val back = object : androidx.activity.OnBackPressedCallback(true) {
+      override fun handleOnBackPressed() {
+        val w = dekaLoginView
+        if (w != null && w.canGoBack()) w.goBack() else dekaCloseLogin(false)
+      }
+    }
+    onBackPressedDispatcher.addCallback(this, back)
+
+    dekaLoginRoot = root
+    dekaLoginView = web
+    dekaLoginBack = back
+    dekaLoginSawAuth = false
+    dekaShowChip(false)
+    dekaLoginLog("окно входа · сессия " + (if (dekaHasSession()) "есть" else "нет"))
+    web.loadUrl("https://vk.ru/login")
+  }
+
+  // Вход завершён, когда VK после своей страницы входа вернул на сайт (или сессия уже есть).
+  private fun dekaLoginCheck(url: String) {
+    val u = android.net.Uri.parse(url)
+    val host = u.host ?: return
+    val path = u.path ?: ""
+    val authPage = Regex("^(id|login|oauth|connect|passport|account|auth|sso)\\\\.vk\\\\.(ru|com)$").matches(host) ||
+      Regex("^/(login|join|restore|auth|signup|register|challenge|checkpoint|oauth|verify)").containsMatchIn(path)
+    if (authPage) { dekaLoginSawAuth = true; return }
+    val vkSite = host == "vk.ru" || host == "m.vk.ru" || host == "vk.com" || host == "m.vk.com"
+    if (vkSite && (dekaHasSession() || dekaLoginSawAuth)) {
+      dekaLoginLog("вход завершён · сессия " + (if (dekaHasSession()) "есть" else "нет"))
+      dekaCloseLogin(true)
+    }
+  }
+
+  private fun dekaCloseLogin(done: Boolean) {
+    val root = dekaLoginRoot ?: return
+    android.webkit.CookieManager.getInstance().flush()
+    dekaLoginBack?.remove()
+    (window.decorView as android.view.ViewGroup).removeView(root)
+    dekaLoginView?.destroy()
+    dekaLoginRoot = null
+    dekaLoginView = null
+    dekaLoginBack = null
+    // В любом случае перечитываем музыку VK в основном окне: оно увидит новую сессию (или снова предложит войти).
+    dekaLoginLog(if (done) "закрыто: вход выполнен" else "закрыто вручную")
+    dekaWebView?.loadUrl("https://vk.ru/audio")
   }
 
   // «← Дека» поверх страницы VK. Касание — назад в Деку, перетаскивание — сдвинуть вверх/вниз.

@@ -1,6 +1,6 @@
 /* Deka 0.10: one durable library; two independent list views; landscape DJ console; set screen for VK Video.
- * Login pages of VK are left alone; without a login the VK page stays fully usable; the VK view
- * has an always-visible «← Дека» side tab instead of a bar over VK's own buttons. */
+ * Login pages of VK are left alone; without a login Deka shows its own sign-in screen (Android:
+ * a separate clean login window), the VK site is a separate button; the VK view has «← Дека». */
 (function () {
   'use strict';
   if (window.top !== window || !/(^|\.)(vk\.(ru|com)|vkvideo\.ru)$/.test(location.hostname)) return;
@@ -39,7 +39,8 @@
     .report{position:absolute;left:8px;right:8px;top:56px;z-index:30;display:flex;flex-direction:column;gap:6px;background:#151c25;border:1px solid var(--line);border-radius:9px;padding:10px;box-shadow:0 10px 30px rgba(0,0,0,.5)}.report small{color:#a7b6c8;font-size:11px}.report textarea{min-height:220px;color:#e7ecf3;background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:6px;font:11px/1.35 ui-monospace,monospace;resize:vertical}
     @media(orientation:landscape){.setview{padding-top:3px;gap:4px}.setbtns button{min-height:34px}}
     .sidetab{position:fixed;right:0;top:var(--tab-top,38%);z-index:2147483646;min-height:46px;padding:6px 12px 6px 14px;border-radius:23px 0 0 23px;border:1px solid #936b2d;border-right:0;background:#f5b44b;color:#101318;font:800 14px/1 system-ui,sans-serif;letter-spacing:.02em;box-shadow:0 4px 16px rgba(0,0,0,.45);touch-action:none;user-select:none;-webkit-user-select:none}
-    .guestnote{position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:2147483646;display:flex;align-items:center;gap:8px;padding:8px 8px 8px 12px;border-radius:10px;background:#3a2d17;border:1px solid #936b2d;color:#fbe6c2;font:13px/1.3 system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.4)}.guestnote span{flex:1}.guestnote button{min-height:32px;border-color:#936b2d;background:#4a3a1f}
+    .loginview{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-height:0;overflow:auto}.loginbox{max-width:380px;width:100%;display:flex;flex-direction:column;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.loginbox b{font-size:19px;color:var(--a)}.loginbox p{margin:0;color:#d7e1ee;line-height:1.4}.loginbox small{color:#a7b6c8;font-size:12px;line-height:1.35}.loginbox .primary{background:var(--a);color:#101318;border-color:var(--a);font-weight:800;min-height:48px;font-size:16px}.loginbox .secondary{min-height:42px}
+    .app.loginmode .library,.app.loginmode .setview{display:none}
     @media(prefers-reduced-motion:reduce){.disc.playing{animation:none}.dj{transition:none}}
   `;
   var library, files = [], urls = [], playlists = [], sets = [], messageTimer, vkView = false, rotationOpened = false;
@@ -55,7 +56,7 @@
   function mount() {
     if (!document.body) return setTimeout(mount, 100);
     var host = document.createElement('div'); host.id = 'deka-overlay'; document.documentElement.appendChild(host); sh = host.attachShadow({ mode: 'open' });
-    sh.innerHTML = '<style>' + css + '</style>' + `<main class="app"><header><span class="brand">ДЕКА</span><button id="setBtn" hidden>Сет</button><button id="libraryBtn" class="active">Треки</button><button id="syncBtn">Загрузить всё</button><button id="djBtn">DJ ⇠</button><button id="vkBtn">VK</button></header><div class="status" id="status"><span id="statusText">Читаю библиотеку…</span><button id="bgBtn" hidden title="Разрешить Деке работать при выключенном экране">Разрешить фон</button><button id="reportBtn" title="Технический отчёт о странице VK, без названий треков">Отчёт</button></div><div class="report" id="reportBox" hidden><b>Отчёт о странице VK</b><small>Без названий треков, ссылок, id и введённого текста. Пришлите его, если список или вход в VK работают неправильно.</small><textarea id="reportText" readonly aria-label="Отчёт"></textarea><div class="tools"><button id="reportCopy">Скопировать</button><button id="reportClose">Закрыть</button></div></div><section class="setview" id="setView" hidden aria-label="Сет VK Видео"><div class="sethead"><button id="setBack" title="Вернуться к своей музыке">← Музыка</button><div class="settitle"><b id="setTitle">Сет</b><small id="setTime">0:00 / 0:00</small></div></div><input id="setSeek" type="range" min="0" max="1000" value="0" aria-label="Позиция в сете" style="--accent:var(--a)"><div class="setbtns"><button data-set="back" aria-label="Назад 30 секунд">−30 с</button><button data-set="prev" aria-label="Предыдущий трек сета">⏮ Трек</button><button data-set="toggle" class="play" id="setPlay" aria-label="Играть или пауза">▶</button><button data-set="next" aria-label="Следующий трек сета">Трек ⏭</button><button data-set="fwd" aria-label="Вперёд 30 секунд">+30 с</button></div><div class="setnote" id="setNote" hidden><span id="setNoteText"></span><button data-set="restart">С начала</button></div><div class="setnow" id="setNow"></div><div class="chaps" id="chaps" aria-label="Треклист сета"></div><div class="tools"><button id="pasteBtn">Свой треклист</button><button id="rescanBtn">Искать в описании</button></div><div class="paste" id="pasteBox" hidden><textarea id="pasteText" placeholder="00:00 Исполнитель — Название&#10;03:15 Исполнитель — Название&#10;…"></textarea><div class="tools"><button id="pasteSave">Сохранить</button><button id="pasteClear">Убрать свой</button></div></div></section><section class="library"><div class="tools"><select data-source="main" id="sourcemain" aria-label="Источник"></select><input data-search="main" id="searchmain" type="search" placeholder="Название или исполнитель"><button id="fileBtn" title="Добавить свои аудиофайлы">＋ Файлы</button></div><div class="tools"><button id="saveBtn">Сохранить список</button><button id="currentBtn">Сейчас</button><button id="myBtn">Моя музыка VK</button><button id="cancelBtn" hidden>Стоп загрузки</button></div><div class="tools" id="setTools" hidden><input id="setUrl" type="url" placeholder="Ссылка на VK Видео"><button id="setAdd">Добавить сет</button></div><div class="count" id="countmain"></div><div id="listmain" aria-label="Все треки библиотеки"></div><div class="empty" id="empty" hidden>Откройте свою музыку в VK и нажмите «Загрузить всё». Сохраняется список названий, не аудиофайлы.</div></section><section class="dj" id="dj" aria-label="Две деки DJ"><div class="djinfo"><b>VK: один общий поток · Файлы: A + B</b><span id="djTotal"></span><input id="cross" type="range" min="-100" max="100" value="0" aria-label="Кроссфейдер A B"></div><div class="console">${sideHTML('A')}<section class="mixer" aria-label="Микшер"><label>MASTER<input id="master" type="range" min="0" max="100" value="80" aria-label="Master"></label><div class="pair"><label>A<input class="fader" data-gain="A" type="range" min="0" max="100" value="100" aria-label="Уровень A"></label><label>B<input class="fader" data-gain="B" type="range" min="0" max="100" value="100" aria-label="Уровень B"></label></div>${[0,1,2].map(function (band) { return `<label class="eq">${['LOW','MID','HIGH'][band]}<input data-eq="A" data-band="${band}" type="range" min="-12" max="12" value="0" aria-label="${['LOW','MID','HIGH'][band]} A"><input data-eq="B" data-band="${band}" type="range" min="-12" max="12" value="0" aria-label="${['LOW','MID','HIGH'][band]} B"></label>`; }).join('')}<button id="djFiles">＋ Файлы</button><button id="closeDj">К списку</button></section>${sideHTML('B')}</div></section><footer class="transport"><button id="mainPrev" aria-label="Предыдущий">|◀</button><div class="now"><b id="now">Выберите трек</b><small id="nowTime">Дека A</small></div><button id="mainPlay" class="play" aria-label="Играть пауза">▶</button><button id="mainNext" aria-label="Следующий">▶|</button></footer><div class="msg" id="message" hidden></div><input id="files" type="file" accept="audio/*" multiple hidden></main><button class="sidetab" id="sideTab" hidden aria-label="Вернуться в Деку" title="Вернуться в Деку. Язычок можно сдвинуть вверх или вниз">← Дека</button><div class="guestnote" id="guestNote" hidden role="status"><span>Войдите в VK. После входа «Дека» сама откроет «Мои треки».</span><button id="guestClose" aria-label="Скрыть подсказку">✕</button></div>`;
+    sh.innerHTML = '<style>' + css + '</style>' + `<main class="app"><header><span class="brand">ДЕКА</span><button id="setBtn" hidden>Сет</button><button id="libraryBtn" class="active">Треки</button><button id="syncBtn">Загрузить всё</button><button id="djBtn">DJ ⇠</button><button id="vkBtn">VK</button></header><div class="status" id="status"><span id="statusText">Читаю библиотеку…</span><button id="bgBtn" hidden title="Разрешить Деке работать при выключенном экране">Разрешить фон</button><button id="reportBtn" title="Технический отчёт о странице VK, без названий треков">Отчёт</button></div><div class="report" id="reportBox" hidden><b>Отчёт о странице VK</b><small>Без названий треков, ссылок, id и введённого текста. Пришлите его, если список или вход в VK работают неправильно.</small><textarea id="reportText" readonly aria-label="Отчёт"></textarea><div class="tools"><button id="reportCopy">Скопировать</button><button id="reportClose">Закрыть</button></div></div><section class="setview" id="setView" hidden aria-label="Сет VK Видео"><div class="sethead"><button id="setBack" title="Вернуться к своей музыке">← Музыка</button><div class="settitle"><b id="setTitle">Сет</b><small id="setTime">0:00 / 0:00</small></div></div><input id="setSeek" type="range" min="0" max="1000" value="0" aria-label="Позиция в сете" style="--accent:var(--a)"><div class="setbtns"><button data-set="back" aria-label="Назад 30 секунд">−30 с</button><button data-set="prev" aria-label="Предыдущий трек сета">⏮ Трек</button><button data-set="toggle" class="play" id="setPlay" aria-label="Играть или пауза">▶</button><button data-set="next" aria-label="Следующий трек сета">Трек ⏭</button><button data-set="fwd" aria-label="Вперёд 30 секунд">+30 с</button></div><div class="setnote" id="setNote" hidden><span id="setNoteText"></span><button data-set="restart">С начала</button></div><div class="setnow" id="setNow"></div><div class="chaps" id="chaps" aria-label="Треклист сета"></div><div class="tools"><button id="pasteBtn">Свой треклист</button><button id="rescanBtn">Искать в описании</button></div><div class="paste" id="pasteBox" hidden><textarea id="pasteText" placeholder="00:00 Исполнитель — Название&#10;03:15 Исполнитель — Название&#10;…"></textarea><div class="tools"><button id="pasteSave">Сохранить</button><button id="pasteClear">Убрать свой</button></div></div></section><section class="loginview" id="loginView" hidden aria-label="Вход в VK"><div class="loginbox"><b>Вход в VK</b><p>Чтобы «Дека» загрузила вашу музыку, войдите в свой аккаунт VK.</p><button id="loginBtn" class="primary">Войти в VK</button><small>Откроется отдельное окно входа VK. Логин и пароль вводятся в форме VK — «Дека» их не видит и не хранит. После входа «Дека» сама откроет «Мои треки».</small><button id="openVkBtn" class="secondary">Открыть сайт VK</button><small>Свои аудиофайлы можно слушать и без входа: «Треки» → «＋ Файлы».</small></div></section><section class="library"><div class="tools"><select data-source="main" id="sourcemain" aria-label="Источник"></select><input data-search="main" id="searchmain" type="search" placeholder="Название или исполнитель"><button id="fileBtn" title="Добавить свои аудиофайлы">＋ Файлы</button></div><div class="tools"><button id="saveBtn">Сохранить список</button><button id="currentBtn">Сейчас</button><button id="myBtn">Моя музыка VK</button><button id="cancelBtn" hidden>Стоп загрузки</button></div><div class="tools" id="setTools" hidden><input id="setUrl" type="url" placeholder="Ссылка на VK Видео"><button id="setAdd">Добавить сет</button></div><div class="count" id="countmain"></div><div id="listmain" aria-label="Все треки библиотеки"></div><div class="empty" id="empty" hidden>Откройте свою музыку в VK и нажмите «Загрузить всё». Сохраняется список названий, не аудиофайлы.</div></section><section class="dj" id="dj" aria-label="Две деки DJ"><div class="djinfo"><b>VK: один общий поток · Файлы: A + B</b><span id="djTotal"></span><input id="cross" type="range" min="-100" max="100" value="0" aria-label="Кроссфейдер A B"></div><div class="console">${sideHTML('A')}<section class="mixer" aria-label="Микшер"><label>MASTER<input id="master" type="range" min="0" max="100" value="80" aria-label="Master"></label><div class="pair"><label>A<input class="fader" data-gain="A" type="range" min="0" max="100" value="100" aria-label="Уровень A"></label><label>B<input class="fader" data-gain="B" type="range" min="0" max="100" value="100" aria-label="Уровень B"></label></div>${[0,1,2].map(function (band) { return `<label class="eq">${['LOW','MID','HIGH'][band]}<input data-eq="A" data-band="${band}" type="range" min="-12" max="12" value="0" aria-label="${['LOW','MID','HIGH'][band]} A"><input data-eq="B" data-band="${band}" type="range" min="-12" max="12" value="0" aria-label="${['LOW','MID','HIGH'][band]} B"></label>`; }).join('')}<button id="djFiles">＋ Файлы</button><button id="closeDj">К списку</button></section>${sideHTML('B')}</div></section><footer class="transport"><button id="mainPrev" aria-label="Предыдущий">|◀</button><div class="now"><b id="now">Выберите трек</b><small id="nowTime">Дека A</small></div><button id="mainPlay" class="play" aria-label="Играть пауза">▶</button><button id="mainNext" aria-label="Следующий">▶|</button></footer><div class="msg" id="message" hidden></div><input id="files" type="file" accept="audio/*" multiple hidden></main><button class="sidetab" id="sideTab" hidden aria-label="Вернуться в Деку" title="Вернуться в Деку. Язычок можно сдвинуть вверх или вниз">← Дека</button>`;
     $ = function (id) { return sh.getElementById(id); }; app = sh.querySelector('.app');
     engine = window.DekaDecks.create({ vk: command, change: renderPlayback, message: message });
     ['main','A','B'].forEach(function (id) { lists[id] = new window.DekaVirtualList($('list' + id), function (data, index) { if (data[index].kind === 'set') { location.assign(data[index].url); return; } var side = id === 'main' ? 'A' : id; engine.load(side, data, index); engine.play(side); }); });
@@ -109,7 +110,8 @@
     $('fileBtn').onclick = $('djFiles').onclick = function () { $('files').click(); };
     $('mainPlay').onclick = function () { engine.toggle('A'); }; $('mainPrev').onclick = function () { engine.step('A', -1); }; $('mainNext').onclick = function () { engine.step('A', 1); };
     $('vkBtn').onclick = function () { setVkView(true); };
-    $('guestClose').onclick = function () { guestClosed = true; $('guestNote').hidden = true; };
+    $('loginBtn').onclick = openLogin;
+    $('openVkBtn').onclick = function () { setVkView(true); };
     // Язычок «← Дека»: касание — назад в Деку, перетаскивание — сдвинуть, чтобы не мешал странице VK.
     var tab = $('sideTab'), drag = null, dragged = false;
     try { var top = parseFloat(localStorage.getItem('deka:tabTop')); if (top >= 8 && top <= 88) tab.style.setProperty('--tab-top', top + '%'); } catch (_) {}
@@ -181,7 +183,7 @@
     window.addEventListener('deka:vk:ended', function () { engine.endedVK(); });
     window.addEventListener('deka:vk:fx', function (e) { if (e.detail && !e.detail.ok && mode === 'dj') message('Для этого потока VK эквалайзер недоступен. Для файлов обе деки работают независимо.'); });
     var landscape = matchMedia('(orientation: landscape)');
-    function rotate() { if (vkView || setLink) return; if (landscape.matches) { setMode('dj'); rotationOpened = true; } else if (rotationOpened) { setMode('library'); rotationOpened = false; } requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
+    function rotate() { if (vkView || setLink || isGuest) return; if (landscape.matches) { setMode('dj'); rotationOpened = true; } else if (rotationOpened) { setMode('library'); rotationOpened = false; } requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
     landscape.addEventListener('change', rotate);
     if (!setLink) importSetReturn();
     library = window.DekaLibrary.get(); renderLibrary(); rotate(); renderPlayback();
@@ -197,7 +199,7 @@
     window.addEventListener('pagehide', function () { engine.destroy(); urls.forEach(function (u) { URL.revokeObjectURL(u); }); }, { once: true });
   }
   // ---------- режим VK, вход ----------
-  var isGuest = false, guestClosed = false, guestTimer = null, asked = 0;
+  var isGuest = false, guestTimer = null, asked = 0;
   var LOGIN = /^(войти|войти в vk|войти в вк|войти через vk id|войти по qr-коду|зарегистрироваться|регистрация|создать аккаунт|sign in|log in|login|sign up)$/i;
   function setVkView(on) {
     vkView = !!on; app.hidden = vkView;
@@ -207,20 +209,21 @@
       $('sideTab').hidden = true;
       try { window.DekaAndroid.setBackChip(vkView); } catch (_) {}
     } else $('sideTab').hidden = !vkView;
-    if (!vkView) $('guestNote').hidden = true;
     try { if (vkView) sessionStorage.setItem('deka:vkview', '1'); else sessionStorage.removeItem('deka:vkview'); } catch (_) {}
     if (!vkView) requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); });
   }
-  function showGuestHint() {
-    if (NATIVE) {
-      try { if (!sessionStorage.getItem('deka:loginToast')) { sessionStorage.setItem('deka:loginToast', '1'); window.DekaAndroid.toast('Войдите в VK. После входа «Дека» сама откроет «Мои треки»'); } } catch (_) {}
-    } else $('guestNote').hidden = guestClosed;
+  function openLogin() {
+    // Android: отдельное чистое окно входа поверх «Деки». Иначе — обычная страница входа VK.
+    if (NATIVE && typeof window.DekaAndroid.openLogin === 'function') { try { window.DekaAndroid.openLogin(); return; } catch (_) {} }
+    location.assign(location.origin + '/login');
   }
-  function needLogin() { setVkView(true); guestClosed = false; try { sessionStorage.removeItem('deka:loginToast'); } catch (_) {} showGuestHint(); }
+  function needLogin() { setVkView(false); setMode('login'); }
   // Кнопка Android «← Дека» вызывает это.
-  window.__dekaBack = function () { setVkView(false); if (isGuest) message('Сначала войдите в VK: нажмите «VK»'); };
+  window.__dekaBack = function () { setVkView(false); if (isGuest && mode !== 'login') setMode('login'); };
   // На странице видны «Войти»/«Зарегистрироваться» или поле пароля — вход не выполнен.
   function loggedOutPage() {
+    // Android знает куки сессии VK: если сессия есть, вход выполнен, что бы ни было на странице.
+    try { if (NATIVE && typeof window.DekaAndroid.hasSession === 'function' && window.DekaAndroid.hasSession()) return false; } catch (_) {}
     if (document.querySelector("[data-testid='left_menu_login_button']")) return true;
     // Вход VK ID часто встроен окном с id.vk.ru: его кнопок в самой странице не видно.
     var frames = document.querySelectorAll('iframe[src]');
@@ -242,9 +245,10 @@
     if (g) {
       // Запомним, что после входа надо открыть свою музыку; прежний id аккаунта больше не считаем своим.
       try { sessionStorage.setItem('deka:afterLogin', '1'); localStorage.setItem('deka:afterLogin', String(Date.now())); localStorage.removeItem('deka:uid'); } catch (_) {}
-      setVkView(true); showGuestHint();
+      // Свой экран входа «Деки», а не страница VK. Сайт VK — отдельной кнопкой.
+      if (!vkView) setMode('login');
     } else {
-      $('guestNote').hidden = true;
+      if (mode === 'login') setMode('library');
       afterLogin();
     }
     renderLibrary();
@@ -270,7 +274,7 @@
     try { if (sessionStorage.getItem('deka:autoMy')) return; sessionStorage.setItem('deka:autoMy', '1'); } catch (_) { return; }
     window.DekaLibrary.collectMy();
   }
-  function setMode(value) { mode = value; $('setView').hidden = mode !== 'set'; app.classList.toggle('setmode', mode === 'set'); $('setBtn').classList.toggle('active', mode === 'set'); $('dj').classList.toggle('open', mode === 'dj'); app.classList.toggle('djmode', mode === 'dj'); $('djBtn').classList.toggle('active', mode === 'dj'); $('libraryBtn').classList.toggle('active', mode === 'library'); requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
+  function setMode(value) { mode = value; $('loginView').hidden = mode !== 'login'; app.classList.toggle('loginmode', mode === 'login'); $('setView').hidden = mode !== 'set'; app.classList.toggle('setmode', mode === 'set'); $('setBtn').classList.toggle('active', mode === 'set'); $('dj').classList.toggle('open', mode === 'dj'); app.classList.toggle('djmode', mode === 'dj'); $('djBtn').classList.toggle('active', mode === 'dj'); $('libraryBtn').classList.toggle('active', mode === 'library'); requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
   function renderOptions() {
     var choices = [{ id: 'vk', name: 'Треки VK' }, { id: 'files', name: 'Мои файлы' }, { id: 'sets', name: 'Сеты / VK Видео' }].concat(playlists.map(function (p) { return { id: p.id, name: p.name }; }));
     ['main','A','B'].forEach(function (id) {
@@ -318,7 +322,7 @@
     var l = library || {}, n = (l.items || []).length, expected = l.expected;
     var reason = { 'open-own-library':'нажмите «Загрузить всё» — загружу «Мои треки» целиком', 'not-loaded':'нажмите «Загрузить всё»', partial:'список ещё загружается', 'end-observed':'дошли до конца списка', 'missing-tracks':'VK не отдал весь список', stalled:'Загрузка остановилась', 'source-changed':'Открыт другой список', cancelled:'Загрузка остановлена вами', 'no-rows':'На странице пока нет треков', limit:'Достигнут лимит прохода', 'read-error':'Ошибка чтения страницы', 'count-conflict':'Число треков не совпало', 'choose-library':'Откройте «Мои треки» в VK' };
     var status = l.status === 'loading' ? 'Загружаю: ' + (l.scanned || n) + (expected ? ' из ' + expected : '') + ' · список уже доступен' : l.complete ? (l.reason === 'count-matched' ? 'Загружено всё: ' + n + ' из ' + expected : 'Дошли до конца страницы · ' + n + ' треков') : 'Сохранено ' + n + (expected ? ' из ' + expected : '') + ' · ' + (reason[l.reason] || 'нажмите «Загрузить всё»');
-    if (isGuest) status = 'Вы не вошли в VK — нажмите «VK» и войдите';
+    if (isGuest) status = 'Вы не вошли в VK';
     if (l.reason === 'choose-library' && Date.now() - asked < 8000) { asked = 0; message('Не нашёл ваш список «Мои треки». Откройте его в VK — «Дека» подхватит.'); setVkView(true); }
     $('statusText').textContent = status; $('status').classList.toggle('error', l.status === 'partial' || isGuest);
     $('syncBtn').disabled = l.status === 'loading'; $('syncBtn').textContent = l.status === 'loading' ? 'Загрузка…' : 'Загрузить всё'; $('cancelBtn').hidden = l.status !== 'loading';
