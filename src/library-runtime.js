@@ -49,9 +49,14 @@
   function query() { try { return new URLSearchParams(location.search || ''); } catch (_) { return new URLSearchParams(''); } }
   // personal — ваш полный список; list — конкретный плейлист/чужой список/прочая страница со строками;
   // landing — главная музыки, обзор, поиск; other — VK Видео.
+  // Адрес полного списка «Мои треки», куда ведёт «Показать все» своего раздела (у VK он бывает любым).
+  function fullKey() { return 'deka:fullList:' + (userId() || 'unknown'); }
+  function fullUrl() { try { return localStorage.getItem(fullKey()) || ''; } catch (_) { return ''; } }
+  function here() { return location.pathname + (location.search || ''); }
   function pageKind() {
     var path = location.pathname.replace(/\/+$/, '') || '/', q = query(), uid = userId();
     if (/vkvideo\.ru$/.test(location.hostname) || /^\/(video|clip)/.test(path)) return 'other';
+    var full = fullUrl(); if (full && here() === full) return 'personal';
     if (q.has('q')) return 'landing';
     if (q.has('z') && /audio_playlist|playlist/.test(q.get('z') || '')) return 'list';
     var own = /^\/audios(-?\d+)$/.exec(path);
@@ -306,11 +311,13 @@
       if (!/(^|\.)vk\.(ru|com)$/.test(u.hostname) || !/^\/(audios?|music)/.test(u.pathname)) return false;
       var own = /^\/audios(\d+)\/?$/.exec(u.pathname); if (own && userId() && own[1] !== userId()) return false;
       if (u.pathname + u.search === location.pathname + location.search) return false;
+      if (window.__dekaLog) window.__dekaLog('«Показать все» → ' + u.pathname.replace(/\d+/g, '#') + (u.search ? '?' + Array.from(u.searchParams.keys()).join('&') : ''));
       var hops = []; try { hops = JSON.parse(sessionStorage.getItem('deka:fullHops')) || []; } catch (_) {}
       hops = hops.filter(function (t) { return Date.now() - t < 60000; });
       if (hops.length >= 2) return false;
       hops.push(Date.now()); try { sessionStorage.setItem('deka:fullHops', JSON.stringify(hops)); } catch (_) {}
-      u.hash = 'deka-library=collect'; location.assign(u.href); return true;
+      // Метка «это полный список»: страница по ссылке из своего раздела — ваш список, какой бы ни был адрес.
+      u.hash = 'deka-library=collect-full'; location.assign(u.href); return true;
     } catch (_) { return false; }
   }
   function onProgress(p) {
@@ -322,6 +329,9 @@
   async function collect(timing) {
     if (loading) return;
     if (!writable()) return collectMy(); // с главной/обзора/видео — сразу к своему списку
+    if (pageKind() === 'personal' && fullUrl() && here() !== fullUrl()) { location.assign(location.origin + fullUrl() + '#deka-library=collect'); return; }
+    // VK дорисовывает страницу после загрузки: ждём строки, иначе «Показать все» ещё не видно.
+    for (var w = 0; w < 30 && !allRows().length; w++) await new Promise(function (r) { setTimeout(r, 200); });
     if (pageKind() === 'personal' && await openFullList()) return;
     collector = Core.createCollector(adapter, Object.assign({}, timing || {}, { onProgress: onProgress }));
     loadCache(); loading = true; pinnedHost = null; runToken++;
@@ -352,7 +362,10 @@
     } finally { loading = false; pinnedHost = null; }
   }
   function collectMy() {
-    if (pageKind() === 'personal') return collect();
+    if (pageKind() === 'personal' && (!fullUrl() || here() === fullUrl())) return collect();
+    // Полный список уже известен — сразу туда, минуя превью.
+    var known = fullUrl();
+    if (known) { location.assign(location.origin + known + '#deka-library=collect'); return; }
     var u = ownURL();
     if (!u && !/^\/(audio|music)\/?$/.test(location.pathname)) {
       // Не видно, где ваш список: идём на главную музыки VK, там есть «Мои треки», и продолжаем оттуда.
@@ -405,8 +418,10 @@
       (h.className ? '.' + String(h.className).trim().split(/\s+/).slice(0, 2).join('.') : '');
     var l = snapshot || {};
     return {
-      deka: '0.10.6', site: location.hostname, page: mask(location.pathname) + (keys.length ? '?' + keys.join('&') : ''),
+      deka: '0.10.7', site: location.hostname, page: mask(location.pathname) + (keys.length ? '?' + keys.join('&') : ''),
       kind: pageKind(), signedIn: !!userId(), rowsOnPage: s.all.length, chosen: s.rows.length, sections: sections,
+      fullList: fullUrl() ? mask(fullUrl().split('?')[0]) + (fullUrl().indexOf('?') >= 0 ? '?' + Array.from(new URLSearchParams(fullUrl().split('?')[1]).keys()).join('&') : '') : '',
+      showAllTo: (function () { var b = fullListLink(), h = b && b.getAttribute('href'); if (!b) return ''; if (!h) return 'кнопка'; try { var u = new URL(h, location.href); return mask(u.pathname) + (u.search ? '?' + Array.from(u.searchParams.keys()).join('&') : '') + (u.pathname + u.search === here() ? ' (эта же)' : ''); } catch (_) { return '?'; } })(),
       scroller: mask(hostDesc), metrics: m, expected: total(), more: !!moreButton(false), showAll: !!moreButton(true),
       library: { count: l.count || 0, status: l.status || '', complete: !!l.complete, reason: l.reason || '', expected: l.expected || null }
     };
@@ -429,6 +444,11 @@
   try { sessionStorage.removeItem('dekaCollect'); } catch (_) {}
   function boot() {
     loadCache(); emit('library', snapshot);
+    if (/deka-library=collect-full/.test(location.hash)) {
+      // Пришли по «Показать все» своего раздела: запоминаем этот адрес как полный список «Мои треки».
+      try { localStorage.setItem(fullKey(), here()); } catch (_) {}
+      scope = ''; cached = null; loadCache(); emit('library', snapshot);
+    }
     if (/deka-library=collect/.test(location.hash)) {
       try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
       collect();

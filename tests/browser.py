@@ -191,6 +191,22 @@ with sync_playwright() as p:
     lp.wait_for_function("() => { const l = window.DekaLibrary && DekaLibrary.get(); return l && l.complete && l.count === 95; }", timeout=60000)
     record('Own page as a 6-track preview: the «Мои треки ›» heading link leads to the full list, all 95 loaded',
         lp.evaluate("DekaLibrary.get().items.filter(t => t.key.startsWith('-')).length") == 0)
+    lp.evaluate("localStorage.removeItem('deka:fullList:42')")  # each fixture models a different VK layout
+    lp.goto('https://m.vk.ru/audios42?land=1'); lo('#countmain').wait_for(); lp.wait_for_timeout(500)
+    lo('#syncBtn').click()
+    lp.wait_for_url('https://m.vk.ru/audio?section=mytracks**', timeout=15000)
+    lp.wait_for_function("() => { const l = window.DekaLibrary && DekaLibrary.get(); return l && l.complete && l.count >= 95; }", timeout=60000)
+    lp.wait_for_timeout(1500)
+    record('«Показать все» leading to a music-home address is trusted as the full list: no loop, all 95',
+        lp.url.startswith('https://m.vk.ru/audio?section=mytracks') and lp.evaluate('DekaLibrary.pageKind()') == 'personal'
+        and lp.evaluate("DekaLibrary.get().items.filter(t => t.key.startsWith('-')).length") == 0)
+    lo('#reportBtn').click(); rep2 = json.loads(lo('#reportText').input_value()); lo('#reportClose').click()
+    record('Report names where the full list lives', rep2.get('fullList') == '/audio?section')
+    lp.goto('https://m.vk.ru/audios42?land=1'); lo('#countmain').wait_for()
+    lo('#myBtn').click()
+    lp.wait_for_url('https://m.vk.ru/audio?section=mytracks**', timeout=15000)
+    record('Next time «Моя музыка VK» goes straight to the full list', True)
+    lp.evaluate("localStorage.removeItem('deka:fullList:42')")  # the following fixtures model other VK layouts
     lp.goto('https://m.vk.ru/audios42?expand=1'); lo('#countmain').wait_for(); lp.wait_for_timeout(500)
     r4 = lp.evaluate("async () => { await DekaLibrary.collect({stepMs:60, settleMs:80, endMs:900, stalledMs:8000}); const l = DekaLibrary.get(); return {count:l.count, rec:l.items.filter(t=>t.key.startsWith('-')).length, url: location.pathname + location.search}; }")
     record('Own page as a 6-track preview with «Показать все» on the same page: expanded in place, all 95 loaded',
@@ -198,7 +214,8 @@ with sync_playwright() as p:
     lp.goto('https://m.vk.ru/audios42?nocount=1'); lp.wait_for_function('() => !!window.DekaLibrary')
     r3 = lp.evaluate('''async () => {
       const run = DekaLibrary.collect({stepMs:60, settleMs:80, endMs:900, stalledMs:8000});
-      await new Promise(r => setTimeout(r, 400));
+      while (!DekaLibrary.isRunning()) await new Promise(r => setTimeout(r, 50));  // collection waits for VK to draw rows first
+      await new Promise(r => setTimeout(r, 300));
       const played = await DekaLibrary.playKey('42_0');
       const still = DekaLibrary.isRunning();
       await run; const l = DekaLibrary.get();

@@ -10,7 +10,9 @@
                    with its own "Показать ещё" in the same page scroll. ?nocount hides the count.
      ?guest      — signed out: welcome screen with «Войти»/«Зарегистрироваться» fixed at the bottom.
      /audios42?preview — own page as a 6-track preview whose heading «Мои треки ›» links to ?section=all.
-     /audios42?expand  — 6-track preview with «Показать все» linking to the same page; the page expands in place. -->
+     /audios42?expand  — 6-track preview with «Показать все» linking to the same page; the page expands in place.
+     /audios42?land    — 6-track preview whose «Показать все» leads to /audio?section=mytracks (a music-home address)
+                         where the full list lives — as on the user's real VK page. -->
 <div id="app"></div>
 <script>
 const app = document.getElementById('app'), q = new URLSearchParams(location.search);
@@ -47,13 +49,17 @@ if (q.has('guest')) {
   new IntersectionObserver(es => { if (!open || !es.some(x => x.isIntersecting) || pending || loaded >= 95) return; pending = true; setTimeout(() => { more(30); pending = false; }, 150); }).observe(sentinel);
   const rec = block('h2', 'Рекомендации для вас'), rl = document.createElement('div'); rec.appendChild(rl);
   for (let i = 0; i < 18; i++) rl.appendChild(row('-1_' + (400 + i), 'Чужой трек ' + i));
+} else if (/^\/audios42\/?$/.test(location.pathname) && q.has('land')) {
+  const own = block('h2', 'Мои треки'); for (let i = 0; i < 6; i++) own.appendChild(row('42_' + i, 'Мой трек ' + i));
+  const all = document.createElement('a'); all.href = '/audio?section=mytracks'; all.textContent = 'Показать все'; own.appendChild(all);
+  const rec = block('h2', 'Рекомендации'); for (let i = 0; i < 18; i++) rec.appendChild(row('-1_' + (500 + i), 'Чужой трек ' + i));
 } else if (/^\/audios42\/?$/.test(location.pathname) && q.has('preview')) {
   const s = document.createElement('section'), a = document.createElement('a'), h = document.createElement('h2');
   a.href = '/audios42?section=all'; h.textContent = 'Мои треки ›'; a.appendChild(h); s.appendChild(a); app.appendChild(s);
   for (let i = 0; i < 6; i++) s.appendChild(row('42_' + i, 'Мой трек ' + i));
   const rec = block('h2', 'Рекомендации'); for (let i = 0; i < 20; i++) rec.appendChild(row('-1_' + (300 + i), 'Чужой трек ' + i));
-} else if (/^\/audios42\/?$/.test(location.pathname)) {
-  const TOTAL = 95, own = block('h2', q.has('nocount') ? 'Мои треки' : 'Мои треки 95');
+} else if (/^\/audios42\/?$/.test(location.pathname) || (location.pathname === '/audio' && q.get('section') === 'mytracks')) {
+  const TOTAL = 95, own = block('h2', q.has('nocount') || q.get('section') === 'mytracks' ? 'Мои треки' : 'Мои треки 95');
   const list = document.createElement('div'); own.appendChild(list);
   const sentinel = document.createElement('div'); sentinel.id = 'sentinel'; own.appendChild(sentinel);
   let loaded = 0, pending = false;
