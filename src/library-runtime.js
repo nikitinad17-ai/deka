@@ -16,7 +16,7 @@
   var DISCOVERY = /(рекоменд|похож|для вас|вам (?:может )?понрав|популярн|недавно (?:прослуш|играл)|вы слушали|собран[оы] для|новинк|новые релизы|чарт|в тренде|recommend|similar|for you|suggest|related|recently played|you may|you might|based on|chart|trending|new releases)/i;
   var CACHE = 'deka:library:v3:';
   var rowMap = new Map(), cached = null, scope = '', runToken = 0, loading = false, snapshot = null, timer;
-  var pinnedHost = null, memo = new WeakMap(), pagingClick = { el: null, at: 0 }, collector = null;
+  var pinnedHost = null, memo = new WeakMap(), pagingClick = { el: null, at: 0 }, collector = null, interruptedByPlay = false;
 
   // ---------- кто вошёл и что за страница ----------
   // vk.user бывает просматриваемым профилем, поэтому берём только vk.id/uid и cookie сессии.
@@ -277,12 +277,39 @@
     return new URL('/audios' + ids[0], location.origin);
   }
   // Список свёрнут в превью со ссылкой «Показать все» на ваш же полный список — открываем его.
-  function openFullList() {
-    var b = moreButton(true); if (!b || !b.getAttribute('href')) return false;
+  // Ссылка на полный список своего раздела: «Показать все»/«Все треки» или сам заголовок «Мои треки ›».
+  function fullListLink() {
+    var s = selection(); if (!s.node) return null;
+    var b = moreButton(true);
+    if (!b) {
+      var h = s.node.closest && s.node.closest('a[href]');
+      if (!h && s.node.querySelector) h = s.node.querySelector('a[href]');
+      if (!h && s.node.parentElement) h = Array.from(s.node.parentElement.querySelectorAll('a[href]')).find(function (a) { return !a.closest(SELECTOR) && boundary(a).node === s.node; }) || null;
+      b = h;
+    }
+    return b;
+  }
+  // Превью «Мои треки» (несколько строк) — сначала открываем полный список. Переходы не по кругу.
+  async function openFullList() {
+    var b = fullListLink(); if (!b) return false;
+    var href = b.getAttribute('href'), same = false;
+    try { var t = new URL(href || '', location.href); same = t.pathname + t.search === location.pathname + location.search; } catch (_) {}
+    // Кнопка без адреса или ссылка на эту же страницу: VK разворачивает список у себя — нажимаем.
+    if (!href || href === '#' || /^javascript:/i.test(href) || same) {
+      // Кнопка разворачивает список на месте.
+      b.click();
+      await new Promise(function (r) { setTimeout(r, 1200); });
+      return false; // дальше собираем то, что развернулось (или новую страницу без перезагрузки)
+    }
     try {
-      var u = new URL(b.getAttribute('href'), location.href), own = /^\/audios(\d+)\/?$/.exec(u.pathname);
-      if (!/(^|\.)vk\.(ru|com)$/.test(u.hostname) || !own || own[1] !== userId()) return false;
+      var u = new URL(href, location.href);
+      if (!/(^|\.)vk\.(ru|com)$/.test(u.hostname) || !/^\/(audios?|music)/.test(u.pathname)) return false;
+      var own = /^\/audios(\d+)\/?$/.exec(u.pathname); if (own && userId() && own[1] !== userId()) return false;
       if (u.pathname + u.search === location.pathname + location.search) return false;
+      var hops = []; try { hops = JSON.parse(sessionStorage.getItem('deka:fullHops')) || []; } catch (_) {}
+      hops = hops.filter(function (t) { return Date.now() - t < 60000; });
+      if (hops.length >= 2) return false;
+      hops.push(Date.now()); try { sessionStorage.setItem('deka:fullHops', JSON.stringify(hops)); } catch (_) {}
       u.hash = 'deka-library=collect'; location.assign(u.href); return true;
     } catch (_) { return false; }
   }
@@ -295,12 +322,14 @@
   async function collect(timing) {
     if (loading) return;
     if (!writable()) return collectMy(); // с главной/обзора/видео — сразу к своему списку
-    if (pageKind() === 'personal' && openFullList()) return;
+    if (pageKind() === 'personal' && await openFullList()) return;
     collector = Core.createCollector(adapter, Object.assign({}, timing || {}, { onProgress: onProgress }));
     loadCache(); loading = true; pinnedHost = null; runToken++;
     var started = pageId();
     try {
       var result = await collector.run();
+      if (result.reason === 'cancelled' && interruptedByPlay) result.reason = 'interrupted';
+      interruptedByPlay = false;
       if (result.source !== pageId() || started !== pageId()) return;
       cached = Object.assign({}, result, { source: scope, items: Core.saveResult(cached.items, result), updatedAt: Date.now() });
       cached.count = cached.items.length;
@@ -335,8 +364,15 @@
   }
   async function playKey(key) {
     var target = String(key), numeric = /^(-?\d+_\d+)(?:#\d+)?$/.exec(target); if (numeric) target = numeric[1];
+    // Трек уже на экране — просто включаем, загрузку списка не трогаем.
+    read(true);
+    var visible = rowMap.get(target);
+    if (visible && visible.isConnected) {
+      var vb = visible.querySelector("[data-testid='audiorow-tappable'],.audio_row__play_btn,.ai_play,.ai_body,[aria-label*='оспроизв']");
+      (vb || visible).click(); return true;
+    }
     var request = ++runToken;
-    if (collector) collector.cancel();
+    if (collector && loading) { interruptedByPlay = true; collector.cancel(); }
     while (loading) await new Promise(function (r) { setTimeout(r, 50); });
     var oldPage = pageId(), start = Date.now();
     read(true);
@@ -369,7 +405,7 @@
       (h.className ? '.' + String(h.className).trim().split(/\s+/).slice(0, 2).join('.') : '');
     var l = snapshot || {};
     return {
-      deka: '0.10.5', site: location.hostname, page: mask(location.pathname) + (keys.length ? '?' + keys.join('&') : ''),
+      deka: '0.10.6', site: location.hostname, page: mask(location.pathname) + (keys.length ? '?' + keys.join('&') : ''),
       kind: pageKind(), signedIn: !!userId(), rowsOnPage: s.all.length, chosen: s.rows.length, sections: sections,
       scroller: mask(hostDesc), metrics: m, expected: total(), more: !!moreButton(false), showAll: !!moreButton(true),
       library: { count: l.count || 0, status: l.status || '', complete: !!l.complete, reason: l.reason || '', expected: l.expected || null }

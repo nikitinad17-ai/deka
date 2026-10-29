@@ -8,7 +8,15 @@
   // Страницы входа и регистрации VK — без «Деки»: ничего не перекрываем, VK сам вернёт на сайт после входа.
   if (/^(id|login|oauth|connect|passport|account|auth|sso)\.vk\.(ru|com)$/.test(location.hostname) ||
       /^\/(login|join|restore|auth|signup|register|challenge|checkpoint|oauth|verify|blank\.php)(\/|$|\.)/.test(location.pathname)) {
-    try { if (window.DekaAndroid && window.DekaAndroid.setBackChip) window.DekaAndroid.setBackChip(false); } catch (_) {}
+    try {
+      var A = window.DekaAndroid;
+      if (A && A.setBackChip) A.setBackChip(false);
+      // Вход — только в окне входа «Деки»: страница входа VK в основном окне не работает.
+      // Проверку VK («Продолжить», challenge/checkpoint) проходят здесь же, её не трогаем.
+      var loginPage = /^(id|login|oauth|connect|passport|auth)\.vk\.(ru|com)$/.test(location.hostname) || /^\/(login|join|restore|auth|signup|register)(\/|$|\.)/.test(location.pathname);
+      var ago = A && A.loginDismissedAgo ? +A.loginDismissedAgo() : Infinity;
+      if (loginPage && A && A.openLogin && !(A.hasSession && A.hasSession()) && ago > 60000) A.openLogin();
+    } catch (_) {}
     return;
   }
   // На Android язычок «← Дека» — кнопка самого приложения поверх страницы, а не элемент страницы.
@@ -191,6 +199,7 @@
     var keepVk = false; try { keepVk = sessionStorage.getItem('deka:vkview') === '1'; } catch (_) {}
     setVkView(keepVk); // заодно приводит кнопку Android «← Дека» в соответствие с этой страницей
     checkGuest();
+    document.addEventListener('click', interceptLogin, true);
     new MutationObserver(function () { if (guestTimer === null) guestTimer = setTimeout(function () { guestTimer = null; checkGuest(); }, 400); })
       .observe(document.body, { childList: true, subtree: true });
     setTimeout(function () { checkGuest(); autoStart(); }, 2500);
@@ -218,6 +227,19 @@
     location.assign(location.origin + '/login');
   }
   function needLogin() { setVkView(false); setMode('login'); }
+  // Любая кнопка входа VK на странице открывает окно входа «Деки» (вход через страницу VK не работает).
+  function interceptLogin(e) {
+    if (!NATIVE || typeof window.DekaAndroid.openLogin !== 'function') return;
+    try { if (window.DekaAndroid.hasSession && window.DekaAndroid.hasSession()) return; } catch (_) {}
+    var path = e.composedPath ? e.composedPath() : [];
+    for (var i = 0; i < path.length; i++) if (path[i] && path[i].id === 'deka-overlay') return;
+    var el = e.target && e.target.closest ? e.target.closest('a,button,[role=button]') : null; if (!el) return;
+    var t = (el.textContent || '').trim().replace(/\s+/g, ' '), href = el.getAttribute('href') || '', auth = false;
+    if (href) { try { var u = new URL(href, location.href); auth = /^(id|login|oauth|connect|passport|auth)\.vk\.(ru|com)$/.test(u.hostname) || /^\/(login|join|restore|auth|signup|register)(\/|$)/.test(u.pathname); } catch (_) {} }
+    if (!auth && !(t.length < 32 && LOGIN.test(t))) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    openLogin();
+  }
   // Кнопка Android «← Дека» вызывает это.
   window.__dekaBack = function () { setVkView(false); if (isGuest && mode !== 'login') setMode('login'); };
   // На странице видны «Войти»/«Зарегистрироваться» или поле пароля — вход не выполнен.
@@ -320,7 +342,7 @@
     }
     renderOptions(); renderLists(false);
     var l = library || {}, n = (l.items || []).length, expected = l.expected;
-    var reason = { 'open-own-library':'нажмите «Загрузить всё» — загружу «Мои треки» целиком', 'not-loaded':'нажмите «Загрузить всё»', partial:'список ещё загружается', 'end-observed':'дошли до конца списка', 'missing-tracks':'VK не отдал весь список', stalled:'Загрузка остановилась', 'source-changed':'Открыт другой список', cancelled:'Загрузка остановлена вами', 'no-rows':'На странице пока нет треков', limit:'Достигнут лимит прохода', 'read-error':'Ошибка чтения страницы', 'count-conflict':'Число треков не совпало', 'choose-library':'Откройте «Мои треки» в VK' };
+    var reason = { 'open-own-library':'нажмите «Загрузить всё» — загружу «Мои треки» целиком', 'not-loaded':'нажмите «Загрузить всё»', partial:'список ещё загружается', 'end-observed':'дошли до конца списка', 'missing-tracks':'VK не отдал весь список', stalled:'Загрузка остановилась', 'source-changed':'Открыт другой список', cancelled:'Загрузка остановлена вами', interrupted:'загрузка прервана: включён трек — нажмите «Загрузить всё», чтобы продолжить', 'no-rows':'На странице пока нет треков', limit:'Достигнут лимит прохода', 'read-error':'Ошибка чтения страницы', 'count-conflict':'Число треков не совпало', 'choose-library':'Откройте «Мои треки» в VK' };
     var status = l.status === 'loading' ? 'Загружаю: ' + (l.scanned || n) + (expected ? ' из ' + expected : '') + ' · список уже доступен' : l.complete ? (l.reason === 'count-matched' ? 'Загружено всё: ' + n + ' из ' + expected : 'Дошли до конца страницы · ' + n + ' треков') : 'Сохранено ' + n + (expected ? ' из ' + expected : '') + ' · ' + (reason[l.reason] || 'нажмите «Загрузить всё»');
     if (isGuest) status = 'Вы не вошли в VK';
     if (l.reason === 'choose-library' && Date.now() - asked < 8000) { asked = 0; message('Не нашёл ваш список «Мои треки». Откройте его в VK — «Дека» подхватит.'); setVkView(true); }

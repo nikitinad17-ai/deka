@@ -185,6 +185,26 @@ with sync_playwright() as p:
     lp.goto('https://m.vk.ru/audios42?nocount=1'); lp.wait_for_function('() => !!window.DekaLibrary')
     r2 = lp.evaluate("async () => { await DekaLibrary.collect({stepMs:40, settleMs:80, endMs:900, stalledMs:8000}); const l = DekaLibrary.get(); return {count:l.count, reason:l.reason, rec:l.items.filter(t=>t.key.startsWith('-')).length}; }")
     record('Without a count: stops at the end of own list, not in the endless recommendations', r2 == {'count':95, 'reason':'end-observed', 'rec':0})
+    lp.goto('https://m.vk.ru/audios42?preview=1'); lo('#countmain').wait_for(); lp.wait_for_timeout(500)
+    lo('#syncBtn').click()
+    lp.wait_for_url('https://m.vk.ru/audios42?section=all**', timeout=15000)
+    lp.wait_for_function("() => { const l = window.DekaLibrary && DekaLibrary.get(); return l && l.complete && l.count === 95; }", timeout=60000)
+    record('Own page as a 6-track preview: the «Мои треки ›» heading link leads to the full list, all 95 loaded',
+        lp.evaluate("DekaLibrary.get().items.filter(t => t.key.startsWith('-')).length") == 0)
+    lp.goto('https://m.vk.ru/audios42?expand=1'); lo('#countmain').wait_for(); lp.wait_for_timeout(500)
+    r4 = lp.evaluate("async () => { await DekaLibrary.collect({stepMs:60, settleMs:80, endMs:900, stalledMs:8000}); const l = DekaLibrary.get(); return {count:l.count, rec:l.items.filter(t=>t.key.startsWith('-')).length, url: location.pathname + location.search}; }")
+    record('Own page as a 6-track preview with «Показать все» on the same page: expanded in place, all 95 loaded',
+        r4 == {'count': 95, 'rec': 0, 'url': '/audios42?expand=1'})
+    lp.goto('https://m.vk.ru/audios42?nocount=1'); lp.wait_for_function('() => !!window.DekaLibrary')
+    r3 = lp.evaluate('''async () => {
+      const run = DekaLibrary.collect({stepMs:60, settleMs:80, endMs:900, stalledMs:8000});
+      await new Promise(r => setTimeout(r, 400));
+      const played = await DekaLibrary.playKey('42_0');
+      const still = DekaLibrary.isRunning();
+      await run; const l = DekaLibrary.get();
+      return { played, still, count: l.count, reason: l.reason };
+    }''')
+    record('Playing a visible track while loading does not stop the loading', r3 == {'played': True, 'still': True, 'count': 95, 'reason': 'end-observed'})
     record('No runtime exceptions on music pages', not lerrors)
     if lerrors: print(lerrors)
     lctx.close()
@@ -282,6 +302,17 @@ with sync_playwright() as p:
     record('Report carries the login journal and the signed-out state',
         rep.get('guest') is True and rep.get('native') is True and any(' page m.vk.ru/login-frame' in l for l in rep.get('loginLog', [])))
     no('#reportClose').click()
+    np_.goto('https://m.vk.ru/audio?guest=1'); no('#loginView').wait_for(state='visible', timeout=8000)
+    before = np_.evaluate('DekaAndroid.logins'); no('#openVkBtn').click()
+    np_.click('#vkLogin', timeout=3000); np_.click('#vkJoin', timeout=3000)
+    record('Android: VK\'s own «Войти»/«Зарегистрироваться» open Deka\'s login window instead',
+        np_.evaluate('DekaAndroid.logins') == before + 2 and np_.evaluate('[window.__login, window.__signup]') == [0, 0])
+    np_.goto('https://id.vk.ru/auth?from=main'); np_.wait_for_timeout(500)
+    record('Android: if the app itself lands on a VK login page, Deka\'s login window opens', np_.evaluate('DekaAndroid.logins') == 1)
+    np_.goto('https://m.vk.ru/challenge.html?from=main'); np_.wait_for_timeout(500)
+    record('Android: VK\'s "Продолжить" check stays in the main window (no login window)', np_.evaluate('DekaAndroid.logins') == 0)
+    np_.goto('https://m.vk.ru/login-frame')
+    np_.evaluate("sessionStorage.removeItem('deka:vkview')")  # the VK view opened above rightly survives navigation; leave it
     np_.evaluate("sessionStorage.setItem('fakeSession', '1')"); np_.reload()
     no('#countmain').wait_for(state='attached'); np_.wait_for_timeout(800)
     record('Android: with a VK session cookie Deka does not ask to sign in, even if VK shows login controls',

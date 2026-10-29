@@ -8,7 +8,9 @@
      /audio      — landing: preview of own tracks, then recommendation and new-release blocks.
      /audios42   — own list: 30 rows per load (IntersectionObserver), then a recommendation feed
                    with its own "Показать ещё" in the same page scroll. ?nocount hides the count.
-     ?guest      — signed out: welcome screen with «Войти»/«Зарегистрироваться» fixed at the bottom. -->
+     ?guest      — signed out: welcome screen with «Войти»/«Зарегистрироваться» fixed at the bottom.
+     /audios42?preview — own page as a 6-track preview whose heading «Мои треки ›» links to ?section=all.
+     /audios42?expand  — 6-track preview with «Показать все» linking to the same page; the page expands in place. -->
 <div id="app"></div>
 <script>
 const app = document.getElementById('app'), q = new URLSearchParams(location.search);
@@ -34,6 +36,22 @@ if (q.has('guest')) {
   const login = document.createElement('button'); login.id = 'vkLogin'; login.textContent = 'Войти'; login.style.cssText = 'height:48px'; login.onclick = () => window.__login++;
   const join = document.createElement('a'); join.id = 'vkJoin'; join.href = '#'; join.textContent = 'Зарегистрироваться'; join.style.cssText = 'display:block;height:44px;text-align:center'; join.onclick = e => { e.preventDefault(); window.__signup++; };
   box.append(login, join); app.appendChild(box);
+} else if (/^\/audios42\/?$/.test(location.pathname) && q.has('expand')) {
+  const own = block('h2', 'Мои треки'), list = document.createElement('div'); own.appendChild(list);
+  let loaded = 0, pending = false, open = false;
+  const more = n => { const end = Math.min(95, loaded + n); for (let i = loaded; i < end; i++) list.appendChild(row('42_' + i, 'Мой трек ' + i)); loaded = end; };
+  more(6);
+  const all = document.createElement('a'); all.href = location.pathname + location.search; all.textContent = 'Показать все'; own.appendChild(all);
+  const sentinel = document.createElement('div'); sentinel.id = 'sentinel'; own.appendChild(sentinel);
+  all.onclick = e => { e.preventDefault(); open = true; all.remove(); more(30); };
+  new IntersectionObserver(es => { if (!open || !es.some(x => x.isIntersecting) || pending || loaded >= 95) return; pending = true; setTimeout(() => { more(30); pending = false; }, 150); }).observe(sentinel);
+  const rec = block('h2', 'Рекомендации для вас'), rl = document.createElement('div'); rec.appendChild(rl);
+  for (let i = 0; i < 18; i++) rl.appendChild(row('-1_' + (400 + i), 'Чужой трек ' + i));
+} else if (/^\/audios42\/?$/.test(location.pathname) && q.has('preview')) {
+  const s = document.createElement('section'), a = document.createElement('a'), h = document.createElement('h2');
+  a.href = '/audios42?section=all'; h.textContent = 'Мои треки ›'; a.appendChild(h); s.appendChild(a); app.appendChild(s);
+  for (let i = 0; i < 6; i++) s.appendChild(row('42_' + i, 'Мой трек ' + i));
+  const rec = block('h2', 'Рекомендации'); for (let i = 0; i < 20; i++) rec.appendChild(row('-1_' + (300 + i), 'Чужой трек ' + i));
 } else if (/^\/audios42\/?$/.test(location.pathname)) {
   const TOTAL = 95, own = block('h2', q.has('nocount') ? 'Мои треки' : 'Мои треки 95');
   const list = document.createElement('div'); own.appendChild(list);

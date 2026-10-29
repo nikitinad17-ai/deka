@@ -103,6 +103,9 @@ if (!activity.includes(MARK)) {
       fun hasSession(): Boolean = dekaHasSession()
 
       @android.webkit.JavascriptInterface
+      fun loginDismissedAgo(): Long = if (dekaLoginDismissedAt == 0L) Long.MAX_VALUE else System.currentTimeMillis() - dekaLoginDismissedAt
+
+      @android.webkit.JavascriptInterface
       fun toast(text: String) {
         runOnUiThread { android.widget.Toast.makeText(this@MainActivity, text, android.widget.Toast.LENGTH_LONG).show() }
       }
@@ -114,6 +117,7 @@ if (!activity.includes(MARK)) {
   private var dekaLoginView: android.webkit.WebView? = null
   private var dekaLoginBack: androidx.activity.OnBackPressedCallback? = null
   private var dekaLoginSawAuth = false
+  @Volatile private var dekaLoginDismissedAt = 0L
 
   private fun dekaHasSession(): Boolean {
     val cm = android.webkit.CookieManager.getInstance()
@@ -243,7 +247,8 @@ if (!activity.includes(MARK)) {
       Regex("^/(login|join|restore|auth|signup|register|challenge|checkpoint|oauth|verify)").containsMatchIn(path)
     if (authPage) { dekaLoginSawAuth = true; return }
     val vkSite = host == "vk.ru" || host == "m.vk.ru" || host == "vk.com" || host == "m.vk.com"
-    if (vkSite && (dekaHasSession() || dekaLoginSawAuth)) {
+    // Закрываем только при настоящей сессии: VK мог вернуть на сайт и без входа (кнопка «назад»).
+    if (vkSite && dekaHasSession()) {
       dekaLoginLog("вход завершён · сессия " + (if (dekaHasSession()) "есть" else "нет"))
       dekaCloseLogin(true)
     }
@@ -259,6 +264,7 @@ if (!activity.includes(MARK)) {
     dekaLoginView = null
     dekaLoginBack = null
     // В любом случае перечитываем музыку VK в основном окне: оно увидит новую сессию (или снова предложит войти).
+    if (!done) dekaLoginDismissedAt = System.currentTimeMillis()
     dekaLoginLog(if (done) "закрыто: вход выполнен" else "закрыто вручную")
     dekaWebView?.loadUrl("https://vk.ru/audio")
   }
