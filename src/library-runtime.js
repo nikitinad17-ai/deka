@@ -92,7 +92,11 @@
   function emit(name, data) {
     window.dispatchEvent(new CustomEvent('deka:' + name, { detail: data }));
     try {
-      var p = window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emitTo('main', name, data);
+      var p;
+      if (window.__TAURI__ && window.__TAURI__.event) p = window.__TAURI__.event.emitTo('main', name, data);
+      else if (window.__TAURI_INTERNALS__) p = window.__TAURI_INTERNALS__.invoke('plugin:event|emit_to', {
+        target: { kind: 'AnyLabel', label: 'main' }, event: name, payload: data
+      });
       if (p && p.catch) p.catch(function () {});
     } catch (_) {}
   }

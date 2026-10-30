@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
     check('EQ changes only its own signal', eq['a'] < center['a']*.8 and abs(eq['b']/center['b']-1)<.05, **eq)
     page.evaluate("__dj.setEQ('A',1,0); __dj.setMaster(.4)"); page.wait_for_timeout(1000); master=page.evaluate('measure()')
     check('Master scales both channels', abs(master['a']/center['a']-.5)<.03 and abs(master['b']/center['b']-.5)<.03)
-    page.evaluate("__dj.setMaster(.8); __dj.setRate('B',1.08)"); page.wait_for_timeout(1000)
+    page.evaluate("__dj.setMaster(.8); __dj.setKeyLock('B',false); __dj.setRate('B',1.08)"); page.wait_for_timeout(1000)
     pitched=page.evaluate('measure(440,712.8)')
     check('Tempo changes the actual B audio frequency, leaving A intact', pitched['b'] > .08 and abs(pitched['a']/center['a']-1)<.05, **pitched)
     page.evaluate("__dj.nudge('B',-.04)"); page.wait_for_timeout(1000)

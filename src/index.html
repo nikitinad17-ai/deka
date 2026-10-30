@@ -261,11 +261,13 @@
         <div class="vk-bar">
           <span class="vk-status" id="vkStatus">Ожидаю страницу ВК…</span>
           <span class="spacer"></span>
+          <button class="btn open" id="vkLogin">Войти в VK</button>
           <button class="btn" id="vkShow">Окно ВК</button>
           <button class="btn" id="vkRefresh" title="Перечитать список со страницы">Обновить</button>
           <button class="btn" id="vkReload" title="Перезагрузить страницу ВК, если трек завис">Перезапустить ВК</button>
         </div>
         <div class="vk-bar">
+          <button class="btn open" id="vkLoad">Загрузить всю музыку</button><button class="btn" id="vkCancel" hidden>Стоп загрузки</button>
           <button class="btn toggle" id="vkMy" aria-pressed="false">Моя музыка</button>
           <form class="vk-link" id="vkLinkForm">
             <input id="vkLink" type="url" placeholder="Ссылка на трек или плейлист ВК" aria-label="Ссылка на трек или плейлист ВК">
@@ -276,6 +278,7 @@
           <button class="btn" id="vkExportShow" hidden>Показать файл</button>
           <span class="vk-status" id="vkFx">Эквалайзер ВК: включите трек</span>
         </div>
+        <p class="vk-status" id="vkLibraryStatus" style="padding:0 12px" role="status">«Загрузить всю музыку» добавляет ваш список VK. Аудио играет через VK; локальные файлы — в DJ.</p>
         <ol class="list" id="vkList"></ol>
         <div class="foot"><span id="vkCount">0 треков</span><span id="vkPage">—</span></div>
       </div>
@@ -331,6 +334,8 @@
   <span><kbd>↑</kbd><kbd>↓</kbd> громкость</span><span><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><kbd>B</kbd> назад · играть · пауза · стоп · вперёд</span>
 </div>
 
+<script src="vinyl-engine.js"></script>
+<script src="file-drop.js"></script>
 <script src="deck-engine.js"></script>
 <script src="set-core.js"></script>
 <script>
@@ -476,20 +481,38 @@
     if (i===cur){ stop(); cur=-1; } else if (i<cur) cur--;
     renderList(); window.dispatchEvent(new Event('deka:files'));
   }
-  function addFiles(files){
+  const metadataQueue = []; let metadataActive = 0;
+  function readMetadata() {
+    while (metadataActive < 4 && metadataQueue.length) {
+      const t=metadataQueue.shift(); if (!tracks.includes(t)) continue;
+      metadataActive++;
+      const probe=new Audio(); probe.preload='metadata'; probe.src=t.url; let done=false;
+      const timer=setTimeout(finish,15000);
+      function finish() {
+        if (done) return; done=true; clearTimeout(timer);
+        probe.onloadedmetadata=probe.onerror=null; probe.removeAttribute('src'); probe.load();
+        metadataActive--; renderList(); readMetadata();
+      }
+      probe.onloadedmetadata=()=>{ t.dur=Number.isFinite(probe.duration)?probe.duration:0; finish(); };
+      probe.onerror=finish;
+    }
+  }
+  function addFiles(files, options={}){
+    const imported = [];
     const first = tracks.length;
     [...files].filter(f=>f.type.startsWith("audio")||/\.(mp3|flac|ogg|oga|wav|m4a|aac|opus|webm)$/i.test(f.name)).forEach(f=>{
+      const signature = f.name+'|'+f.size+'|'+f.lastModified;
+      const existing = tracks.find(t=>t.signature===signature);
+      if (existing) { imported.push(existing); return; }
       const base=f.name.replace(/\.[^.]+$/,""); let artist="", title=base;
       const m=base.match(/^(.+?)\s+[-–—]\s+(.+)$/); if(m){artist=m[1];title=m[2];}
-      const t={key:'file-'+(++fileSerial), title, artist: artist||"Мои файлы", url:URL.createObjectURL(f), dur:0, size:f.size};
-      tracks.push(t);
-      const probe=new Audio(); probe.preload="metadata"; probe.src=t.url;
-      const releaseProbe=()=>{ probe.removeAttribute('src'); probe.load(); };
-      probe.onloadedmetadata=()=>{ t.dur=Number.isFinite(probe.duration)?probe.duration:0; releaseProbe(); renderList(); };
-      probe.onerror=releaseProbe;
+      const t={key:'file-'+(++fileSerial), title, artist: artist||"Мои файлы", url:URL.createObjectURL(f), dur:0, size:f.size, signature};
+      tracks.push(t); imported.push(t);
+      metadataQueue.push(t);
     });
-    renderList(); window.dispatchEvent(new Event('deka:files'));
-    if (!document.body.classList.contains('dj-open') && tracks.length>first && (audio.paused)) play(first);
+    readMetadata(); renderList(); window.dispatchEvent(new Event('deka:files'));
+    if (options.autoplay !== false && !document.body.classList.contains('dj-open') && tracks.length>first && (audio.paused)) play(first);
+    return imported;
   }
 
   // ---------- transport ----------
@@ -558,10 +581,7 @@
   $("bRep").onclick=()=>{ repeat=!repeat; $("bRep").setAttribute("aria-pressed",repeat); };
   $("bOpen").onclick=()=>$("file").click();
   $("file").addEventListener("change",e=>{ addFiles(e.target.files); e.target.value=""; });
-  const drop=$("paneFiles");
-  ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault(); $("drop").classList.add("over");}));
-  ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault(); $("drop").classList.remove("over");}));
-  drop.addEventListener("drop",e=>addFiles(e.dataTransfer.files));
+  DekaFileDrop.attach($('paneFiles'), files=>addFiles(files, {autoplay:false}), text=>{ $('drop').textContent=text; });
   $("drop").addEventListener("click",()=>$("file").click());
 
   // tabs
@@ -750,6 +770,22 @@
     $("vkOpenMobile").onclick = ()=>{ location.href = "https://vk.ru/audio"; };
   } else if (T){
     $("vkApp").hidden = false; $("vkInfo").hidden = true;
+    let collectingLibrary = false, vkLibraryReady = false;
+    $('vkLogin').onclick = ()=>T.core.invoke('vk_login').catch(err=>{ $('vkStatus').textContent='Не удалось открыть вход: '+err; });
+    const collectMusic = () => {
+      collectingLibrary=true; $('vkCancel').hidden=false; $('vkLoad').disabled=true;
+      $('vkLibraryStatus').textContent='Открываю полный список «Мои треки»…';
+      vk({type:'collectMy'});
+    };
+    $('vkLoad').onclick=collectMusic;
+    $('vkCancel').onclick=()=>{ vk({type:'cancelCollect'}); collectingLibrary=false; $('vkCancel').hidden=true; $('vkLoad').disabled=false; $('vkLibraryStatus').textContent='Загрузка остановлена. Собранный список сохранён.'; };
+    T.event.listen('vk:login-complete', ()=>{ $('vkStatus').textContent='Вход выполнен · загружаю музыку…'; });
+    T.event.listen('library', e=>{
+      const data=e.payload||{};
+      if (Array.isArray(data.items)) { vkLibraryReady=true; vkItems=data.items; renderVk(); }
+      const state=data.complete?'Полный список':data.status==='loading'?'Загрузка':'Список загружен частично';
+      $('vkLibraryStatus').textContent=state+': '+(data.count||vkItems.length)+' треков'+(data.complete?'':' · «Загрузить всю музыку» для продолжения');
+    });
     $("vkShow").onclick = ()=>T.core.invoke("vk_show",{show:true});
     $("vkRefresh").onclick = ()=>vk({type:"refresh"});
     $("vkReload").onclick = ()=>{ T.core.invoke("vk_reload").catch(()=>{}); $("vkStatus").textContent="Перезапускаю ВК…"; $("vkStatus").classList.remove("ok"); setState("СТОП"); };
@@ -786,8 +822,12 @@
     T.event.listen("vk:collect", async e=>{
       const p = e.payload || {};
       if (!p.done){ $("vkStatus").textContent = `Собираю список: ${p.count} ${plural(p.count,["трек","трека","треков"])}…`; return; }
-      exporting = false; $("vkExport").disabled = false;
+      collectingLibrary=false; $('vkCancel').hidden=true; $('vkLoad').disabled=false;
       const all = p.items || [];
+      vkItems=all; renderVk();
+      $('vkLibraryStatus').textContent=(p.complete?'Полный список: ':'Загружено: ')+all.length+' треков'+(p.complete?'':' · список может быть неполным, повторите загрузку');
+      if (!exporting) return;
+      exporting = false; $("vkExport").disabled = false;
       const items = all.filter(t => vkSection===ALL || (t.section||"Без названия")===vkSection);
       if (!items.length){ $("vkStatus").textContent = all.length
         ? "В выбранном разделе нет треков. Выберите другой раздел в списке и повторите экспорт"
@@ -807,12 +847,12 @@
     T.event.listen("vk:stall", e=>{ if (mode!=="vk") return; setState("ЗАВИС");
       $("vkStatus").textContent = (e.payload&&e.payload.retried) ? "ВК не загружает трек. Нажмите «Перезапустить ВК»" : "ВК долго грузит трек, пробую ещё раз…";
       $("vkStatus").classList.remove("ok"); });
-    $("vkMy").onclick = ()=>vk({type:"open", path:"/audio"});
+    $("vkMy").onclick = collectMusic;
     T.event.listen("vk:state", e=>{
       const s=e.payload||{}; const wasPaused=vkS.paused; vkS=s; vkAt=performance.now();
       const st=$("vkStatus");
-      if (!s.loggedIn){ st.textContent="Войдите в ВК: кнопка «Окно ВК»"; st.classList.remove("ok"); }
-      else { st.textContent = s.hasMedia ? "ВК подключён" : "ВК подключён · включите трек"; st.classList.add("ok"); }
+      if (!s.loggedIn){ st.textContent="Войдите через кнопку «Войти в VK», затем загрузите музыку"; st.classList.remove("ok"); }
+      else if (!collectingLibrary) { st.textContent = s.hasMedia ? "ВК подключён" : "ВК подключён · включите трек"; st.classList.add("ok"); }
       if (document.body.classList.contains("dj-open")) { if (!s.paused) vk({type:"pause"}); return; }
       if (!s.paused && wasPaused){ if (!audio.paused) audio.pause(); mode="vk"; sendFx(); }
       if (mode!=="vk") return;
@@ -825,7 +865,7 @@
       const key = s.artist+"|"+s.title;
       if (key!==vkTitleKey && s.title){ vkTitleKey=key; setMarquee(`VK · ${s.artist} — ${s.title} (${fmt(s.duration)})`); $("tKbps").textContent="VK"; renderVk(); }
     });
-    T.event.listen("vk:playlist", e=>{ vkItems = (e.payload&&e.payload.items)||[]; $("vkPage").textContent = (e.payload&&e.payload.page)||"—"; renderVk(); });
+    T.event.listen("vk:playlist", e=>{ if (vkLibraryReady) return; vkItems = (e.payload&&e.payload.items)||[]; $("vkPage").textContent = (e.payload&&e.payload.page)||"—"; renderVk(); });
     T.event.listen("vk:spectrum", e=>{ vkSpec = e.payload; });
     T.event.listen("vk:fx", e=>{ const p=e.payload||{}, el=$("vkFx");
       el.textContent = p.ok ? "Эквалайзер и спектр работают со звуком ВК" : "Эквалайзер ВК недоступен для этого трека";
@@ -970,7 +1010,8 @@
   }
 
   window.DekaDesktopPlayer = {
-    files: () => tracks.filter(t => t.key && t.url && !t.isDemo).map(t => ({ key:t.key, title:t.title, artist:t.artist, kind:'file', url:t.url, duration:t.dur })),
+    files: () => tracks.filter(t => t.key && t.url && !t.isDemo).map(t => ({ key:t.key, title:t.title, artist:t.artist, kind:'file', url:t.url, duration:t.dur, size:t.size })),
+    importFiles: files => addFiles(files, {autoplay:false}),
     openFiles: () => $('file').click(),
     pauseForDJ: () => { audio.pause(); vk({type:'pause'}); }
   };

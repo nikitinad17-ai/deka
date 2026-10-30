@@ -2,7 +2,7 @@ name: Build and test
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/v0.10.0-sets, feature/desktop-dj-0.11.0]
+    branches: [main, feature/v0.10.0-sets, feature/desktop-dj-0.11.0, feature/desktop-vinyl-0.12.0]
   pull_request:
     branches: [main]
 permissions:
@@ -28,6 +28,7 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - run: python tests/browser.py
       - run: python tests/desktop_dj.py
+      - run: python tests/desktop_vinyl.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -54,7 +55,7 @@ jobs:
             Deka.exe
             Deka-setup.exe
   android:
-    if: github.ref != 'refs/heads/feature/desktop-dj-0.11.0'
+    if: ${{ !startsWith(github.ref, 'refs/heads/feature/desktop-') }}
     needs: quality
     runs-on: ubuntu-24.04
     outputs:

@@ -10,9 +10,9 @@
   function create(opts) {
     opts = opts || {};
     var ctx, output, compressor, safety, masterMeter, cross = 0, master = 0.8, vkSide = 'A', awake = null, destroyed = false;
-    var state = {}, elements = {}, nodes = {};
+    var state = {}, elements = {}, nodes = {}, vinyl = {}, preparing = {}, aborts = {};
     ['A', 'B'].forEach(function (side) { state[side] = { side: side, track: null, list: [], index: -1, paused: true, time: 0, duration: 0,
-      gain: 1, eq: [0, 0, 0], generation: 0, cue: 0, pending: false, status: 'empty', error: '', rate: 1, nudge: 0, bpm: null, taps: [] }; });
+      gain: 1, eq: [0, 0, 0], generation: 0, cue: 0, pending: false, status: 'empty', error: '', rate: 1, nudge: 0, bpm: null, taps: [], keyLock: !!opts.djMode, held: false, scratchStatus: 'idle' }; });
     function tell(message) { if (opts.message) opts.message(message); }
     function changed() {
       if (destroyed) return;
@@ -39,6 +39,10 @@
     }
     function release(side) {
       var el = elements[side], n = nodes[side];
+      if (aborts[side]) aborts[side].abort();
+      if (vinyl[side]) vinyl[side].dispose();
+      delete vinyl[side]; delete preparing[side]; delete aborts[side];
+      state[side].held = false; state[side].scratchStatus = 'idle';
       delete elements[side]; delete nodes[side];
       if (el) { el.pause(); el.removeAttribute('src'); el.load(); }
       if (n) { n.source.disconnect(); n.filters.forEach(function (f) { f.disconnect(); }); n.gain.disconnect(); n.meter.disconnect(); }
@@ -59,6 +63,7 @@
         el.addEventListener(event, function () {
           if (!current()) return;
           var s = state[side];
+          if (s.held) return;
           s.time = el.currentTime || 0; s.duration = Number.isFinite(el.duration) ? el.duration : 0; s.paused = el.paused;
           if (event === 'waiting') s.status = 'loading';
           else if (event === 'playing') { s.status = 'playing'; s.pending = false; }
@@ -78,11 +83,11 @@
         s.error = 'Файл недоступен или формат не поддерживается';
         tell(s.error + ': ' + s.track.title); changed();
       });
-      apply(); return el;
+      apply(); rate(side); return el;
     }
     function rate(side) {
       var s = state[side], el = elements[side];
-      if (el) { el.preservesPitch = false; el.playbackRate = clamp(s.rate + s.nudge, 0.8, 1.2); }
+      if (el) { el.preservesPitch = s.keyLock; el.playbackRate = clamp(s.rate + s.nudge, 0.8, 1.2); }
     }
     function meter(n) {
       if (!n) return null;
@@ -105,7 +110,9 @@
       }
     }
     function pause(side) {
-      var s = state[side]; s.generation++; s.pending = false;
+      var s = state[side];
+      if (s.held) { s.held = false; if (vinyl[side]) vinyl[side].release(); if (elements[side]) elements[side].currentTime = s.time; }
+      s.generation++; s.pending = false;
       if (s.track && s.track.kind === 'file') { if (elements[side]) elements[side].pause(); }
       else if (side === vkSide) vk({ type: 'pause' });
       s.paused = true; if (s.track && s.status !== 'error') s.status = 'paused'; changed();
@@ -116,11 +123,12 @@
       if (!list.length) { tell('Список пуст'); return; }
       pause(side); release(side); s.list = list.slice(); s.index = Math.floor(clamp(index, 0, list.length - 1));
       s.track = s.list[s.index]; s.time = 0; s.duration = s.track.duration || 0; s.cue = 0; s.rate = 1; s.nudge = 0; s.bpm = null; s.taps = []; s.error = ''; s.status = 'loading';
-      if (s.track.kind === 'file') { var el = audio(side); el.src = s.track.url; el.load(); }
+      if (s.track.kind === 'file') { var el = audio(side); el.src = s.track.url; rate(side); el.load(); }
       changed();
     }
     async function play(side) {
       var s = state[side]; if (!s || !s.track) { tell('Сначала выберите трек в списке ' + side); return; }
+      if (s.held) return;
       var generation = ++s.generation; s.pending = true; s.error = ''; changed();
       try {
         if (s.track.kind === 'file') {
@@ -143,6 +151,48 @@
       var s = state[side]; time = clamp(time, 0, s.duration || 0);
       if (s.track && s.track.kind === 'file' && elements[side]) elements[side].currentTime = time;
       else if (side === vkSide) vk({ type: 'seek', time: time }); s.time = time; changed();
+    }
+    async function scratchBegin(side) {
+      var s = state[side], el = elements[side];
+      if (!opts.vinyl || !win.DekaVinyl || !el || !s.track || s.status === 'error' || s.held) return false;
+      var track = s.track, n = nodes[side], resume = !el.paused;
+      s.generation++; s.pending = false; s.held = true; s.resumeAfterScratch = resume;
+      s.time = el.currentTime; el.pause(); s.paused = true; s.status = 'held'; changed();
+      try {
+        await ctx.resume();
+        if (!preparing[side] && !vinyl[side]) {
+          s.scratchStatus = 'loading'; changed();
+          var controller = new AbortController(); aborts[side] = controller;
+          preparing[side] = win.DekaVinyl.prepare(ctx, track, n.filters[0], controller.signal).then(function (v) {
+            if (destroyed || state[side].track !== track || controller.signal.aborted) { v.dispose(); return null; }
+            vinyl[side] = v; state[side].scratchStatus = 'ready'; changed(); return v;
+          });
+        }
+        var v = vinyl[side] || await preparing[side];
+        if (!v || destroyed || s.track !== track || !s.held) return false;
+        v.grab(s.time); s.scratchStatus = 'ready'; changed(); return true;
+      } catch (error) {
+        if (s.track === track && !destroyed && error.name !== 'AbortError') {
+          delete preparing[side]; s.scratchStatus = 'error'; tell(error.message || 'Не удалось подготовить скретч');
+          scratchEnd(side);
+        }
+        return false;
+      }
+    }
+    function scratchMove(side, seconds) {
+      var s = state[side]; if (!s.held) return;
+      s.time = clamp(s.time + seconds, 0, s.duration || 0);
+      if (vinyl[side]) vinyl[side].move(s.time);
+      changed();
+    }
+    function scratchEnd(side, cancel) {
+      var s = state[side]; if (!s.held) return;
+      var resume = s.resumeAfterScratch && !cancel && s.time < s.duration - 0.002;
+      s.held = false; s.resumeAfterScratch = false;
+      if (vinyl[side]) vinyl[side].release();
+      if (elements[side]) elements[side].currentTime = s.time;
+      s.status = 'paused'; s.paused = true; changed();
+      if (resume) play(side);
     }
     function step(side, direction, ended) {
       var s = state[side]; if (!s.list.length) return;
@@ -167,6 +217,8 @@
     }
     return { state: state, load: load, play: play, pause: pause, toggle: toggle, seek: seek, step: step,
       noteVK: noteVK, endedVK: endedVK,
+      scratchBegin: scratchBegin, scratchMove: scratchMove, scratchEnd: scratchEnd,
+      setKeyLock: function (side, on) { state[side].keyLock = !!on; rate(side); changed(); },
       clear: function (side) { pause(side); release(side); var s = state[side]; s.track = null; s.list = []; s.index = -1; s.time = s.duration = s.cue = 0; s.status = 'empty'; s.error = ''; changed(); },
       cue: function (side) { var s = state[side]; if (s.paused) s.cue = s.time; else { pause(side); seek(side, s.cue); } changed(); },
       setRate: function (side, value) { state[side].rate = clamp(value, 0.92, 1.08); rate(side); changed(); },
@@ -175,7 +227,13 @@
       tap: function (side) { var s = state[side], now = win.performance.now();
         if (s.taps.length && now - s.taps[s.taps.length - 1] > 2000) s.taps = [];
         s.taps.push(now); if (s.taps.length > 8) s.taps.shift();
-        if (s.taps.length > 1) s.bpm = Math.round(clamp(60000 * (s.taps.length - 1) / (now - s.taps[0]), 30, 300) * 10) / 10;
+        if (s.taps.length > 1) {
+          var tapped = 60000 * (s.taps.length - 1) / (now - s.taps[0]);
+          // TAP follows the beat currently heard; store original BPM so the display
+          // does not apply the tempo twice when tapping a deck that is already pitched.
+          if (opts.djMode && !s.paused) tapped /= s.rate + s.nudge;
+          s.bpm = Math.round(clamp(tapped, 30, 300) * 10) / 10;
+        }
         changed(); return s.bpm;
       },
       meters: function () { return { A: meter(nodes.A && nodes.A.meter), B: meter(nodes.B && nodes.B.meter), master: meter(masterMeter) }; },

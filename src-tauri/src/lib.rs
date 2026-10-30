@@ -1,5 +1,5 @@
 // Windows: local player + VK window. Android: VK with Deka's isolated UI overlay.
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 const VK_BRIDGE: &str = include_str!("../../src/vk-bridge.js");
 const LIBRARY_CORE: &str = include_str!("../../src/library-engine.js");
@@ -14,6 +14,51 @@ const MOBILE_OVERLAY: &str = include_str!("../../src/mobile-overlay.js");
 const VK_URL: &str = "https://vk.ru/audio";
 #[cfg(windows)]
 const BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion,IntensiveWakeUpThrottling --autoplay-policy=no-user-gesture-required --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows";
+
+// Same separation as the working APK: plain VK login, shared default cookie profile,
+// then return the music WebView to the full personal collection. No scripts in login.
+#[tauri::command]
+async fn vk_login(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" { return Err("недоступно".into()); }
+    #[cfg(desktop)]
+    {
+        if let Some(w) = app.get_webview_window("vk-login") {
+            w.show().map_err(|e| e.to_string())?;
+            return w.set_focus().map_err(|e| e.to_string());
+        }
+        let builder = WebviewWindowBuilder::new(&app, "vk-login", WebviewUrl::External("https://vk.ru/login".parse().unwrap()))
+            .title("Вход в VK · Дека").inner_size(900.0, 760.0);
+        // WebView2 windows sharing a cookie profile must use the same browser-process
+        // options. These flags do not inject Deka UI, alter the UA or inspect login input.
+        #[cfg(windows)]
+        let builder = builder.additional_browser_args(BROWSER_ARGS);
+        builder.build().map_err(|e| e.to_string())?;
+        // Reading WebView2 cookies from an event callback can deadlock. Poll off the UI thread.
+        std::thread::spawn(move || {
+            for _ in 0..600 {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                let Some(login) = app.get_webview_window("vk-login") else { break; };
+                let Ok(url) = login.url() else { continue; };
+                let host = url.host_str().unwrap_or("");
+                if !["vk.ru", "m.vk.ru", "vk.com", "m.vk.com"].contains(&host) { continue; }
+                if ["/login", "/auth", "/join", "/restore", "/challenge", "/verify", "/blank.php"].iter().any(|p| url.path().starts_with(p)) { continue; }
+                let Ok(cookies) = login.cookies_for_url(url.clone()) else { continue; };
+                if !cookies.iter().any(|c| ["remixsid", "remixnsid"].contains(&c.name()) && c.value().len() > 8 && c.value() != "DELETED") { continue; }
+                if let Some(vk) = app.get_webview_window("vk") {
+                    let mut music = url.clone();
+                    music.set_path("/audio"); music.set_query(None); music.set_fragment(Some("deka-library=collect"));
+                    let _ = vk.navigate(music);
+                }
+                let _ = app.emit_to("main", "vk:login-complete", ());
+                let _ = login.close();
+                break;
+            }
+        });
+        return Ok(());
+    }
+    #[cfg(mobile)]
+    { let _ = app; Err("Вход Android выполняется через встроенное окно".into()) }
+}
 
 #[tauri::command]
 fn vk_show(app: tauri::AppHandle, show: bool) -> Result<(), String> {
@@ -34,7 +79,8 @@ fn vk_show(app: tauri::AppHandle, show: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn vk_cmd(app: tauri::AppHandle, cmd: serde_json::Value) -> Result<(), String> {
+fn vk_cmd(app: tauri::AppHandle, window: tauri::WebviewWindow, cmd: serde_json::Value) -> Result<(), String> {
+    if window.label() != "main" { return Err("недоступно".into()); }
     let w = app.get_webview_window("vk").ok_or("окно ВК не создано")?;
     let js = format!("window.__deka && window.__deka.cmd({});", cmd);
     w.eval(&js).map_err(|e| e.to_string())
@@ -160,7 +206,7 @@ pub fn run() {
                 } else if window.label() == "main" { window.app_handle().exit(0); }
             }
         })
-        .invoke_handler(tauri::generate_handler![vk_show, vk_cmd, vk_reload, save_export, show_export])
+        .invoke_handler(tauri::generate_handler![vk_show, vk_cmd, vk_reload, vk_login, save_export, show_export])
         .run(tauri::generate_context!())
         .expect("не удалось запустить приложение");
 }

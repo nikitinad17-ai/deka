@@ -158,6 +158,9 @@
   }
 
   function isLoggedIn() {
+    if (/^(id|login|oauth|connect|passport|account|auth|sso)\.vk\.(ru|com)$/.test(location.hostname) ||
+        /^\/(login|join|restore|auth|signup|register|challenge|checkpoint|oauth|verify)(\/|$|\.)/.test(location.pathname)) return false;
+    if (document.querySelector('input[type="password"]')) return false;
     // Вошли ли вы: у гостя на странице есть кнопка «Войти», у вошедшего её нет.
     if (document.querySelector("[data-testid='left_menu_login_button']")) return false;
     var btns = document.querySelectorAll("a,button");
