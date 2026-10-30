@@ -82,8 +82,10 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
     ov('#mixToggleB').tap();ov('#playA').tap()
     page.set_viewport_size({'width':390,'height':844});page.wait_for_timeout(200)
     check('Rotation retains both sources, positions and playback',page.evaluate("!__dj.state.A.paused&&!__dj.state.B.paused&&__dj.state.A.track.title==='Tone440'"))
-    ov('#djBtn').tap();page.wait_for_timeout(120)
-    check('Portrait settings and transports stay within the screen',ov('#discA').bounding_box()['x']>=0 and ov('#discB').bounding_box()['x']+ov('#discB').bounding_box()['width']<=390)
+    ov('#djBtn').tap()
+    # Wait for the real opening transition; do not sample a halfway-offscreen platter.
+    ov('#dj').evaluate('(el)=>Promise.all(el.getAnimations().map(animation=>animation.finished.catch(()=>{})))')
+    check('Portrait settings and transports stay within the screen',ov('#discA').bounding_box()['x']>=0 and ov('#discB').bounding_box()['x']+ov('#discB').bounding_box()['width']<=390, viewport=page.evaluate('({width:innerWidth,offset:visualViewport.offsetLeft})'), a=ov('#discA').bounding_box(), b=ov('#discB').bounding_box())
     # Pause A with UI, touch/release it; must remain paused.
     ov('#playA').tap();box=ov('#discA').bounding_box();x=box['x']+box['width']*.8;y=box['y']+box['height']/2
     session.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':[finger(x,y)]});page.wait_for_timeout(100);session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
