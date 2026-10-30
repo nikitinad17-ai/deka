@@ -12,12 +12,12 @@
     var ctx, output, compressor, safety, masterMeter, cross = 0, master = 0.8, vkSide = 'A', awake = null, destroyed = false;
     var state = {}, elements = {}, nodes = {}, vinyl = {}, preparing = {}, aborts = {};
     ['A', 'B'].forEach(function (side) { state[side] = { side: side, track: null, list: [], index: -1, paused: true, time: 0, duration: 0,
-      gain: 1, eq: [0, 0, 0], generation: 0, cue: 0, pending: false, status: 'empty', error: '', rate: 1, nudge: 0, bpm: null, taps: [], keyLock: !!opts.djMode, held: false, scratchStatus: 'idle' }; });
+      gain: 1, eq: [0, 0, 0], generation: 0, cue: 0, pending: false, status: 'empty', error: '', rate: 1, nudge: 0, bpm: null, taps: [], keyLock: opts.keyLock === undefined ? !!opts.djMode : !!opts.keyLock, held: false, scratchStatus: 'idle' }; });
     function tell(message) { if (opts.message) opts.message(message); }
     function changed() {
       if (destroyed) return;
       if (opts.change) opts.change(state);
-      var on = Object.values(state).some(function (s) { return !s.paused; });
+      var on = Object.values(state).some(function (s) { return !s.paused || s.held; });
       if (on !== awake) {
         try { if (win.DekaAndroid) win.DekaAndroid.keepAwake(on); awake = on; } catch (_) {}
       }
@@ -26,6 +26,11 @@
     function setup() {
       if (ctx) return;
       ctx = opts.context || new (win.AudioContext || win.webkitAudioContext)();
+      ctx.addEventListener('statechange',function(){
+        if(ctx.state==='suspended'||ctx.state==='interrupted'){
+          ['A','B'].forEach(function(side){var s=state[side];if(s.track&&s.track.kind==='file'&&(!s.paused||s.held)&&!s.pending)pause(side);});
+        }
+      });
       output = ctx.createGain(); output.gain.value = master;
       compressor = ctx.createDynamicsCompressor(); compressor.threshold.value = -6; compressor.ratio.value = 20;
       compressor.knee.value = 0; compressor.attack.value = 0.003; compressor.release.value = 0.1;
@@ -165,7 +170,7 @@
           var controller = new AbortController(); aborts[side] = controller;
           preparing[side] = win.DekaVinyl.prepare(ctx, track, n.filters[0], controller.signal).then(function (v) {
             if (destroyed || state[side].track !== track || controller.signal.aborted) { v.dispose(); return null; }
-            vinyl[side] = v; state[side].scratchStatus = 'ready'; changed(); return v;
+            vinyl[side] = v; state[side].scratchStatus = 'ready'; state[side].scratchBackend=v.backend || 'worklet'; changed(); return v;
           });
         }
         var v = vinyl[side] || await preparing[side];
@@ -215,7 +220,7 @@
       var side = vkSide, s = state[side], index = s.index + 1, generation = s.generation;
       setTimeout(function () { if (!destroyed && generation === s.generation && s.list[index]) { load(side, s.list, index); play(side); } }, 150);
     }
-    return { state: state, load: load, play: play, pause: pause, toggle: toggle, seek: seek, step: step,
+    return { state: state, setDJMode: function (on) { opts.djMode=!!on; apply(); }, load: load, play: play, pause: pause, toggle: toggle, seek: seek, step: step,
       noteVK: noteVK, endedVK: endedVK,
       scratchBegin: scratchBegin, scratchMove: scratchMove, scratchEnd: scratchEnd,
       setKeyLock: function (side, on) { state[side].keyLock = !!on; rate(side); changed(); },

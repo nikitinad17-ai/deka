@@ -14,6 +14,8 @@ try {
   const blocks = [...read('src/index.html').matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)];
   assert.ok(blocks.length);
   for (let i=0;i<blocks.length;i++) { const p=path.join(tmp,'inline-'+i+'.js'); fs.writeFileSync(p,blocks[i][1]); cp.execFileSync(process.execPath,['--check',p]); }
+  const rust=read('src-tauri/src/lib.rs');
+  assert.ok(rust.includes('[LIBRARY_CORE, VINYL_PROCESSOR, VINYL_ENGINE, DECK_ENGINE, SET_CORE, VK_BRIDGE, LIBRARY_RUNTIME, VIRTUAL_LIST, MOBILE_OVERLAY]'),'Android embeds processor+engine before the VK hook and overlay');
   const packageVersion=JSON.parse(read('package.json')).version;
   assert.equal(JSON.parse(read('src-tauri/tauri.conf.json')).version,packageVersion);
   assert.equal(read('src-tauri/Cargo.toml').match(/^version\s*=\s*"([^"]+)"/m)[1],packageVersion);
