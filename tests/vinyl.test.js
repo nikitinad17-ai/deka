@@ -7,9 +7,9 @@ function processor() {
   let Processor;
   const sandbox={sampleRate:48000,AudioWorkletProcessor:class { constructor(){this.port={onmessage:null};} },registerProcessor:(_,C)=>Processor=C};
   vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname,'../src/vinyl-processor.js'),'utf8'),sandbox);
-  const p=new Processor(), pcm=Float32Array.from({length:48000},(_,i)=>i/48000-.5);
-  const send=d=>p.port.onmessage({data:d});send({type:'buffer',channels:[pcm]});
-  const render=(blocks=1)=>{let samples=[];for(let j=0;j<blocks;j++){const out=[new Float32Array(128)];p.process([],[out]);samples.push(...out[0]);}return samples;};
+  const wrapper=new Processor(), p=wrapper.transport, pcm=Float32Array.from({length:48000},(_,i)=>i/48000-.5);
+  const send=d=>wrapper.port.onmessage({data:d});send({type:'buffer',channels:[pcm]});
+  const render=(blocks=1)=>{let samples=[];for(let j=0;j<blocks;j++){const out=[new Float32Array(128)];wrapper.process([],[out]);samples.push(...out[0]);}return samples;};
   return {p,send,render};
 }
 test('vinyl hold is silent; motion emits the selected PCM instead of an unrelated tone',()=>{

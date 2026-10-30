@@ -2,7 +2,7 @@ name: Build and test
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/v0.10.0-sets, feature/desktop-dj-0.11.0, feature/desktop-vinyl-0.12.0]
+    branches: [main, feature/v0.10.0-sets, feature/desktop-dj-0.11.0, feature/desktop-vinyl-0.12.0, feature/android-vinyl-0.13.0]
   pull_request:
     branches: [main]
 permissions:
@@ -29,6 +29,7 @@ jobs:
       - run: python tests/browser.py
       - run: python tests/desktop_dj.py
       - run: python tests/desktop_vinyl.py
+      - run: python tests/android_dj.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -141,6 +142,15 @@ jobs:
           aapt=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)
           "$signer" verify --verbose --print-certs "$APK_NAME"
           "$aapt" dump badging "$APK_NAME" > "$RUNNER_TEMP/deka-badging.txt"
+          python - "$APK_NAME" <<'PYVERIFY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              native = [n for n in z.namelist() if n.startswith('lib/arm64-v8a/') and n.endswith('.so')]
+              found = any(all(token in z.read(n) for token in [b'DEKA_ANDROID_VINYL_013', b'DekaVinylModuleSource', b'keyLock']) for n in native)
+              assert found, 'APK does not contain the new Android Vinyl bundle'
+              assert any(b'onShowFileChooser' in z.read(n) for n in z.namelist() if n.endswith('.dex')), 'System file chooser handler missing'
+          print('Android Vinyl bundle and native file chooser found in APK')
+          PYVERIFY
           head -n 1 "$RUNNER_TEMP/deka-badging.txt"
           grep -m1 "^application-label:" "$RUNNER_TEMP/deka-badging.txt"
           grep -q "package: name='$APK_PACKAGE'" "$RUNNER_TEMP/deka-badging.txt"

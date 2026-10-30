@@ -1,4 +1,4 @@
-/* Deka 0.10: one durable library; two independent list views; landscape DJ console; set screen for VK Video.
+/* DEKA_ANDROID_VINYL_013 · Deka 0.13: one durable library; two independent list views; landscape DJ console; set screen for VK Video.
  * Login pages of VK are left alone; without a login Deka shows its own sign-in screen (Android:
  * a separate clean login window), the VK site is a separate button; the VK view has «← Дека». */
 (function () {
@@ -49,7 +49,14 @@
     .sidetab{position:fixed;right:0;top:var(--tab-top,38%);z-index:2147483646;min-height:46px;padding:6px 12px 6px 14px;border-radius:23px 0 0 23px;border:1px solid #936b2d;border-right:0;background:#f5b44b;color:#101318;font:800 14px/1 system-ui,sans-serif;letter-spacing:.02em;box-shadow:0 4px 16px rgba(0,0,0,.45);touch-action:none;user-select:none;-webkit-user-select:none}
     .loginview{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-height:0;overflow:auto}.loginbox{max-width:380px;width:100%;display:flex;flex-direction:column;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.loginbox b{font-size:19px;color:var(--a)}.loginbox p{margin:0;color:#d7e1ee;line-height:1.4}.loginbox small{color:#a7b6c8;font-size:12px;line-height:1.35}.loginbox .primary{background:var(--a);color:#101318;border-color:var(--a);font-weight:800;min-height:48px;font-size:16px}.loginbox .secondary{min-height:42px}
     .app.loginmode .library,.app.loginmode .setview{display:none}
-    @media(prefers-reduced-motion:reduce){.disc.playing{animation:none}.dj{transition:none}}
+    .disc{padding:0;touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;animation:none!important;overflow:hidden}.disc:after{display:none}.disc span{display:grid;place-items:center;position:absolute;inset:0;border-radius:50%;background:repeating-radial-gradient(circle,#101216 0 3px,#252930 4px 5px);color:var(--accent);font-weight:900;animation:spin 1.8s linear infinite;animation-play-state:paused}.disc span:after{content:'';position:absolute;top:5px;width:3px;height:12px;background:var(--accent)}.disc.playing span{animation-play-state:running}.disc.held{border-color:var(--accent);box-shadow:0 0 8px var(--accent);cursor:grabbing}.disc.held span{animation-play-state:paused}
+    .deck h2{letter-spacing:0;gap:3px}.deck h2 small{font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mixToggle{font-size:10px!important;min-height:28px;padding:2px 5px;white-space:nowrap;flex:none}
+    .perform{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px 8px;display:flex;flex-direction:column;gap:7px}.perform label{display:block;font-size:11px}.perform input[type=number]{width:64px;color:inherit;background:#101318;border:1px solid var(--line);border-radius:4px;min-height:32px}.perform output{color:var(--accent);font-size:11px}.perform small{font-size:10px;color:#aebcd0}.perform-buttons{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.perform button{font-size:11px;min-height:36px;padding:3px 7px;touch-action:none}.perform button[aria-pressed=true]{color:var(--b);border-color:var(--b)}.perform input[type=range]{height:32px;touch-action:none}.deck.mix-on .decktools,.deck.mix-on>.count,.deck.mix-on>.vlviewport{display:none}
+    .mixer meter{display:block;width:100%;height:8px;margin:2px 0}.loadActions{display:flex;gap:3px;margin-left:auto}.loadActions button{font-size:11px;min-height:36px;min-width:40px;padding:3px 6px;touch-action:manipulation}
+    @media(orientation:landscape){.deck h2{padding:1px 6px}.mixToggle{min-height:24px;font-size:9px!important}.decktools{padding:2px 4px}.deck>.count{padding-top:1px;padding-bottom:1px}}
+    .app header{min-width:0;overflow-x:auto;scrollbar-width:none}.app header>*{flex-shrink:0}
+    @media(max-width:440px){.app header{gap:4px;padding-inline:4px}.app header .brand{font-size:12px;letter-spacing:.04em}.app header button{font-size:12px;padding-inline:6px}}
+    @media(prefers-reduced-motion:reduce){.disc span{animation:none}.dj{transition:none}}
   `;
   var library, files = [], urls = [], playlists = [], sets = [], messageTimer, vkView = false, rotationOpened = false;
   var sh, $, app, mode = 'library', search = { main: '', A: '', B: '' }, source = { main: 'vk', A: 'vk', B: 'vk' }, lists = {}, sigs = {};
@@ -60,14 +67,54 @@
   function command(c) { return window.__deka.cmd(c); }
   function fmt(s) { s = Math.max(0, Math.floor(+s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2,'0'); }
   function message(s) { $('message').textContent = s; $('message').hidden = false; clearTimeout(messageTimer); messageTimer = setTimeout(function () { $('message').hidden = true; }, 6500); }
-  function sideHTML(side) { return `<section class="deck" data-side="${side}"><h2>DECK ${side}<small id="type${side}">Выберите трек</small></h2><div class="deckhead"><div class="disc" data-letter="${side}" id="disc${side}"></div><div class="decktitle"><b id="title${side}">Загрузите трек из списка</b><small id="time${side}">0:00 / 0:00</small><div class="buttons"><button data-cmd="prev" data-side="${side}" aria-label="Предыдущий ${side}">◀</button><button class="play" data-cmd="play" data-side="${side}" id="play${side}" aria-label="Играть ${side}">▶</button><button data-cmd="next" data-side="${side}" aria-label="Следующий ${side}">▶|</button><button data-cmd="cue" data-side="${side}" title="На паузе: поставить CUE; при игре: вернуться">CUE</button></div></div></div><div class="seek"><input id="seek${side}" data-seek="${side}" type="range" min="0" max="1000" value="0" aria-label="Позиция ${side}"></div><div class="decktools"><select data-source="${side}" id="source${side}" aria-label="Источник ${side}"></select><input type="search" data-search="${side}" id="search${side}" placeholder="Поиск ${side}" aria-label="Поиск ${side}"></div><div class="count" id="count${side}"></div><div id="list${side}" aria-label="Список деки ${side}"></div></section>`; }
+  function sideHTML(side) { return `<section class="deck" data-side="${side}">
+    <h2>DECK ${side}<small id="type${side}">Выберите трек</small><button class="mixToggle" data-mix="${side}" id="mixToggle${side}" aria-expanded="false">Темп / EQ</button></h2>
+    <div class="deckhead"><button type="button" class="disc" data-letter="${side}" id="disc${side}" aria-label="Пластинка ${side}: удерживайте и вращайте пальцем"><span>${side}</span></button>
+      <div class="decktitle"><b id="title${side}">Загрузите трек из списка</b><small id="time${side}">0:00 / 0:00</small><div class="buttons"><button data-cmd="prev" data-side="${side}" aria-label="Предыдущий ${side}">◀</button><button class="play" data-cmd="play" data-side="${side}" id="play${side}" aria-label="Играть ${side}">▶</button><button data-cmd="next" data-side="${side}" aria-label="Следующий ${side}">▶|</button><button data-cmd="cue" data-side="${side}" title="На паузе: поставить CUE; при игре: вернуться">CUE</button></div></div></div>
+    <div class="seek"><input id="seek${side}" data-seek="${side}" type="range" min="0" max="1000" value="0" aria-label="Позиция ${side}"></div>
+    <section class="perform" id="perform${side}" hidden aria-label="Настройки деки ${side}">
+      <small id="vinyl${side}">VINYL · удержание / вращение</small><small id="cueTime${side}">CUE 0:00</small>
+      <label>Темп <output id="rateLabel${side}">+0.0%</output><input data-rate="${side}" id="rate${side}" type="range" min="-8" max="8" step="0.1" value="0" aria-label="Темп ${side}"></label>
+      <div class="perform-buttons"><button data-reset="${side}">0%</button><button id="keyLock${side}" data-keylock="${side}" aria-pressed="true">Key Lock</button></div>
+      <div class="perform-buttons"><button data-nudge="${side}" data-value="-0.04">− Nudge</button><button data-nudge="${side}" data-value="0.04">+ Nudge</button></div>
+      <label>Исх. BPM <input id="bpm${side}" data-bpm="${side}" type="number" inputmode="decimal" min="30" max="300" step="0.1" placeholder="—" aria-label="Исходный BPM ${side}"></label><div class="perform-buttons"><button data-tap="${side}">TAP</button><output id="effectiveBPM${side}">→ — BPM</output></div>
+      <small>Только локальные файлы. CUE — точка возврата.</small>
+    </section>
+    <div class="decktools"><select data-source="${side}" id="source${side}" aria-label="Источник ${side}"></select><input type="search" data-search="${side}" id="search${side}" placeholder="Поиск ${side}" aria-label="Поиск ${side}"></div><div class="count" id="count${side}"></div><div id="list${side}" aria-label="Список деки ${side}"></div></section>`; }
   function mount() {
     if (!document.body) return setTimeout(mount, 100);
     var host = document.createElement('div'); host.id = 'deka-overlay'; document.documentElement.appendChild(host); sh = host.attachShadow({ mode: 'open' });
-    sh.innerHTML = '<style>' + css + '</style>' + `<main class="app"><header><span class="brand">ДЕКА</span><button id="setBtn" hidden>Сет</button><button id="libraryBtn" class="active">Треки</button><button id="syncBtn">Загрузить всё</button><button id="djBtn">DJ ⇠</button><button id="vkBtn">VK</button></header><div class="status" id="status"><span id="statusText">Читаю библиотеку…</span><button id="bgBtn" hidden title="Разрешить Деке работать при выключенном экране">Разрешить фон</button><button id="reportBtn" title="Технический отчёт о странице VK, без названий треков">Отчёт</button></div><div class="report" id="reportBox" hidden><b>Отчёт о странице VK</b><small>Без названий треков, ссылок, id и введённого текста. Пришлите его, если список или вход в VK работают неправильно.</small><textarea id="reportText" readonly aria-label="Отчёт"></textarea><div class="tools"><button id="reportCopy">Скопировать</button><button id="reportClose">Закрыть</button></div></div><section class="setview" id="setView" hidden aria-label="Сет VK Видео"><div class="sethead"><button id="setBack" title="Вернуться к своей музыке">← Музыка</button><div class="settitle"><b id="setTitle">Сет</b><small id="setTime">0:00 / 0:00</small></div></div><input id="setSeek" type="range" min="0" max="1000" value="0" aria-label="Позиция в сете" style="--accent:var(--a)"><div class="setbtns"><button data-set="back" aria-label="Назад 30 секунд">−30 с</button><button data-set="prev" aria-label="Предыдущий трек сета">⏮ Трек</button><button data-set="toggle" class="play" id="setPlay" aria-label="Играть или пауза">▶</button><button data-set="next" aria-label="Следующий трек сета">Трек ⏭</button><button data-set="fwd" aria-label="Вперёд 30 секунд">+30 с</button></div><div class="setnote" id="setNote" hidden><span id="setNoteText"></span><button data-set="restart">С начала</button></div><div class="setnow" id="setNow"></div><div class="chaps" id="chaps" aria-label="Треклист сета"></div><div class="tools"><button id="pasteBtn">Свой треклист</button><button id="rescanBtn">Искать в описании</button></div><div class="paste" id="pasteBox" hidden><textarea id="pasteText" placeholder="00:00 Исполнитель — Название&#10;03:15 Исполнитель — Название&#10;…"></textarea><div class="tools"><button id="pasteSave">Сохранить</button><button id="pasteClear">Убрать свой</button></div></div></section><section class="loginview" id="loginView" hidden aria-label="Вход в VK"><div class="loginbox"><b>Вход в VK</b><p>Чтобы «Дека» загрузила вашу музыку, войдите в свой аккаунт VK.</p><button id="loginBtn" class="primary">Войти в VK</button><small>Откроется отдельное окно входа VK. Логин и пароль вводятся в форме VK — «Дека» их не видит и не хранит. После входа «Дека» сама откроет «Мои треки».</small><button id="openVkBtn" class="secondary">Открыть сайт VK</button><small>Свои аудиофайлы можно слушать и без входа: «Треки» → «＋ Файлы».</small></div></section><section class="library"><div class="tools"><select data-source="main" id="sourcemain" aria-label="Источник"></select><input data-search="main" id="searchmain" type="search" placeholder="Название или исполнитель"><button id="fileBtn" title="Добавить свои аудиофайлы">＋ Файлы</button></div><div class="tools"><button id="saveBtn">Сохранить список</button><button id="currentBtn">Сейчас</button><button id="myBtn">Моя музыка VK</button><button id="cancelBtn" hidden>Стоп загрузки</button></div><div class="tools" id="setTools" hidden><input id="setUrl" type="url" placeholder="Ссылка на VK Видео"><button id="setAdd">Добавить сет</button></div><div class="count" id="countmain"></div><div id="listmain" aria-label="Все треки библиотеки"></div><div class="empty" id="empty" hidden>Откройте свою музыку в VK и нажмите «Загрузить всё». Сохраняется список названий, не аудиофайлы.</div></section><section class="dj" id="dj" aria-label="Две деки DJ"><div class="djinfo"><b>VK: один общий поток · Файлы: A + B</b><span id="djTotal"></span><input id="cross" type="range" min="-100" max="100" value="0" aria-label="Кроссфейдер A B"></div><div class="console">${sideHTML('A')}<section class="mixer" aria-label="Микшер"><label>MASTER<input id="master" type="range" min="0" max="100" value="80" aria-label="Master"></label><div class="pair"><label>A<input class="fader" data-gain="A" type="range" min="0" max="100" value="100" aria-label="Уровень A"></label><label>B<input class="fader" data-gain="B" type="range" min="0" max="100" value="100" aria-label="Уровень B"></label></div>${[0,1,2].map(function (band) { return `<label class="eq">${['LOW','MID','HIGH'][band]}<input data-eq="A" data-band="${band}" type="range" min="-12" max="12" value="0" aria-label="${['LOW','MID','HIGH'][band]} A"><input data-eq="B" data-band="${band}" type="range" min="-12" max="12" value="0" aria-label="${['LOW','MID','HIGH'][band]} B"></label>`; }).join('')}<button id="djFiles">＋ Файлы</button><button id="closeDj">К списку</button></section>${sideHTML('B')}</div></section><footer class="transport"><button id="mainPrev" aria-label="Предыдущий">|◀</button><div class="now"><b id="now">Выберите трек</b><small id="nowTime">Дека A</small></div><button id="mainPlay" class="play" aria-label="Играть пауза">▶</button><button id="mainNext" aria-label="Следующий">▶|</button></footer><div class="msg" id="message" hidden></div><input id="files" type="file" accept="audio/*" multiple hidden></main><button class="sidetab" id="sideTab" hidden aria-label="Вернуться в Деку" title="Вернуться в Деку. Язычок можно сдвинуть вверх или вниз">← Дека</button>`;
+    sh.innerHTML = '<style>' + css + '</style>' + `<main class="app"><header><span class="brand">ДЕКА</span><button id="setBtn" hidden>Сет</button><button id="libraryBtn" class="active">Треки</button><button id="syncBtn">Загрузить всё</button><button id="djBtn">DJ ⇠</button><button id="vkBtn">VK</button></header><div class="status" id="status"><span id="statusText">Читаю библиотеку…</span><button id="bgBtn" hidden title="Разрешить Деке работать при выключенном экране">Разрешить фон</button><button id="reportBtn" title="Технический отчёт о странице VK, без названий треков">Отчёт</button></div><div class="report" id="reportBox" hidden><b>Отчёт о странице VK</b><small>Без названий треков, ссылок, id и введённого текста. Пришлите его, если список или вход в VK работают неправильно.</small><textarea id="reportText" readonly aria-label="Отчёт"></textarea><div class="tools"><button id="reportCopy">Скопировать</button><button id="reportClose">Закрыть</button></div></div><section class="setview" id="setView" hidden aria-label="Сет VK Видео"><div class="sethead"><button id="setBack" title="Вернуться к своей музыке">← Музыка</button><div class="settitle"><b id="setTitle">Сет</b><small id="setTime">0:00 / 0:00</small></div></div><input id="setSeek" type="range" min="0" max="1000" value="0" aria-label="Позиция в сете" style="--accent:var(--a)"><div class="setbtns"><button data-set="back" aria-label="Назад 30 секунд">−30 с</button><button data-set="prev" aria-label="Предыдущий трек сета">⏮ Трек</button><button data-set="toggle" class="play" id="setPlay" aria-label="Играть или пауза">▶</button><button data-set="next" aria-label="Следующий трек сета">Трек ⏭</button><button data-set="fwd" aria-label="Вперёд 30 секунд">+30 с</button></div><div class="setnote" id="setNote" hidden><span id="setNoteText"></span><button data-set="restart">С начала</button></div><div class="setnow" id="setNow"></div><div class="chaps" id="chaps" aria-label="Треклист сета"></div><div class="tools"><button id="pasteBtn">Свой треклист</button><button id="rescanBtn">Искать в описании</button></div><div class="paste" id="pasteBox" hidden><textarea id="pasteText" placeholder="00:00 Исполнитель — Название&#10;03:15 Исполнитель — Название&#10;…"></textarea><div class="tools"><button id="pasteSave">Сохранить</button><button id="pasteClear">Убрать свой</button></div></div></section><section class="loginview" id="loginView" hidden aria-label="Вход в VK"><div class="loginbox"><b>Вход в VK</b><p>Чтобы «Дека» загрузила вашу музыку, войдите в свой аккаунт VK.</p><button id="loginBtn" class="primary">Войти в VK</button><small>Откроется отдельное окно входа VK. Логин и пароль вводятся в форме VK — «Дека» их не видит и не хранит. После входа «Дека» сама откроет «Мои треки».</small><button id="openVkBtn" class="secondary">Открыть сайт VK</button><small>Свои аудиофайлы можно слушать и без входа: «Треки» → «＋ Файлы».</small></div></section><section class="library"><div class="tools"><select data-source="main" id="sourcemain" aria-label="Источник"></select><input data-search="main" id="searchmain" type="search" placeholder="Название или исполнитель"><button id="fileBtn" title="Добавить свои аудиофайлы">＋ Файлы</button></div><div class="tools"><button id="saveBtn">Сохранить список</button><button id="currentBtn">Сейчас</button><button id="myBtn">Моя музыка VK</button><button id="cancelBtn" hidden>Стоп загрузки</button></div><div class="tools" id="setTools" hidden><input id="setUrl" type="url" placeholder="Ссылка на VK Видео"><button id="setAdd">Добавить сет</button></div><div class="count" id="countmain"></div><div id="listmain" aria-label="Все треки библиотеки"></div><div class="empty" id="empty" hidden>Откройте свою музыку в VK и нажмите «Загрузить всё». Сохраняется список названий, не аудиофайлы.</div></section><section class="dj" id="dj" aria-label="Две деки DJ"><div class="djinfo"><b>VK: один поток · Файлы: A + B · VINYL пальцем</b><span id="djTotal"></span><input id="cross" type="range" min="-100" max="100" value="0" aria-label="Кроссфейдер A B"></div><div class="console">${sideHTML('A')}<section class="mixer" aria-label="Микшер"><label>MASTER<meter id="meterMaster" min="0" max="1" value="0" hidden></meter><input id="master" type="range" min="0" max="100" value="80" aria-label="Master"></label><div class="pair"><label>A<meter id="meterA" min="0" max="1" value="0" hidden></meter><input class="fader" data-gain="A" type="range" min="0" max="100" value="100" aria-label="Уровень A"></label><label>B<meter id="meterB" min="0" max="1" value="0" hidden></meter><input class="fader" data-gain="B" type="range" min="0" max="100" value="100" aria-label="Уровень B"></label></div>${[0,1,2].map(function (band) { return `<label class="eq">${['LOW','MID','HIGH'][band]}<input data-eq="A" data-band="${band}" type="range" min="-12" max="12" value="0" aria-label="${['LOW','MID','HIGH'][band]} A"><input data-eq="B" data-band="${band}" type="range" min="-12" max="12" value="0" aria-label="${['LOW','MID','HIGH'][band]} B"></label>`; }).join('')}<button id="djFiles">＋ Файлы</button><button id="closeDj">К списку</button></section>${sideHTML('B')}</div></section><footer class="transport"><button id="mainPrev" aria-label="Предыдущий">|◀</button><div class="now"><b id="now">Выберите трек</b><small id="nowTime">Дека A</small></div><button id="mainPlay" class="play" aria-label="Играть пауза">▶</button><button id="mainNext" aria-label="Следующий">▶|</button></footer><div class="msg" id="message" hidden></div><input id="files" type="file" accept="audio/*" multiple hidden></main><button class="sidetab" id="sideTab" hidden aria-label="Вернуться в Деку" title="Вернуться в Деку. Язычок можно сдвинуть вверх или вниз">← Дека</button>`;
     $ = function (id) { return sh.getElementById(id); }; app = sh.querySelector('.app');
-    engine = window.DekaDecks.create({ vk: command, change: renderPlayback, message: message });
-    ['main','A','B'].forEach(function (id) { lists[id] = new window.DekaVirtualList($('list' + id), function (data, index) { if (data[index].kind === 'set') { location.assign(data[index].url); return; } var side = id === 'main' ? 'A' : id; engine.load(side, data, index); engine.play(side); }); });
+    engine = window.DekaDecks.create({ vinyl:true, keyLock:true, vk: command, change: renderPlayback, message: message });
+    ['main','A','B'].forEach(function (id) {
+      lists[id]=new window.DekaVirtualList($('list'+id),function(data,index,destination){
+        if(data[index].kind==='set'){location.assign(data[index].url);return;}
+        var side=destination || (id==='main'?'A':id);
+        if(destination) setMode('dj');
+        var current=engine.state[side];
+        if(mode==='dj' && (!current.paused || current.held) && !window.confirm('Заменить играющий трек в деке '+side+'?'))return;
+        engine.load(side,data,index);
+        if(mode!=='dj')engine.play(side);
+        else message('Дека '+side+': трек загружен. Нажмите ▶.');
+      },{loadActions:id==='main'});
+    });
+    ['A','B'].forEach(bindPlatter);
+    sh.querySelectorAll('[data-nudge]').forEach(function(button){
+      var side=button.dataset.nudge;
+      var stop=function(){engine.nudge(side,0);};
+      button.addEventListener('pointerdown',function(e){e.preventDefault();button.setPointerCapture(e.pointerId);engine.nudge(side,+button.dataset.value);});
+      ['pointerup','pointercancel','lostpointercapture','blur'].forEach(function(name){button.addEventListener(name,stop);});
+      button.addEventListener('keydown',function(e){if(e.key===' '||e.key==='Enter'){e.preventDefault();engine.nudge(side,+button.dataset.value);}});
+      button.addEventListener('keyup',stop);
+    });
+    window.addEventListener('blur',cancelGestures);
+    window.addEventListener('deka:audio-interrupted',function(){cancelGestures();engine.pause('A');engine.pause('B');});
+    var meterTimer=setInterval(function(){
+      var levels=engine.meters(), any=false;
+      ['A','B'].forEach(function(side){var local=engine.state[side].track && engine.state[side].track.kind==='file';any=any||local;$('meter'+side).hidden=!local;$('meter'+side).value=local&&levels[side]?levels[side].peak:0;});
+      $('meterMaster').hidden=!any;$('meterMaster').value=any&&levels.master?levels.master.peak:0;
+    },80);
     $('setAdd').onclick = function () {
       var link = SETS && SETS.parseLink($('setUrl').value);
       if (!link) return message('Нужна ссылка на видео VK: vkvideo.ru/video-…');
@@ -141,15 +188,23 @@
       renderOptions();
     };
     $('files').onchange = function () {
-      Array.from($('files').files).forEach(function (f) {
-        var url = URL.createObjectURL(f); urls.push(url);
-        files.push({ key: 'file:' + files.length + ':' + f.name, title: f.name.replace(/\.[^.]+$/, ''), artist: '', kind: 'file', url: url, duration: 0 });
+      var added=0;
+      Array.from($('files').files).filter(function(f){return f.type.startsWith('audio/')||/\.(mp3|flac|ogg|oga|wav|m4a|aac|opus|webm)$/i.test(f.name);}).forEach(function (f) {
+        var signature=f.name+'|'+f.size+'|'+f.lastModified;
+        if(files.some(function(t){return t.signature===signature;}))return;
+        var url = URL.createObjectURL(f); urls.push(url); added++;
+        files.push({ key: 'file:' + files.length + ':' + f.name, title: f.name.replace(/\.[^.]+$/, ''), artist: '', kind: 'file', url: url, file:f, size:f.size, signature:signature, duration: 0 });
       });
-      $('files').value = ''; source.A = source.B = 'files'; renderOptions(); renderLists(true); setMode('dj');
+      $('files').value = '';
+      if(!added){message('Выберите аудиофайлы, которых ещё нет в списке.');return;}
+      source.main=source.A=source.B='files';renderOptions();renderLists(true);setMode('dj');
+      message('Файлы добавлены. Нажмите трек в A/B, затем ▶. Темп и BPM — «Темп / EQ».');
     };
     sh.addEventListener('input', function (e) {
       var el = e.target;
       if (el.dataset.search) { search[el.dataset.search] = el.value; renderList(el.dataset.search, true); }
+      if (el.dataset.rate) engine.setRate(el.dataset.rate,1+(+el.value)/100);
+      if (el.dataset.bpm) engine.setBPM(el.dataset.bpm,+el.value);
       if (el.dataset.gain) engine.setGain(el.dataset.gain, +el.value / 100);
       if (el.dataset.eq) engine.setEQ(el.dataset.eq, +el.dataset.band, +el.value);
       if (el.id === 'cross') engine.setCross(+el.value / 100);
@@ -161,6 +216,14 @@
       if (el.dataset.seek) engine.seek(el.dataset.seek, engine.state[el.dataset.seek].duration * +el.value / 1000);
     });
     sh.addEventListener('click', function (e) {
+      var button=e.target.closest('button');
+      if(button){
+        var d=button.dataset;
+        if(d.mix){var open=$('perform'+d.mix).hidden;$('perform'+d.mix).hidden=!open;$('disc'+d.mix).closest('.deck').classList.toggle('mix-on',open);button.setAttribute('aria-expanded',String(open));button.textContent=open?'Треки':'Темп / EQ';}
+        if(d.keylock)engine.setKeyLock(d.keylock,!engine.state[d.keylock].keyLock);
+        if(d.reset){engine.setRate(d.reset,1);$('rate'+d.reset).value=0;}
+        if(d.tap)engine.tap(d.tap);
+      }
       var b = e.target.closest('[data-cmd]'); if (!b) return;
       var side = b.dataset.side;
       if (b.dataset.cmd === 'play') engine.toggle(side);
@@ -182,7 +245,7 @@
       }
     });
     var gesture = null;
-    app.addEventListener('touchstart', function (e) { if (e.composedPath().some(function (el) { return el.tagName === 'INPUT' || el.tagName === 'SELECT'; })) { gesture = null; return; } var t = e.touches[0]; gesture = { x: t.clientX, y: t.clientY }; }, { passive: true });
+    app.addEventListener('touchstart', function (e) { if (e.composedPath().some(function (el) { return el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'BUTTON' || (el.classList && (el.classList.contains('vlviewport') || el.classList.contains('perform'))); })) { gesture = null; return; } var t = e.touches[0]; gesture = { x: t.clientX, y: t.clientY }; }, { passive: true });
     app.addEventListener('touchend', function (e) { if (!gesture) return; var t = e.changedTouches[0], dx = t.clientX - gesture.x, dy = t.clientY - gesture.y; gesture = null; if (Math.abs(dy) > 30 || Math.abs(dx) < 80) return; if (dx < 0) setMode('dj'); else setMode('library'); }, { passive: true });
     window.addEventListener('deka:library', function (e) { library = e.detail; renderLibrary(); });
     window.addEventListener('deka:vk:state', function (e) { media = e.detail || media; engine.noteVK(media); renderSet(); });
@@ -191,7 +254,7 @@
     window.addEventListener('deka:vk:ended', function () { engine.endedVK(); });
     window.addEventListener('deka:vk:fx', function (e) { if (e.detail && !e.detail.ok && mode === 'dj') message('Для этого потока VK эквалайзер недоступен. Для файлов обе деки работают независимо.'); });
     var landscape = matchMedia('(orientation: landscape)');
-    function rotate() { if (vkView || setLink || isGuest) return; if (landscape.matches) { setMode('dj'); rotationOpened = true; } else if (rotationOpened) { setMode('library'); rotationOpened = false; } requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
+    function rotate() { cancelGestures(); if (vkView || setLink || isGuest) return; if (landscape.matches) { setMode('dj',true); rotationOpened = true; } else if (rotationOpened) { setMode('library',true); rotationOpened = false; } requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
     landscape.addEventListener('change', rotate);
     if (!setLink) importSetReturn();
     library = window.DekaLibrary.get(); renderLibrary(); rotate(); renderPlayback();
@@ -205,7 +268,7 @@
     setTimeout(function () { checkGuest(); autoStart(); }, 2500);
     // Мост мог прочитать треклист раньше, чем появился этот экран: просим прислать его ещё раз.
     if (setLink) { $('setBtn').hidden = false; $('status').hidden = true; $('syncBtn').hidden = true; loadManual(); renderChapters(true); setMode('set'); renderSet(); command({ type: 'setScan' }); }
-    window.addEventListener('pagehide', function () { engine.destroy(); urls.forEach(function (u) { URL.revokeObjectURL(u); }); }, { once: true });
+    window.addEventListener('pagehide', function () { clearInterval(meterTimer);cancelGestures();engine.destroy(); urls.forEach(function (u) { URL.revokeObjectURL(u); }); }, { once: true });
   }
   // ---------- режим VK, вход ----------
   var isGuest = false, guestTimer = null, asked = 0;
@@ -296,7 +359,7 @@
     try { if (sessionStorage.getItem('deka:autoMy')) return; sessionStorage.setItem('deka:autoMy', '1'); } catch (_) { return; }
     window.DekaLibrary.collectMy();
   }
-  function setMode(value) { mode = value; $('loginView').hidden = mode !== 'login'; app.classList.toggle('loginmode', mode === 'login'); $('setView').hidden = mode !== 'set'; app.classList.toggle('setmode', mode === 'set'); $('setBtn').classList.toggle('active', mode === 'set'); $('dj').classList.toggle('open', mode === 'dj'); app.classList.toggle('djmode', mode === 'dj'); $('djBtn').classList.toggle('active', mode === 'dj'); $('libraryBtn').classList.toggle('active', mode === 'library'); requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
+  function setMode(value,preservePlayback) { if(engine){if(value==='dj')engine.setDJMode(true);else if(mode==='dj'&&!preservePlayback){cancelGestures();engine.pause('B');engine.setDJMode(false);}} mode = value; $('loginView').hidden = mode !== 'login'; app.classList.toggle('loginmode', mode === 'login'); $('setView').hidden = mode !== 'set'; app.classList.toggle('setmode', mode === 'set'); $('setBtn').classList.toggle('active', mode === 'set'); $('dj').classList.toggle('open', mode === 'dj'); app.classList.toggle('djmode', mode === 'dj'); $('djBtn').classList.toggle('active', mode === 'dj'); $('libraryBtn').classList.toggle('active', mode === 'library'); requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
   function renderOptions() {
     var choices = [{ id: 'vk', name: 'Треки VK' }, { id: 'files', name: 'Мои файлы' }, { id: 'sets', name: 'Сеты / VK Видео' }].concat(playlists.map(function (p) { return { id: p.id, name: p.name }; }));
     ['main','A','B'].forEach(function (id) {
@@ -413,6 +476,27 @@
       localStorage.setItem('deka:sets', JSON.stringify(list));
     } catch (_) {}
   }
+  var platterPointers={};
+  function cancelGestures(){
+    if(!engine)return;
+    ['A','B'].forEach(function(side){engine.nudge(side,0);engine.scratchEnd(side,true);var p=platterPointers[side];if(p){p.end(true);}});
+  }
+  function bindPlatter(side){
+    var disc=$('disc'+side),record=disc.querySelector('span'),pointer=null,angle=0,rotation=0;
+    var angleAt=function(e){var r=disc.getBoundingClientRect();return Math.atan2(e.clientY-r.top-r.height/2,e.clientX-r.left-r.width/2);};
+    function end(cancel){if(pointer===null)return;pointer=null;record.style.animation='';record.style.transform='';engine.scratchEnd(side,cancel);}
+    platterPointers[side]={end:end};
+    disc.addEventListener('pointerdown',function(e){
+      if(e.button!==0||pointer!==null)return;
+      var state=engine.state[side];if(!state.track||state.track.kind!=='file'){message('Для VINYL выберите локальный файл.');return;}
+      e.preventDefault();pointer=e.pointerId;angle=angleAt(e);disc.setPointerCapture(pointer);
+      var transform=getComputedStyle(record).transform;if(transform!=='none'){var m=new DOMMatrixReadOnly(transform);rotation=Math.atan2(m.b,m.a)*180/Math.PI;}
+      record.style.animation='none';record.style.transform='rotate('+rotation+'deg)';engine.scratchBegin(side);
+    });
+    disc.addEventListener('pointermove',function(e){if(e.pointerId!==pointer)return;var next=angleAt(e),delta=next-angle;if(delta>Math.PI)delta-=Math.PI*2;if(delta< -Math.PI)delta+=Math.PI*2;angle=next;rotation+=delta*180/Math.PI;record.style.transform='rotate('+rotation+'deg)';engine.scratchMove(side,delta/(2*Math.PI)*1.8);});
+    ['pointerup','pointercancel','lostpointercapture'].forEach(function(name){disc.addEventListener(name,function(e){if(e.pointerId===pointer)end(name==='pointercancel');});});
+    disc.addEventListener('keydown',function(e){if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();engine.seek(side,engine.state[side].time+(e.key==='ArrowLeft'?-1:1));}});
+  }
   function renderPlayback() {
     if (!engine || !$) return;
     ['A','B'].forEach(function (side) {
@@ -421,7 +505,17 @@
       $('type' + side).textContent = t ? t.kind === 'file' ? 'Файл · независимая дека' : 'VK · общий поток' : 'Список готов';
       $('time' + side).textContent = fmt(s.time) + ' / ' + fmt(s.duration);
       $('play' + side).textContent = s.pending ? '…' : s.paused ? '▶' : 'Ⅱ';
-      $('disc' + side).classList.toggle('playing', !s.paused);
+      var local=t&&t.kind==='file', disc=$('disc'+side);
+      disc.classList.toggle('playing',!s.paused);disc.classList.toggle('held',s.held);
+      disc.querySelector('span').style.animationDuration=(1.8/(s.rate+s.nudge))+'s';
+      $('rateLabel'+side).textContent=((s.rate-1)>=0?'+':'')+((s.rate-1)*100).toFixed(1)+'%';
+      if(sh.activeElement!==$('rate'+side))$('rate'+side).value=((s.rate-1)*100).toFixed(1);
+      if(sh.activeElement!==$('bpm'+side))$('bpm'+side).value=s.bpm||'';
+      $('keyLock'+side).setAttribute('aria-pressed',String(s.keyLock));
+      $('effectiveBPM'+side).textContent='→ '+(s.bpm?(s.bpm*(s.rate+s.nudge)).toFixed(1):'—')+' BPM';
+      $('cueTime'+side).textContent='CUE '+fmt(s.cue);
+      $('vinyl'+side).textContent=!local?'VK: скретч и темп недоступны':s.scratchStatus==='loading'?'Готовлю скретч…':s.scratchStatus==='error'?'Скретч для файла недоступен':'VINYL · удержание / вращение';
+      $('perform'+side).querySelectorAll('input,button').forEach(function(el){el.disabled=!local;});
       if (sh.activeElement !== $('seek' + side)) $('seek' + side).value = s.duration ? Math.floor(s.time / s.duration * 1000) : 0;
       lists[side].current(t && t.key);
     });

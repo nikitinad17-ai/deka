@@ -6,6 +6,10 @@ const LIBRARY_CORE: &str = include_str!("../../src/library-engine.js");
 const LIBRARY_RUNTIME: &str = include_str!("../../src/library-runtime.js");
 const SET_CORE: &str = include_str!("../../src/set-core.js");
 #[cfg(mobile)]
+const VINYL_PROCESSOR: &str = include_str!("../../src/vinyl-processor.js");
+#[cfg(mobile)]
+const VINYL_ENGINE: &str = include_str!("../../src/vinyl-engine.js");
+#[cfg(mobile)]
 const DECK_ENGINE: &str = include_str!("../../src/deck-engine.js");
 #[cfg(mobile)]
 const VIRTUAL_LIST: &str = include_str!("../../src/virtual-list.js");
@@ -188,7 +192,7 @@ pub fn run() {
             #[cfg(mobile)]
             {
                 // One script guarantees ordering. Native audio play is captured BEFORE the VK hook.
-                let script = [LIBRARY_CORE, DECK_ENGINE, SET_CORE, VK_BRIDGE, LIBRARY_RUNTIME, VIRTUAL_LIST, MOBILE_OVERLAY].join("\n;\n");
+                let script = [LIBRARY_CORE, VINYL_PROCESSOR, VINYL_ENGINE, DECK_ENGINE, SET_CORE, VK_BRIDGE, LIBRARY_RUNTIME, VIRTUAL_LIST, MOBILE_OVERLAY].join("\n;\n");
                 let handle = app.handle().clone();
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::External(VK_URL.parse().unwrap()))
                     .initialization_script(script)

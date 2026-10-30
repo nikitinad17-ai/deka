@@ -1,7 +1,8 @@
 /* A full logical list, with only the visible rows in DOM. Stable scroll and input focus. */
 (function () {
   'use strict';
-  window.DekaVirtualList = function (element, onSelect) {
+  window.DekaVirtualList = function (element, onSelect, options) {
+    options=options||{};
     var data = [], selected = '', rowHeight = 48, frame = null;
     var canvas = document.createElement('div'); canvas.className = 'vlcanvas';
     element.classList.add('vlviewport'); element.setAttribute('role', 'listbox'); element.appendChild(canvas);
@@ -16,13 +17,19 @@
         var t = data[i], button = existing.get(String(i));
         if (!button || button.dataset.key !== t.key) {
           if (button) button.remove();
-          button = document.createElement('button'); button.className = 'vlrow'; button.type = 'button';
+          button = document.createElement(options.loadActions && t.kind==='file'?'div':'button'); button.tabIndex=0; button.className = 'vlrow'; button.type = 'button';
           button.dataset.index = String(i); button.dataset.key = t.key;
           button.setAttribute('role', 'option');
           var num = document.createElement('span'), meta = document.createElement('span');
           num.className = 'number'; meta.className = 'trackmeta';
           meta.appendChild(document.createElement('b')); meta.appendChild(document.createElement('small'));
-          button.appendChild(num); button.appendChild(meta); canvas.appendChild(button);
+          button.appendChild(num); button.appendChild(meta);
+          if(options.loadActions && t.kind==='file'){
+            var actions=document.createElement('span');actions.className='loadActions';
+            ['A','B'].forEach(function(side){var load=document.createElement('button');load.type='button';load.dataset.load=side;load.textContent='В '+side;load.setAttribute('aria-label','В '+side+': '+t.title);actions.appendChild(load);});
+            button.appendChild(actions);
+          }
+          canvas.appendChild(button);
         }
         button.style.top = i * rowHeight + 'px';
         button.children[0].textContent = String(i + 1);
@@ -37,10 +44,11 @@
     function schedule() { if (frame === null) frame = requestAnimationFrame(render); }
     element.addEventListener('scroll', schedule, { passive: true });
     canvas.addEventListener('click', function (e) {
-      var button = e.target.closest('button[data-index]');
-      if (button && data[+button.dataset.index]) onSelect(data, +button.dataset.index);
+      var button = e.target.closest('[data-index]');
+      if (button && data[+button.dataset.index]) onSelect(data, +button.dataset.index, e.target.closest('[data-load]')?.dataset.load);
     });
     canvas.addEventListener('keydown', function (e) {
+      if((e.key==='Enter'||e.key===' ') && e.target.tagName==='DIV'){e.preventDefault();var row=e.target.closest('[data-index]');if(row)onSelect(data,+row.dataset.index);return;}
       if (!['ArrowDown','ArrowUp','Home','End'].includes(e.key)) return;
       var b = e.target.closest('[data-index]'); if (!b) return;
       var next = e.key === 'Home' ? 0 : e.key === 'End' ? data.length - 1 : +b.dataset.index + (e.key === 'ArrowDown' ? 1 : -1);
@@ -57,7 +65,7 @@
         else if (anchor) { var pos = data.findIndex(function (t) { return t.key === anchor; }); if (pos >= 0) element.scrollTop = pos * rowHeight + offset; }
         render();
       },
-      current: function (key) { selected = key || ''; render(); },
+      current: function (key) { var next=key||'';if(selected===next)return;selected=next;render(); },
       jump: function (key) { var i = data.findIndex(function (t) { return t.key === key; }); if (i < 0) return false; element.scrollTop = Math.max(0, i * rowHeight - element.clientHeight / 2); render(); return true; },
       render: render, count: function () { return data.length; }, destroy: function () { observer.disconnect(); if (frame !== null) cancelAnimationFrame(frame); }
     };

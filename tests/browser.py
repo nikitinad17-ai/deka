@@ -70,6 +70,7 @@ with sync_playwright() as p:
     page.set_viewport_size({'width':390,'height':844}); page.wait_for_timeout(300)
     record('Rotation back restores portrait library', 'open' not in page.locator('#deka-overlay #dj').get_attribute('class'))
     page.screenshot(path=str(OUT/'portrait.png'))
+    page.on('dialog',lambda dialog:dialog.accept())
     # Two local audio files truly play simultaneously.
     with tempfile.TemporaryDirectory() as td:
         paths=[]
@@ -80,8 +81,8 @@ with sync_playwright() as p:
                 w.writeframes(b''.join(struct.pack('<h',int(5000*math.sin(2*math.pi*freq*i/8000))) for i in range(8000*12)))
         page.locator('#deka-overlay #files').set_input_files(paths)
         page.set_viewport_size({'width':844,'height':390}); page.wait_for_timeout(300)
-        page.locator('#deka-overlay #listA .vlrow').first.click(); page.wait_for_timeout(400)
-        page.locator('#deka-overlay #listB .vlrow').nth(1).click(); page.wait_for_timeout(500)
+        page.locator('#deka-overlay #listA .vlrow').first.click(); page.locator('#deka-overlay #playA').click(); page.wait_for_timeout(400)
+        page.locator('#deka-overlay #listB .vlrow').nth(1).click(); page.locator('#deka-overlay #playB').click(); page.wait_for_timeout(500)
         record('Both local decks play simultaneously', 'playing' in page.locator('#deka-overlay #discA').get_attribute('class') and 'playing' in page.locator('#deka-overlay #discB').get_attribute('class'))
         page.locator('#deka-overlay #playA').click(); page.wait_for_timeout(100)
         record('Pause A does not pause B', 'playing' not in page.locator('#deka-overlay #discA').get_attribute('class') and 'playing' in page.locator('#deka-overlay #discB').get_attribute('class'))
