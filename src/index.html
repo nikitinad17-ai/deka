@@ -278,7 +278,7 @@
           <button class="btn" id="vkExportShow" hidden>Показать файл</button>
           <span class="vk-status" id="vkFx">Эквалайзер ВК: включите трек</span>
         </div>
-        <p class="vk-status" id="vkLibraryStatus" style="padding:0 12px" role="status">Загружается список вашей музыки VK. Аудио играет через VK; локальные файлы — в DJ.</p>
+        <p class="vk-status" id="vkLibraryStatus" style="padding:0 12px" role="status">«Загрузить всю музыку» добавляет ваш список VK. Аудио играет через VK; локальные файлы — в DJ.</p>
         <ol class="list" id="vkList"></ol>
         <div class="foot"><span id="vkCount">0 треков</span><span id="vkPage">—</span></div>
       </div>
@@ -770,7 +770,7 @@
     $("vkOpenMobile").onclick = ()=>{ location.href = "https://vk.ru/audio"; };
   } else if (T){
     $("vkApp").hidden = false; $("vkInfo").hidden = true;
-    let collectingLibrary = false;
+    let collectingLibrary = false, vkLibraryReady = false;
     $('vkLogin').onclick = ()=>T.core.invoke('vk_login').catch(err=>{ $('vkStatus').textContent='Не удалось открыть вход: '+err; });
     const collectMusic = () => {
       collectingLibrary=true; $('vkCancel').hidden=false; $('vkLoad').disabled=true;
@@ -778,11 +778,11 @@
       vk({type:'collectMy'});
     };
     $('vkLoad').onclick=collectMusic;
-    $('vkCancel').onclick=()=>{ vk({type:'cancelCollect'}); };
+    $('vkCancel').onclick=()=>{ vk({type:'cancelCollect'}); collectingLibrary=false; $('vkCancel').hidden=true; $('vkLoad').disabled=false; $('vkLibraryStatus').textContent='Загрузка остановлена. Собранный список сохранён.'; };
     T.event.listen('vk:login-complete', ()=>{ $('vkStatus').textContent='Вход выполнен · загружаю музыку…'; });
     T.event.listen('library', e=>{
       const data=e.payload||{};
-      if (Array.isArray(data.items)) { vkItems=data.items; renderVk(); }
+      if (Array.isArray(data.items)) { vkLibraryReady=true; vkItems=data.items; renderVk(); }
       const state=data.complete?'Полный список':data.status==='loading'?'Загрузка':'Список загружен частично';
       $('vkLibraryStatus').textContent=state+': '+(data.count||vkItems.length)+' треков'+(data.complete?'':' · «Загрузить всю музыку» для продолжения');
     });
@@ -865,7 +865,7 @@
       const key = s.artist+"|"+s.title;
       if (key!==vkTitleKey && s.title){ vkTitleKey=key; setMarquee(`VK · ${s.artist} — ${s.title} (${fmt(s.duration)})`); $("tKbps").textContent="VK"; renderVk(); }
     });
-    T.event.listen("vk:playlist", e=>{ vkItems = (e.payload&&e.payload.items)||[]; $("vkPage").textContent = (e.payload&&e.payload.page)||"—"; renderVk(); });
+    T.event.listen("vk:playlist", e=>{ if (vkLibraryReady) return; vkItems = (e.payload&&e.payload.items)||[]; $("vkPage").textContent = (e.payload&&e.payload.page)||"—"; renderVk(); });
     T.event.listen("vk:spectrum", e=>{ vkSpec = e.payload; });
     T.event.listen("vk:fx", e=>{ const p=e.payload||{}, el=$("vkFx");
       el.textContent = p.ok ? "Эквалайзер и спектр работают со звуком ВК" : "Эквалайзер ВК недоступен для этого трека";

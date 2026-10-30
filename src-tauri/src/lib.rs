@@ -26,8 +26,13 @@ async fn vk_login(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result
             w.show().map_err(|e| e.to_string())?;
             return w.set_focus().map_err(|e| e.to_string());
         }
-        WebviewWindowBuilder::new(&app, "vk-login", WebviewUrl::External("https://vk.ru/login".parse().unwrap()))
-            .title("Вход в VK · Дека").inner_size(900.0, 760.0).build().map_err(|e| e.to_string())?;
+        let builder = WebviewWindowBuilder::new(&app, "vk-login", WebviewUrl::External("https://vk.ru/login".parse().unwrap()))
+            .title("Вход в VK · Дека").inner_size(900.0, 760.0);
+        // WebView2 windows sharing a cookie profile must use the same browser-process
+        // options. These flags do not inject Deka UI, alter the UA or inspect login input.
+        #[cfg(windows)]
+        let builder = builder.additional_browser_args(BROWSER_ARGS);
+        builder.build().map_err(|e| e.to_string())?;
         // Reading WebView2 cookies from an event callback can deadlock. Poll off the UI thread.
         std::thread::spawn(move || {
             for _ in 0..600 {

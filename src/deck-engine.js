@@ -227,7 +227,13 @@
       tap: function (side) { var s = state[side], now = win.performance.now();
         if (s.taps.length && now - s.taps[s.taps.length - 1] > 2000) s.taps = [];
         s.taps.push(now); if (s.taps.length > 8) s.taps.shift();
-        if (s.taps.length > 1) s.bpm = Math.round(clamp(60000 * (s.taps.length - 1) / (now - s.taps[0]), 30, 300) * 10) / 10;
+        if (s.taps.length > 1) {
+          var tapped = 60000 * (s.taps.length - 1) / (now - s.taps[0]);
+          // TAP follows the beat currently heard; store original BPM so the display
+          // does not apply the tempo twice when tapping a deck that is already pitched.
+          if (opts.djMode && !s.paused) tapped /= s.rate + s.nudge;
+          s.bpm = Math.round(clamp(tapped, 30, 300) * 10) / 10;
+        }
         changed(); return s.bpm;
       },
       meters: function () { return { A: meter(nodes.A && nodes.A.meter), B: meter(nodes.B && nodes.B.meter), master: meter(masterMeter) }; },
