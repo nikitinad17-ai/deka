@@ -50,3 +50,18 @@ body.dj-open .wrap>section:not(#desktopDJ),body.dj-open .keys{display:none}
 @media(max-width:880px){.dj-console{gap:9px;padding:10px;grid-template-columns:minmax(0,1fr) 120px minmax(0,1fr)}.dj-deck{padding:10px}.dj-disc{width:120px;height:120px}.dj-deck h2{font-size:13px}}
 @media(max-width:620px){.dj-console{grid-template-columns:minmax(0,1fr)}.dj-mixer{order:2;padding:10px}.dj-cross{margin-top:0}.dj-disc{width:120px;height:120px}.dj-deck[data-side=B]{order:1}.dj-intro{font-size:11px}.dj-tools{flex-wrap:wrap}}
 @media(prefers-reduced-motion:reduce){.dj-disc{animation:none}}
+
+/* Vinyl interaction keeps the hit target stationary; only the label/grooves rotate. */
+.dj-disc{animation:none;cursor:grab!important;touch-action:none;user-select:none}
+.dj-disc span{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;background:repeating-radial-gradient(circle,transparent 0 2px,#2226 3px 4px);animation:dj-spin 1.8s linear infinite;animation-play-state:paused}
+.dj-disc span:after{content:'';position:absolute;top:9px;width:4px;height:20px;background:var(--accent);border-radius:2px}
+.dj-disc:before{display:none}.dj-disc.playing span{animation-play-state:running}
+.dj-disc.held{cursor:grabbing!important;border-color:var(--accent);box-shadow:0 0 20px color-mix(in srgb,var(--accent) 25%,transparent)}
+.dj-disc.held span{animation-play-state:paused}
+.dj-vinyl-help{display:block;text-align:center;color:var(--ink-2);font-size:10px;min-height:15px;margin-top:-8px;margin-bottom:12px}
+.dj-effective{font:12px var(--f-mono);color:var(--accent)}
+#desktopDJ .toggle[aria-pressed=true]{color:var(--cyan);border-color:var(--cyan);background:#153038}
+.dj-drop-hint{border:1px dashed var(--edge);padding:10px;margin-bottom:12px;font-size:12px;color:var(--ink-2);text-align:center}
+.file-over{outline:2px dashed var(--amber);outline-offset:-4px;background-color:#ffb34715!important}
+.dj-row{cursor:grab}.dj-row:active{cursor:grabbing}
+@media(prefers-reduced-motion:reduce){.dj-disc span{animation:none}}
