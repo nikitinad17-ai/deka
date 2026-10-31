@@ -149,7 +149,7 @@ def main() -> None:
                 time.sleep(0.3)
         if not ready:
             raise RuntimeError('Standard-user WebView2 did not expose the per-process test endpoint')
-        subprocess.run([sys.executable, 'tests/automix.py', '--native'], check=True)
+        subprocess.run([sys.executable, 'tests/automix.py', '--native'], check=True, timeout=180)
     finally:
         if launched:
             # Only the process tree created by this CI harness, never another app.
