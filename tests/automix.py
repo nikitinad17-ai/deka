@@ -1,12 +1,15 @@
 """Real audible overlap, slow-start regression, tempo and beat/EQ transition.
 --native connects to the built Windows executable's WebView2 on a disposable CI host.
 """
-import base64,faulthandler,json,math,os,struct,sys,tempfile,wave
+import atexit,base64,faulthandler,json,math,os,struct,sys,tempfile,wave
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1];OUT=ROOT/'test-output';OUT.mkdir(exist_ok=True)
 checks=[];native='--native'in sys.argv
 if native:faulthandler.dump_traceback_later(120)
+def save_report():
+    (OUT/('native-automix-report.json'if native else'automix-report.json')).write_text(json.dumps({'tests':checks,'method':'Built WebView2 executable, real file/media clocks and output analysis'if native else'Chromium, actual output DFT, beat WAV files and source-page media; no live VK account'},ensure_ascii=False,indent=2))
+atexit.register(save_report)
 HOOK='''
 window.__audios=[];const NA=window.Audio;window.Audio=function(...args){const a=new NA(...args);__audios.push(a);return a;};window.Audio.prototype=NA.prototype;
 Object.defineProperty(window,'DekaDecks',{configurable:true,set(api){Object.defineProperty(window,'DekaDecks',{value:api});const create=api.create;api.create=opts=>{
@@ -43,6 +46,8 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
     errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
     page.click('#djToggle');page.set_input_files('#file',[{'name':Path(f).name,'mimeType':'audio/wav','buffer':Path(f).read_bytes()} for f in paths]if native else paths)
     if native:print('Local WAV files imported',flush=True)
+    page.evaluate("window.__oldVKItems=DekaDesktopPlayer.vkItems;DekaDesktopPlayer.vkItems=()=>[{key:'late-vk',title:'Late VK update',artist:'Fixture',kind:'vk'}];window.dispatchEvent(new Event('deka:library'));DekaDesktopPlayer.vkItems=__oldVKItems")
+    check('Late VK library updates preserve explicitly imported local-file source',page.locator('#djSource').input_value()=='files'and page.get_by_role('button',name='В A: Beat120',exact=True).count()==1)
     def load(side,name):page.get_by_role('button',name='В '+side+': '+name,exact=True).click()
     load('A','Tone440');load('B','Tone660');page.wait_for_function('__dj.state.A.duration===24&&__dj.state.B.duration===24')
     page.click('#djPlayA');page.wait_for_timeout(500)
@@ -92,4 +97,4 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
     if native:print('Closing native CDP test connection',flush=True)
     browser.close()
     if native:faulthandler.cancel_dump_traceback_later()
-(OUT/('native-automix-report.json'if native else'automix-report.json')).write_text(json.dumps({'tests':checks,'method':'Built WebView2 executable, real file/media clocks and output analysis'if native else'Chromium, actual output DFT, beat WAV files and source-page media; no live VK account'},ensure_ascii=False,indent=2))
+save_report();atexit.unregister(save_report)

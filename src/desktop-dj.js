@@ -157,7 +157,7 @@
   });
   DekaFileDrop.attach(root, files=>{ const imported=player.importFiles(files); $('djMessage').textContent='Добавлено / найдено в библиотеке: '+imported.length+'. Перетащите трек на A или B.'; }, text=>$('djMessage').textContent=text);
   window.addEventListener('blur', () => { engine.nudge('A', 0); engine.nudge('B', 0); });
-  window.addEventListener('deka:files', ()=>{$('djSource').value='files';library();});
+  window.addEventListener('deka:files', ()=>{sourceChosen=true;$('djSource').value='files';library();});
   window.addEventListener('deka:remove-file', e => {
     ['A','B'].forEach(side => { if (engine.state[side].track && engine.state[side].track.key === e.detail) engine.clear(side); });
     library();
