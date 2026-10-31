@@ -44,6 +44,11 @@ try {
   assert.ok(/override fun onPause\(\)[\s\S]*dekaWebView\?\.onResume\(\)/.test(act),'WebView pause from wry is undone');
   assert.ok(act.includes('RENDERER_PRIORITY_IMPORTANT') && act.includes('ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'));
   assert.ok(manifest.includes('REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'));
+  assert.ok(manifest.includes('screenOrientation="fullUser"'));
+  for (const flag of ['orientation','screenSize','smallestScreenSize','screenLayout']) assert.ok(manifest.includes(flag));
+  assert.equal((act.match(/DEKA_ROTATION_014/g)||[]).length,1,'rotation patch idempotent');
+  assert.ok(act.includes('fun setOrientation(mode: String)') && act.includes('SCREEN_ORIENTATION_SENSOR_LANDSCAPE'));
+  assert.ok(act.includes('override fun onConfigurationChanged') && act.includes("new Event('deka:orientation')"));
   // The WebView window must not report itself hidden when the screen turns off.
   const cargo=read('.cargo/config.toml');
   assert.ok(/WRY_RUSTWEBVIEW_CLASS_EXTENSION\s*=\s*'''[\s\S]*DEKA_KEEP_VISIBLE[\s\S]*onWindowVisibilityChanged[\s\S]*View\.VISIBLE[\s\S]*onVisibilityChanged[\s\S]*'''/.test(cargo));

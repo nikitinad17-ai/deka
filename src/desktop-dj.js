@@ -1,11 +1,11 @@
-/* Desktop controller: shared local engine, no VK source or remote audio imports. */
+/* Shared A/B controller. Files mix independently; VK uses its existing native source. */
 (function () {
   'use strict';
   const player = window.DekaDesktopPlayer;
   if (!player || !window.DekaDecks) return;
   const root = document.createElement('section');
   root.id = 'desktopDJ'; root.className = 'win'; root.hidden = true;
-  root.setAttribute('aria-label', 'DJ-пульт для локальных файлов');
+  root.setAttribute('aria-label', 'DJ-пульт: файлы и библиотека VK');
   const deckHTML = side => `<section class="dj-deck" data-side="${side}" aria-label="Дека ${side}">
     <h2>DECK ${side} <span id="djStatus${side}">Пусто</span></h2>
     <div class="dj-track"><b id="djTitle${side}">Загрузите трек из библиотеки</b><small id="djArtist${side}">Локальный файл</small></div>
@@ -20,27 +20,35 @@
     <label class="dj-label">Уровень ${side}<input type="range" min="0" max="100" value="100" data-gain="${side}" aria-label="Уровень деки ${side}"></label>
     <meter id="djMeter${side}" min="0" max="1" value="0" aria-label="Пиковый уровень ${side}"></meter>
   </section>`;
-  root.innerHTML = `<div class="bar"><div class="brand">ДЕ<b>КА</b> · DJ</div><span class="spacer"></span><button class="btn" id="djClose">← Плеер</button></div>
-    <div class="dj-intro">Два локальных трека · CUE — точка возврата · VINYL — удерживайте и вращайте пластинку · Key Lock сохраняет тональность</div>
+  root.innerHTML = `<div class="bar"><div class="brand">ДЕ<b>КА</b> · DJ</div><span class="spacer"></span><button class="btn toggle" id="djShuffle" aria-pressed="false" title="Случайный следующий трек">SHUF</button><button class="btn toggle" id="djRepeat" aria-pressed="false" title="Повтор текущего трека">REP 1</button><button class="btn" id="djClose">← Плеер</button></div>
+    <div class="dj-intro">Файлы: независимые A/B, темп и VINYL · VK: ваша библиотека, один поток · следующий трек готовится автоматически</div>
     <div class="dj-console">${deckHTML('A')}<section class="dj-mixer" aria-label="Микшер">
       <b>MASTER</b><meter id="djMeterMaster" min="0" max="1" value="0" aria-label="Пиковый уровень Master"></meter><span id="djPeak">−∞ dBFS</span>
       <label>Выход<input id="djMaster" type="range" min="0" max="100" value="80" aria-label="Master DJ"></label>
       <div class="dj-cross"><b>A ⇄ B</b><input id="djCross" type="range" min="-100" max="100" value="0" aria-label="Кроссфейдер A B"><button id="djCenter" class="btn">Центр</button></div>
       <small>Равномощный переход<br>Запас уровня −12 dB<br>Без отдельного выхода наушников</small>
-      <button id="djPauseAll" class="btn">Пауза обеих</button>
+      <button id="djAutoMix" class="btn toggle" aria-pressed="true" title="Плавно переходить на следующую деку">AUTO MIX</button><small id="djAutoState">Автопереход A ⇄ B</small><button id="djPauseAll" class="btn">Пауза обеих</button>
     </section>${deckHTML('B')}</div>
     <div id="djMessage" role="status" aria-live="polite">Перетащите файлы из папки на пульт или выберите «В A» / «В B». Загрузка не запускает трек.</div>
-    <section class="dj-library" aria-label="Локальная библиотека DJ"><div class="dj-drop-hint">↓ Файлы или папка сюда · трек из списка — на пластинку A / B</div><div class="dj-tools"><button class="btn open" id="djAdd">＋ Файлы</button><input type="search" id="djSearch" placeholder="Название или исполнитель" aria-label="Поиск локальных треков"><span id="djCount"></span></div><div id="djList"></div><small>Файлы остаются на компьютере. После закрытия приложения выберите их снова.</small></section>`;
+    <section class="dj-library" aria-label="Библиотека DJ"><div class="dj-drop-hint">↓ Файлы или папка сюда · трек из списка — на пластинку A / B</div><div class="dj-tools"><select id="djSource" aria-label="Источник треков DJ"><option value="files">Мои файлы</option><option value="vk">Мои треки VK</option></select><button class="btn" id="djSync">Загрузить VK</button><button class="btn open" id="djAdd">＋ Файлы</button><input type="search" id="djSearch" placeholder="Название или исполнитель" aria-label="Поиск локальных треков"><span id="djCount"></span></div><div id="djList"></div><small>Файлы остаются на компьютере. После закрытия приложения выберите их снова.</small></section>`;
   document.querySelector('.wrap').appendChild(root);
   const $ = id => document.getElementById(id);
-  const engine = DekaDecks.create({ djMode: true, vinyl: true, vk: () => false, change: render, message: text => { $('djMessage').textContent = text; } });
+  const engine = DekaDecks.create({ djMode: true, continuous:true, autoMix:true, ...player.settings(), vinyl: true, vk: c => player.command(c), change: render, message: text => { $('djMessage').textContent = text; } });
   const status = { empty:'Пусто', loading:'Загрузка…', ready:'Готово', playing:'Играет', paused:'Пауза', ended:'Конец', error:'Ошибка', held:'Пластинка удерживается' };
   const fmt = seconds => { const n = Math.floor(Math.max(0, Number(seconds) || 0)); return String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0'); };
   function render() {
+    const d=engine.diagnostics();
+    $('djShuffle').setAttribute('aria-pressed',String(d.shuffle));
+    $('djRepeat').setAttribute('aria-pressed',String(d.repeatTrack));
+    $('djAutoMix').setAttribute('aria-pressed',String(d.autoMix));
+    $('djAutoState').textContent=d.mixing?'Сведение A ⇄ B':d.repeatTrack?'Повтор трека':d.autoMix?'Автосведение включено':'Автопереход в конце трека';
+    if(!$('djCross').matches(':active'))$('djCross').value=d.cross*100;
     ['A','B'].forEach(side => {
       const s = engine.state[side];
       $('djTitle'+side).textContent = s.track ? s.track.title : 'Загрузите трек из библиотеки';
-      $('djArtist'+side).textContent = s.track ? s.track.artist : 'Локальный файл';
+      $('djArtist'+side).textContent = s.track ? s.track.artist + (s.track.kind==='file'?'':' · VK') : 'Выберите файл или трек VK';
+      const local=!!s.track&&s.track.kind==='file';
+      root.querySelectorAll('[data-rate="'+side+'"],[data-keylock="'+side+'"],[data-nudge="'+side+'"],[data-bpm="'+side+'"],[data-tap="'+side+'"],[data-reset="'+side+'"]').forEach(el=>el.disabled=!local);
       $('djStatus'+side).textContent = status[s.status] || 'Пауза';
       $('djTime'+side).textContent = fmt(s.time) + ' / ' + fmt(s.duration);
       $('djRemain'+side).textContent = '−' + fmt(s.duration-s.time);
@@ -52,10 +60,11 @@
       disc.classList.toggle('playing', !s.paused && s.status === 'playing');
       disc.classList.toggle('held', s.held);
       disc.querySelector('span').style.animationDuration = (1.8 / (s.rate+s.nudge))+'s';
-      $('djVinyl'+side).textContent = s.scratchStatus === 'loading' ? 'Готовлю скретч…' : s.scratchStatus === 'error' ? 'Скретч недоступен для этого файла' : 'VINYL · удержание / вращение мышью';
+      $('djVinyl'+side).textContent = !local ? 'VK · один поток, VINYL и темп для файлов' : s.scratchStatus === 'loading' ? 'Готовлю скретч…' : s.scratchStatus === 'error' ? 'Скретч недоступен для этого файла' : 'VINYL · удержание / вращение мышью';
       $('djKeyLock'+side).setAttribute('aria-pressed', String(s.keyLock));
       $('djEffectiveBPM'+side).textContent = '→ '+(s.bpm ? (s.bpm*(s.rate+s.nudge)).toFixed(1) : '—')+' BPM';
       $('djRateLabel'+side).textContent = ((s.rate-1)*100>=0?'+':'')+((s.rate-1)*100).toFixed(1)+'%' + (s.nudge ? ' · bend '+(s.nudge*100).toFixed(0)+'%' : '');
+      if (document.activeElement !== $('djRate'+side)) $('djRate'+side).value=((s.rate-1)*100).toFixed(1);
       if (document.activeElement !== $('djBPM'+side)) $('djBPM'+side).value = s.bpm || '';
     });
   }
@@ -71,7 +80,8 @@
       b.setAttribute('aria-label', 'В '+side+': '+t.title); b.onclick = () => load(side, t.key); row.appendChild(b); });
   };
   const listElement = $('djList'), canvas = document.createElement('div'); canvas.className = 'dj-list-canvas'; listElement.appendChild(canvas);
-  let items = [];
+  let items = [], sourceChosen=false;
+  const sourceTracks=()=> $('djSource').value==='vk'?player.vkItems():player.files();
   function renderRows() {
     const first = Math.max(0, Math.floor(listElement.scrollTop / 52) - 3), last = Math.min(items.length, first + 20);
     const existing = new Map(Array.from(canvas.children).map(el => [el.dataset.key, el]));
@@ -85,13 +95,13 @@
   listElement.addEventListener('scroll', renderRows, { passive: true });
   function library() {
     const q = $('djSearch').value.toLocaleLowerCase();
-    const all = player.files(); const filtered = all.filter(t => (t.title+' '+t.artist).toLocaleLowerCase().includes(q));
+    const all = sourceTracks(); const filtered = all.filter(t => (t.title+' '+t.artist).toLocaleLowerCase().includes(q));
     items = filtered; canvas.style.height = items.length*52+'px'; renderRows(); $('djCount').textContent = filtered.length+' / '+all.length;
   }
   function load(side, key) {
     const s = engine.state[side];
     if ((!s.paused || s.held) && !window.confirm('Заменить играющий трек в деке '+side+'?')) return;
-    const list = player.files(), index = list.findIndex(t => t.key === key); if (index < 0) return;
+    const list = sourceTracks(), index = list.findIndex(t => t.key === key); if (index < 0) return;
     engine.load(side, list, index); $('djRate'+side).value = 0;
     $('djMessage').textContent = 'Дека '+side+': загружен «'+list[index].title+'». Нажмите «Играть».';
   }
@@ -99,7 +109,16 @@
     player.pauseForDJ(); document.body.classList.add('dj-open'); root.hidden = false; library(); render(); window.dispatchEvent(new Event('resize'));
   };
   $('djClose').onclick = () => { engine.pause('A'); engine.pause('B'); root.hidden = true; document.body.classList.remove('dj-open'); window.dispatchEvent(new Event('resize')); };
-  $('djAdd').onclick = () => player.openFiles(); $('djSearch').oninput = () => { listElement.scrollTop = 0; library(); };
+  $('djAdd').onclick = () => { $('djSource').value='files'; sourceChosen=true; player.openFiles(); };
+  $('djSource').onchange=()=>{sourceChosen=true;listElement.scrollTop=0;canvas.replaceChildren();library();};
+  $('djSync').onclick=()=>{sourceChosen=true;$('djSource').value='vk';player.collect();library();$('djMessage').textContent='Загружаю ваши треки VK…';};
+  $('djShuffle').onclick=()=>player.setShuffle(!engine.diagnostics().shuffle);
+  $('djRepeat').onclick=()=>player.setRepeat(!engine.diagnostics().repeatTrack);
+  $('djAutoMix').onclick=()=>engine.setAutoMix(!engine.diagnostics().autoMix);
+  window.addEventListener('deka:queue',e=>{engine.setShuffle(e.detail.shuffle);engine.setRepeat(e.detail.repeatTrack);});
+  window.addEventListener('deka:library',()=>{if(!sourceChosen&&player.vkItems().length)$('djSource').value='vk';library();});
+  window.addEventListener('deka:vk:state',e=>{if(!root.hidden)engine.noteVK(e.detail);});
+  window.addEventListener('deka:vk:ended',()=>{if(!root.hidden)engine.endedVK();}); $('djSearch').oninput = () => { listElement.scrollTop = 0; library(); };
   $('djCross').oninput = e => engine.setCross(e.target.value/100);
   $('djCenter').onclick = () => { $('djCross').value = 0; engine.setCross(0); };
   $('djMaster').oninput = e => engine.setMaster(e.target.value/100);
@@ -151,7 +170,7 @@
     ['pointerup','pointercancel','lostpointercapture'].forEach(name=>disc.addEventListener(name, release));
     window.addEventListener('blur', ()=>{ pointer=null; record.style.animation=''; record.style.transform=''; engine.scratchEnd(side, true); });
     const deck = disc.closest('.dj-deck');
-    DekaFileDrop.attach(deck, files => { const imported=player.importFiles(files); if (imported.length) load(side, imported[0].key); }, text=>$('djMessage').textContent=text);
+    DekaFileDrop.attach(deck, files => { const imported=player.importFiles(files); $('djSource').value='files'; sourceChosen=true; if (imported.length) load(side, imported[0].key); }, text=>$('djMessage').textContent=text);
     deck.addEventListener('dragover', e=>{ if (e.dataTransfer.types.includes('application/x-deka-track')) { e.preventDefault(); e.dataTransfer.dropEffect='copy'; deck.classList.add('file-over'); } });
     deck.addEventListener('dragleave', e=>{ if (!deck.contains(e.relatedTarget)) deck.classList.remove('file-over'); });
     deck.addEventListener('drop', e=>{ const key=e.dataTransfer.getData('application/x-deka-track'); if (key) { e.preventDefault(); deck.classList.remove('file-over'); load(side,key); } });
@@ -160,7 +179,7 @@
   });
   DekaFileDrop.attach(root, files=>{ const imported=player.importFiles(files); $('djMessage').textContent='Добавлено / найдено в библиотеке: '+imported.length+'. Перетащите трек на A или B.'; }, text=>$('djMessage').textContent=text);
   window.addEventListener('blur', () => { engine.nudge('A', 0); engine.nudge('B', 0); });
-  window.addEventListener('deka:files', library);
+  window.addEventListener('deka:files', ()=>{$('djSource').value='files';library();});
   window.addEventListener('deka:remove-file', e => {
     ['A','B'].forEach(side => { if (engine.state[side].track && engine.state[side].track.key === e.detail) engine.clear(side); });
     library();

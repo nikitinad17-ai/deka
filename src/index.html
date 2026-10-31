@@ -48,6 +48,7 @@
   .brand{font:700 13px/1 var(--f-brand);letter-spacing:.06em;color:var(--ink)}
   .brand b{color:var(--amber);font-weight:700}
   .bar .spacer{flex:1}
+  .dj-launch{border:1px solid #b88b43!important;border-radius:16px!important;color:var(--amber);background:linear-gradient(#3b3021,#211d17);padding-inline:14px!important;white-space:nowrap;letter-spacing:.05em}
   .reels{width:44px;height:18px;color:var(--amber-dim);flex:none}
   .reels.spin{color:var(--amber)}
   .reels.spin .reel{animation:reel 1.6s linear infinite}
@@ -189,7 +190,7 @@
 <div class="wrap">
   <!-- MAIN -->
   <section class="win win-main" aria-label="Плеер">
-    <div class="bar"><div class="brand">ДЕ<b>КА</b></div><svg class="reels" id="reels" viewBox="0 0 44 18" aria-hidden="true"><g class="reel" style="transform-origin:9px 9px"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9" r="2.2" fill="currentColor"/><path d="M9 4.2v2.2M9 11.6v2.2M4.2 9h2.2M11.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><g class="reel" style="transform-origin:35px 9px"><circle cx="35" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="35" cy="9" r="2.2" fill="currentColor"/><path d="M35 4.2v2.2M35 11.6v2.2M30.2 9h2.2M37.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><path d="M9 16h26" stroke="var(--cyan)" stroke-width="1.2"/></svg><div class="spacer"></div><h2>ретро-дека · v0.11.0</h2></div>
+    <div class="bar"><div class="brand">ДЕ<b>КА</b></div><svg class="reels" id="reels" viewBox="0 0 44 18" aria-hidden="true"><g class="reel" style="transform-origin:9px 9px"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9" r="2.2" fill="currentColor"/><path d="M9 4.2v2.2M9 11.6v2.2M4.2 9h2.2M11.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><g class="reel" style="transform-origin:35px 9px"><circle cx="35" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="35" cy="9" r="2.2" fill="currentColor"/><path d="M35 4.2v2.2M35 11.6v2.2M30.2 9h2.2M37.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><path d="M9 16h26" stroke="var(--cyan)" stroke-width="1.2"/></svg><div class="spacer"></div><h2>ретро-дека · v0.14.0</h2><button class="btn dj-launch" id="djToggle" title="Открыть DJ-пульт с двумя деками">◉ DJ · A/B</button></div>
     <div class="body">
       <div class="lcd">
         <div>
@@ -212,8 +213,8 @@
         <button class="btn" id="bNext" aria-label="Следующий"><svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg></button>
         <span class="spacer"></span>
         <button class="btn toggle" id="bShuf" aria-pressed="false" title="Перемешать">SHUF</button>
-        <button class="btn toggle" id="bRep" aria-pressed="true" title="Повтор плейлиста">REP</button>
-        <button class="btn" id="djToggle">DJ · A/B</button>
+        <button class="btn toggle" id="bRep" aria-pressed="false" title="Повтор текущего трека" aria-label="Повтор текущего трека">REP 1</button>
+
         <button class="btn open" id="bOpen">Открыть</button>
         <input type="file" id="file" accept="audio/*" multiple hidden>
       </div>
@@ -359,7 +360,10 @@
   let preGain = store.get("pre", 0);
   let mode = "files", vkS = {paused:true,currentTime:0,duration:0}, vkAt = 0, vkSpec = null;
   let fileSerial = 0;
-  let tracks = [], cur = -1, showRemain = false, vizMode = 0, shuffle = false, repeat = true;
+  const failedFiles=new Set();
+  let tracks = [], cur = -1, showRemain = false, vizMode = 0, shuffle = store.get("shuffle",false), repeatTrack = store.get("repeatTrack",false);
+  audio.loop = repeatTrack;
+  let vkCurrentKey = "";
   let setStep = null; // листание треков сета, есть только в приложении для Windows
 
   // ---------- audio graph ----------
@@ -516,8 +520,9 @@
   }
 
   // ---------- transport ----------
-  async function play(i){
+  async function play(i, automatic){
     if (i==null || !tracks[i]) return;
+    if(!automatic)failedFiles.delete(tracks[i].key);
     if (mode==="vk") { vk({type:"pause"}); mode="files"; }
     ensureCtx(); if (ctx.state==="suspended") await ctx.resume();
     const t = tracks[i];
@@ -531,24 +536,35 @@
       $("tKbps").textContent = (kb||"—")+" KBPS";
       renderList();
     }
-    try { await audio.play(); } catch(e){ setState("ОШИБКА"); setMarquee("НЕ УДАЛОСЬ ВОСПРОИЗВЕСТИ ФАЙЛ — ФОРМАТ НЕ ПОДДЕРЖИВАЕТСЯ"); }
+    try { await audio.play(); } catch(e){ if(cur!==i)return; setState("ОШИБКА"); setMarquee("НЕ УДАЛОСЬ ВОСПРОИЗВЕСТИ ФАЙЛ — ФОРМАТ НЕ ПОДДЕРЖИВАЕТСЯ"); }
   }
   function toggle(){ if (mode==="vk") return vk({type:"toggle"}); if (cur<0) return play(0); audio.paused ? play(cur) : audio.pause(); }
   function stop(){ if (mode==="vk") return vk({type:"stop"}); audio.pause(); try{audio.currentTime=0;}catch(e){} setState("СТОП"); }
   function step(d){
     if (mode==="vk" && vkS.setId && setStep) return setStep(d);
-    if (mode==="vk") return vk({type: d>0?"next":"prev"});
+    if (mode==="vk") {
+      const list=vkItems.filter(inSection), i=list.findIndex(t=>t.key===vkCurrentKey);
+      if (list.length) { const n=DekaDecks.nextIndex(list,i,d,shuffle); vkCurrentKey=list[n].key; return vk({type:'playKey',key:vkCurrentKey}); }
+      return vk({type:d>0?'next':'prev'});
+    }
     if (!tracks.length) return;
     let n;
-    if (shuffle && tracks.length>1){ do{ n=Math.floor(Math.random()*tracks.length);}while(n===cur); }
-    else { n=cur+d; if (n>=tracks.length) n = repeat?0:-1; if (n<0) n = repeat?tracks.length-1:-1; }
+    n=DekaDecks.nextIndex(tracks,cur,d,shuffle);
     if (n<0) return stop();
     play(n);
   }
   function setState(s){ $("stateTxt").textContent=s; $("led").classList.toggle("on", s==="ИГРАЕТ"); $("reels").classList.toggle("spin", s==="ИГРАЕТ"); }
   audio.addEventListener("play",()=>{ setState("ИГРАЕТ"); $("playIco").innerHTML='<path d="M3 2h4v12H3zM9 2h4v12H9z"/>'; });
   audio.addEventListener("pause",()=>{ if (audio.currentTime>0) setState("ПАУЗА"); $("playIco").innerHTML='<path d="M4 2l10 6-10 6z"/>'; });
-  audio.addEventListener("ended",()=>step(1));
+  audio.addEventListener("ended",()=>{ if(repeatTrack){audio.currentTime=0;play(cur);}else step(1); });
+  audio.addEventListener('error',()=>{
+    if(mode!=='files'||cur<0||document.body.classList.contains('dj-open'))return;
+    failedFiles.add(tracks[cur].key);
+    const good=tracks.map((t,i)=>i).filter(i=>!failedFiles.has(tracks[i].key));
+    if(!good.length){setState('ОШИБКА');setMarquee('Нет доступных файлов. Добавьте другие треки.');return;}
+    const next=shuffle?good[Math.floor(Math.random()*good.length)]:good.find(i=>i>cur)??good[0];
+    play(next,true);
+  });
   // Android: foreground media service позволяет экрану погаснуть, но сохраняет
   // процесс и CPU активными для фонового воспроизведения.
   function keepAwake(on){ try{ if (window.DekaAndroid) window.DekaAndroid.keepAwake(on); }catch(e){} }
@@ -577,8 +593,16 @@
   $("bal").addEventListener("dblclick",()=>{ $("bal").value=0; applyBal(); });
   paint($("vol")); paint($("bal")); paint($("seek"));
   $("bPlay").onclick=toggle; $("bStop").onclick=stop; $("bNext").onclick=()=>step(1); $("bPrev").onclick=()=>{ if (mode==="vk" && vkS.setId && setStep) return setStep(-1); if (mode==="vk") return vk({type:"prev"}); if(audio.currentTime>3) audio.currentTime=0; else step(-1); };
-  $("bShuf").onclick=()=>{ shuffle=!shuffle; $("bShuf").setAttribute("aria-pressed",shuffle); };
-  $("bRep").onclick=()=>{ repeat=!repeat; $("bRep").setAttribute("aria-pressed",repeat); };
+  function queueSettings() {
+    audio.loop=repeatTrack;
+    $('bShuf').setAttribute('aria-pressed',String(shuffle));
+    $('bRep').setAttribute('aria-pressed',String(repeatTrack));
+    store.set('shuffle',shuffle);store.set('repeatTrack',repeatTrack);
+    window.dispatchEvent(new CustomEvent('deka:queue',{detail:{shuffle,repeatTrack}}));
+  }
+  $('bShuf').onclick=()=>{shuffle=!shuffle;queueSettings();};
+  $('bRep').onclick=()=>{repeatTrack=!repeatTrack;queueSettings();};
+  queueSettings();
   $("bOpen").onclick=()=>$("file").click();
   $("file").addEventListener("change",e=>{ addFiles(e.target.files); e.target.value=""; });
   DekaFileDrop.attach($('paneFiles'), files=>addFiles(files, {autoplay:false}), text=>{ $('drop').textContent=text; });
@@ -752,7 +776,7 @@
       const tt=li.querySelector(".t"); tt.textContent=t.title; const sm=document.createElement("small"); sm.textContent=t.artist; tt.appendChild(sm);
       const go=()=>{
         if (!audio.paused) audio.pause();
-        mode="vk"; vkTitleKey=t.artist+"|"+t.title;
+        mode="vk"; vkCurrentKey=t.key; vkTitleKey=t.artist+"|"+t.title;
         setMarquee(`VK · ${t.artist} — ${t.title} (${fmt(t.duration)})`); $("tKbps").textContent="VK";
         setState("ЗАГРУЗКА"); vk({type:"playRow", key:t.key});
       };
@@ -782,7 +806,7 @@
     T.event.listen('vk:login-complete', ()=>{ $('vkStatus').textContent='Вход выполнен · загружаю музыку…'; });
     T.event.listen('library', e=>{
       const data=e.payload||{};
-      if (Array.isArray(data.items)) { vkLibraryReady=true; vkItems=data.items; renderVk(); }
+      if (Array.isArray(data.items)) { vkLibraryReady=true; vkItems=data.items; renderVk(); window.dispatchEvent(new Event("deka:library")); }
       const state=data.complete?'Полный список':data.status==='loading'?'Загрузка':'Список загружен частично';
       $('vkLibraryStatus').textContent=state+': '+(data.count||vkItems.length)+' треков'+(data.complete?'':' · «Загрузить всю музыку» для продолжения');
     });
@@ -824,7 +848,7 @@
       if (!p.done){ $("vkStatus").textContent = `Собираю список: ${p.count} ${plural(p.count,["трек","трека","треков"])}…`; return; }
       collectingLibrary=false; $('vkCancel').hidden=true; $('vkLoad').disabled=false;
       const all = p.items || [];
-      vkItems=all; renderVk();
+      vkItems=all; renderVk(); window.dispatchEvent(new Event("deka:library"));
       $('vkLibraryStatus').textContent=(p.complete?'Полный список: ':'Загружено: ')+all.length+' треков'+(p.complete?'':' · список может быть неполным, повторите загрузку');
       if (!exporting) return;
       exporting = false; $("vkExport").disabled = false;
@@ -853,7 +877,8 @@
       const st=$("vkStatus");
       if (!s.loggedIn){ st.textContent="Войдите через кнопку «Войти в VK», затем загрузите музыку"; st.classList.remove("ok"); }
       else if (!collectingLibrary) { st.textContent = s.hasMedia ? "ВК подключён" : "ВК подключён · включите трек"; st.classList.add("ok"); }
-      if (document.body.classList.contains("dj-open")) { if (!s.paused) vk({type:"pause"}); return; }
+      window.dispatchEvent(new CustomEvent("deka:vk:state",{detail:s}));
+      if (document.body.classList.contains("dj-open")) return;
       if (!s.paused && wasPaused){ if (!audio.paused) audio.pause(); mode="vk"; sendFx(); }
       if (mode!=="vk") return;
       setState(s.paused ? (s.currentTime>0?"ПАУЗА":"СТОП") : "ИГРАЕТ");
@@ -865,7 +890,12 @@
       const key = s.artist+"|"+s.title;
       if (key!==vkTitleKey && s.title){ vkTitleKey=key; setMarquee(`VK · ${s.artist} — ${s.title} (${fmt(s.duration)})`); $("tKbps").textContent="VK"; renderVk(); }
     });
-    T.event.listen("vk:playlist", e=>{ if (vkLibraryReady) return; vkItems = (e.payload&&e.payload.items)||[]; $("vkPage").textContent = (e.payload&&e.payload.page)||"—"; renderVk(); });
+    T.event.listen("vk:playlist", e=>{ if (vkLibraryReady) return; vkItems = (e.payload&&e.payload.items)||[]; $("vkPage").textContent = (e.payload&&e.payload.page)||"—"; renderVk(); window.dispatchEvent(new Event('deka:library')); });
+    T.event.listen('vk:ended',()=>{
+      window.dispatchEvent(new Event('deka:vk:ended'));
+      if(document.body.classList.contains('dj-open')||mode!=='vk'||vkS.setId)return;
+      if(repeatTrack){vk({type:'playKey',key:vkCurrentKey});}else step(1);
+    });
     T.event.listen("vk:spectrum", e=>{ vkSpec = e.payload; });
     T.event.listen("vk:fx", e=>{ const p=e.payload||{}, el=$("vkFx");
       el.textContent = p.ok ? "Эквалайзер и спектр работают со звуком ВК" : "Эквалайзер ВК недоступен для этого трека";
@@ -1011,6 +1041,12 @@
 
   window.DekaDesktopPlayer = {
     files: () => tracks.filter(t => t.key && t.url && !t.isDemo).map(t => ({ key:t.key, title:t.title, artist:t.artist, kind:'file', url:t.url, duration:t.dur, size:t.size })),
+    vkItems: () => vkItems.map(t=>({...t,kind:'vk'})),
+    command: command => vk(command),
+    collect: () => { if($('vkLoad').onclick)$('vkLoad').click(); },
+    settings: () => ({shuffle,repeatTrack}),
+    setShuffle: on => {shuffle=!!on;queueSettings();},
+    setRepeat: on => {repeatTrack=!!on;queueSettings();},
     importFiles: files => addFiles(files, {autoplay:false}),
     openFiles: () => $('file').click(),
     pauseForDJ: () => { audio.pause(); vk({type:'pause'}); }
