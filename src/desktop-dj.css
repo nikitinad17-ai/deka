@@ -65,3 +65,6 @@ body.dj-open .wrap>section:not(#desktopDJ),body.dj-open .keys{display:none}
 .file-over{outline:2px dashed var(--amber);outline-offset:-4px;background-color:#ffb34715!important}
 .dj-row{cursor:grab}.dj-row:active{cursor:grabbing}
 @media(prefers-reduced-motion:reduce){.dj-disc span{animation:none}}
+
+#djSource{background:#101318;color:var(--ink);border:1px solid var(--edge);border-radius:6px;padding:7px;min-height:34px}
+#desktopDJ .bar{flex-wrap:wrap;gap:8px}#djAutoState{color:var(--cyan)}

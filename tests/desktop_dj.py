@@ -96,7 +96,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
         page.wait_for_timeout(10000)
         check(f'Both independent local files advance: {(i+1)*10}s', page.evaluate(f'!__dj.state.A.paused && !__dj.state.B.paused && __dj.state.A.time>{(i+1)*10-2} && __dj.state.B.time>{(i+1)*10-2}'))
     page.evaluate("__dj.seek('B',71.7)"); page.wait_for_timeout(700)
-    check('DJ end does not autoplay next or stop A', page.evaluate("__dj.state.B.status==='ended' && __dj.state.B.track.title==='Tone660' && !__dj.state.A.paused"))
+    check('DJ end preserves the other playing deck and prepares the next track', page.evaluate("!__dj.state.A.paused && __dj.state.B.paused && __dj.diagnostics().cross===-1"))
     page.evaluate("__dj.load('B',[{key:'bad',kind:'file',title:'Bad',url:URL.createObjectURL(new Blob(['invalid'],{type:'audio/wav'}))}],0)")
     page.wait_for_function("__dj.state.B.status==='error'")
     check('Decode error in B preserves A', page.evaluate('!__dj.state.A.paused'))

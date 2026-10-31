@@ -400,6 +400,33 @@ if (!activity.includes(MARK)) {
   fs.writeFileSync(activityFile, activity);
 }
 
+// DEKA_ROTATION_014: retain the same Activity/WebView/audio graph on rotation.
+if (!activity.includes('fun setOrientation(mode: String)')) {
+  activity = activity.replace('      fun toast(text: String)', `      fun setOrientation(mode: String) {
+        runOnUiThread {
+          requestedOrientation = if (mode == "landscape")
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+          else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+        }
+      }
+
+      @android.webkit.JavascriptInterface
+      fun toast(text: String)`);
+}
+if (!activity.includes('DEKA_ROTATION_014')) {
+  activity = activity.replace(/class MainActivity\s*:\s*TauriActivity\(\)\s*\{/, m => m + `
+  // DEKA_ROTATION_014: resize the existing WebView, never reload the music page.
+  override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+    super.onConfigurationChanged(newConfig)
+    dekaWebView?.requestLayout()
+    dekaWebView?.post {
+      dekaWebView?.evaluateJavascript("window.dispatchEvent(new Event('deka:orientation'));", null)
+    }
+  }
+`);
+}
+fs.writeFileSync(activityFile, activity);
+
 const serviceFile = path.join(path.dirname(activityFile), "DekaPlaybackService.kt");
 const service = `package ${packageName}
 
@@ -574,6 +601,17 @@ class DekaPlaybackService : android.app.Service() {
 fs.writeFileSync(serviceFile, service);
 
 let manifest = fs.readFileSync(manifestFile, "utf8");
+manifest = manifest.replace(/<activity\b[^>]*android:name="(?:\.MainActivity|[^"]+\.MainActivity)"[^>]*>/g, tag => {
+  function attribute(name, value) {
+    const re = new RegExp('android:' + name + '="[^"]*"');
+    if (re.test(tag)) tag = tag.replace(re, 'android:' + name + '="' + value + '"');
+    else tag = tag.replace(/\s*\/?>$/, end => ' android:' + name + '="' + value + '"' + end);
+  }
+  const old = (tag.match(/android:configChanges="([^"]*)"/) || [,''])[1].split('|').filter(Boolean);
+  attribute('configChanges', [...new Set(old.concat(['orientation','screenSize','smallestScreenSize','screenLayout','keyboardHidden']))].join('|'));
+  attribute('screenOrientation', 'fullUser');
+  return tag;
+});
 function addPermission(name) {
   if (manifest.includes('android:name="' + name + '"')) return;
   manifest = manifest.replace(
