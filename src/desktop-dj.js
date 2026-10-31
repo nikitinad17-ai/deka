@@ -6,34 +6,33 @@
   const root = document.createElement('section');
   root.id = 'desktopDJ'; root.className = 'win'; root.hidden = true;
   root.setAttribute('aria-label', 'DJ-пульт: файлы и библиотека VK');
+  const fxNames=['Flanger','Echo','Reverb','Filter','Phaser','Roll'];
   const deckHTML = side => `<section class="dj-deck" data-side="${side}" aria-label="Дека ${side}">
     <h2>DECK ${side} <span id="djStatus${side}">Пусто</span></h2>
     <div class="dj-track"><b id="djTitle${side}">Загрузите трек из библиотеки</b><small id="djArtist${side}">Локальный файл</small></div>
-    <div class="dj-disc" id="djDisc${side}" role="img" aria-label="Дека ${side}: индикатор воспроизведения"><span>${side}</span></div><small class="dj-vinyl-help" id="djVinyl${side}">Анализ ритма и уровня</small>
+    <button class="dj-disc" id="djDisc${side}" aria-label="Пластинка ${side}: удерживайте для остановки, двигайте для скретча" title="Зажмите левой кнопкой, двигайте пластинку и отпустите"><span>${side}</span></button><small class="dj-vinyl-help" id="djVinyl${side}">VINYL · удержание / скретч</small>
     <div class="dj-times"><span id="djTime${side}">00:00 / 00:00</span><span id="djRemain${side}">−00:00</span></div>
-    <input type="range" id="djSeek${side}" min="0" max="1000" value="0" data-seek="${side}" aria-label="Позиция деки ${side}">
-    <div class="dj-buttons"><button data-play="${side}" id="djPlay${side}" class="btn play">▶ Играть ${side}</button><button class="btn" data-cue="${side}" title="На паузе: поставить точку. При игре: остановить и вернуться к ней.">CUE</button><span id="djCue${side}">00:00</span></div>
-    <label class="dj-label">Темп <output id="djRateLabel${side}">0.0%</output><input type="range" min="-8" max="8" step="0.1" value="0" id="djRate${side}" data-rate="${side}" aria-label="Темп деки ${side}"></label>
-    <div class="dj-buttons"><button data-reset="${side}" class="btn">0%</button><button id="djKeyLock${side}" data-keylock="${side}" class="btn toggle" aria-pressed="true">Key Lock</button><button data-nudge="${side}" data-value="-0.04" class="btn" aria-label="Замедлить ${side} при удержании">− Nudge</button><button data-nudge="${side}" data-value="0.04" class="btn" aria-label="Ускорить ${side} при удержании">+ Nudge</button></div>
-    <div class="dj-buttons"><label>Исх. BPM <input type="number" min="30" max="300" step="0.1" id="djBPM${side}" data-bpm="${side}" aria-label="Ручной BPM ${side}" placeholder="—"></label><button data-tap="${side}" class="btn">TAP</button><output id="djEffectiveBPM${side}" class="dj-effective">→ — BPM</output></div>
+    <input class="dj-seek" type="range" id="djSeek${side}" min="0" max="1000" value="0" data-seek="${side}" aria-label="Позиция деки ${side}">
+    <div class="dj-transport"><button data-play="${side}" id="djPlay${side}" class="btn play">▶ Играть ${side}</button><label>BPM <input type="number" min="30" max="300" step="0.1" id="djBPM${side}" data-bpm="${side}" aria-label="Ручной BPM ${side}" placeholder="—"></label><button data-tap="${side}" class="btn">TAP</button><output id="djEffectiveBPM${side}" class="dj-effective">→ — BPM</output></div>
+    <div class="dj-cuefx"><div class="dj-cue"><button class="btn" data-cue="${side}" title="На паузе: поставить точку. При игре: остановить и вернуться к ней.">CUE</button><span id="djCue${side}">00:00</span><button id="djKeyLock${side}" data-keylock="${side}" class="btn toggle dj-keylock" aria-pressed="true" title="Key Lock — сохранять тональность">Key Lock</button></div><div class="dj-fx" aria-label="Эффекты деки ${side}">${fxNames.map(name=>`<div class="dj-fx-cell"><button class="btn toggle" id="djFX${side}${name}" data-effect="${side}" data-name="${name}" aria-pressed="false" aria-label="${name} деки ${side}">${name}</button><input type="range" min="0" max="100" value="35" data-effect-amount="${side}" data-name="${name}" aria-label="Интенсивность ${name} деки ${side}"></div>`).join('')}</div></div>
+    <label class="dj-label">Темп <output id="djRateLabel${side}">0.0%</output><input type="range" min="-8" max="8" step="0.1" value="0" id="djRate${side}" data-rate="${side}" aria-label="Темп деки ${side}"></label><button data-reset="${side}" class="btn dj-rate-reset" title="Вернуть ручной темп к 0%">0%</button>
     <div class="dj-eq">${['LOW','MID','HIGH'].map((name, band) => `<label>${name}<input type="range" min="-12" max="12" value="0" data-eq="${side}" data-band="${band}" aria-label="${name} деки ${side}"></label>`).join('')}</div>
-    <label class="dj-label">Уровень ${side}<input type="range" min="0" max="100" value="100" data-gain="${side}" aria-label="Уровень деки ${side}"></label>
     <meter id="djMeter${side}" min="0" max="1" value="0" aria-label="Пиковый уровень ${side}"></meter>
   </section>`;
   root.innerHTML = `<div class="bar"><div class="brand">ДЕ<b>КА</b> · DJ</div><span class="spacer"></span><button class="btn toggle" id="djShuffle" aria-pressed="false" title="Случайный следующий трек">SHUF</button><button class="btn toggle" id="djRepeat" aria-pressed="false" title="Повтор текущего трека">REP 1</button><button class="btn" id="djClose">← Плеер</button></div>
-    <div class="dj-intro">Два локальных трека · AUTO MIX: ритм, темп, уровень и плавная передача частот · VK: один поток</div>
+    <div class="dj-intro">AUTO MIX · 17 секунд: темп + частоты + громкость · VINYL: удержание и скретч · FX отдельно для A / B</div>
     <div class="dj-console">${deckHTML('A')}<section class="dj-mixer" aria-label="Микшер">
       <b>MASTER</b><meter id="djMeterMaster" min="0" max="1" value="0" aria-label="Пиковый уровень Master"></meter><span id="djPeak">−∞ dBFS</span>
       <label>Выход<input id="djMaster" type="range" min="0" max="100" value="80" aria-label="Master DJ"></label>
       <div class="dj-cross"><b>A ⇄ B</b><input id="djCross" type="range" min="-100" max="100" value="0" aria-label="Кроссфейдер A B"><button id="djCenter" class="btn">Центр</button></div>
       <small>Равномощный переход<br>Запас уровня −12 dB<br>Без отдельного выхода наушников</small>
-      <button id="djAutoMix" class="btn toggle" aria-pressed="true" title="Перед концом подстроить темп, частоты и плавно перейти на следующую деку">AUTO MIX</button><small id="djAutoState">Автопереход A ⇄ B</small><button id="djPauseAll" class="btn">Пауза обеих</button>
+      <button id="djAutoMix" class="btn toggle" aria-pressed="true" title="Плавно перейти на следующую деку: темп, частоты и громкость за 17 секунд">AUTO MIX · 17 s</button><small id="djAutoState">Автопереход A ⇄ B</small><button id="djPauseAll" class="btn">Пауза обеих</button>
     </section>${deckHTML('B')}</div>
     <div id="djMessage" role="status" aria-live="polite">Перетащите файлы из папки на пульт или выберите «В A» / «В B». Загрузка не запускает трек.</div>
     <section class="dj-library" aria-label="Библиотека DJ"><div class="dj-drop-hint">↓ Файлы или папка сюда · трек из списка — на пластинку A / B</div><div class="dj-tools"><select id="djSource" aria-label="Источник треков DJ"><option value="files">Мои файлы</option><option value="vk">Мои треки VK</option></select><button class="btn" id="djSync">Загрузить VK</button><button class="btn open" id="djAdd">＋ Файлы</button><input type="search" id="djSearch" placeholder="Название или исполнитель" aria-label="Поиск локальных треков"><span id="djCount"></span></div><div id="djList"></div><small>Файлы остаются на компьютере. После закрытия приложения выберите их снова.</small></section>`;
   document.querySelector('.wrap').appendChild(root);
   const $ = id => document.getElementById(id);
-  const engine = DekaDecks.create({ djMode: true, continuous:true, autoMix:true, smartMix:true, externalTempo:true, analysis:DekaMixAnalysis.create(), fadeSeconds:12, ...player.settings(), vinyl: false, vk: c => player.command(c), change: render, message: text => { $('djMessage').textContent = text; } });
+  const engine = DekaDecks.create({ djMode: true, continuous:true, autoMix:true, smartMix:true,sweepMix:true,effects:true, externalTempo:true, analysis:DekaMixAnalysis.create(), fadeSeconds:17, ...player.settings(), vinyl:true, vk: c => player.command(c), change: render, message: text => { $('djMessage').textContent = text; } });
   const status = { empty:'Пусто', loading:'Загрузка…', ready:'Готово', playing:'Играет', paused:'Пауза', ended:'Конец', error:'Ошибка', held:'Пластинка удерживается' };
   const fmt = seconds => { const n = Math.floor(Math.max(0, Number(seconds) || 0)); return String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0'); };
   function render() {
@@ -41,7 +40,7 @@
     $('djShuffle').setAttribute('aria-pressed',String(d.shuffle));
     $('djRepeat').setAttribute('aria-pressed',String(d.repeatTrack));
     $('djAutoMix').setAttribute('aria-pressed',String(d.autoMix));
-    $('djAutoState').textContent=d.mixing?'Сведение · темп + НЧ/СЧ/ВЧ':d.repeatTrack?'Повтор трека':d.autoMix?'Автосведение включено':'Автопереход в конце трека';
+    $('djAutoState').textContent=d.mixing?'Сведение '+d.transition.elapsed.toFixed(1)+' / '+d.transition.duration.toFixed(0)+' с':d.repeatTrack?'Повтор трека':d.autoMix?'Автосведение · 17 с':'Автопереход в конце трека';
     if(!$('djCross').matches(':active'))$('djCross').value=d.cross*100;
     ['A','B'].forEach(side => {
       const s = engine.state[side];
@@ -52,19 +51,24 @@
       $('djStatus'+side).textContent = status[s.status] || 'Пауза';
       $('djTime'+side).textContent = fmt(s.time) + ' / ' + fmt(s.duration);
       $('djRemain'+side).textContent = '−' + fmt(s.duration-s.time);
-      const seek = $('djSeek'+side); if (!seek.matches(':active')) seek.value = s.duration ? s.time / s.duration * 1000 : 0;
+      const seek = $('djSeek'+side); if (!seek.matches(':active')) seek.value = s.duration ? s.time / s.duration * 1000 : 0;seek.style.setProperty('--progress',(s.duration?s.time/s.duration*100:0)+'%');
       $('djCue'+side).textContent = fmt(s.cue);
       $('djPlay'+side).textContent = s.paused ? '▶ Играть '+side : 'Ⅱ Пауза '+side;
       $('djPlay'+side).disabled = !s.track || s.pending;
       const disc = $('djDisc'+side);
       disc.classList.toggle('playing', !s.paused && s.status === 'playing');
       disc.classList.toggle('held', s.held);
-      disc.querySelector('span').style.animationDuration = (1.8 / (s.rate+s.nudge))+'s';
-      $('djVinyl'+side).textContent = !local?'VK · темп управляет текущим потоком':s.analysisStatus==='loading'?'Анализирую ритм…':s.analysis?.bpm?'≈ '+s.analysis.bpm.toFixed(1)+' BPM · ритм определён':'Ритм не определён · мягкий переход EQ';
+      const actualRate=s.actualRate||(s.autoRate===null?s.rate+s.nudge:s.autoRate);
+      disc.querySelector('span').style.animationDuration = (1.8 / actualRate)+'s';
+      disc.disabled=!local;
+      $('djVinyl'+side).textContent = !local?'VK · один поток':s.scratchStatus==='loading'?'Готовлю скретч…':s.scratchStatus==='error'?'Скретч недоступен для этого файла':s.held?'VINYL · пластинка удерживается':s.analysisStatus==='loading'?'Анализирую ритм…':'VINYL · удержание / скретч'+(s.analysis?.bpm?' · ≈ '+s.analysis.bpm+' BPM':'');
       $('djKeyLock'+side).setAttribute('aria-pressed', String(s.keyLock));
-      const baseBPM=s.bpm||s.analysis?.bpm; $('djEffectiveBPM'+side).textContent = '→ '+(baseBPM ? (baseBPM*(s.actualRate||s.rate+s.nudge)).toFixed(1) : '—')+' BPM';
-      $('djRateLabel'+side).textContent = ((s.rate-1)*100>=0?'+':'')+((s.rate-1)*100).toFixed(1)+'%' + (s.nudge ? ' · bend '+(s.nudge*100).toFixed(0)+'%' : '');
-      if (document.activeElement !== $('djRate'+side)) $('djRate'+side).value=((s.rate-1)*100).toFixed(1);
+      const baseBPM=s.bpm||s.analysis?.bpm; $('djEffectiveBPM'+side).textContent = '→ '+(baseBPM ? (baseBPM*actualRate).toFixed(1) : '—')+' BPM';
+      const percent=(actualRate-1)*100;
+      $('djRateLabel'+side).textContent = (percent>=0?'+':'')+percent.toFixed(1)+'%'+(s.autoRate===null?'':' · AUTO');
+      const rate=$('djRate'+side);if(!rate.matches(':active'))rate.value=Math.max(-8,Math.min(8,percent)).toFixed(1);rate.setAttribute('aria-valuetext',percent.toFixed(1)+'%'+(s.autoRate===null?'':' в автомиксе'));
+      root.querySelectorAll('[data-eq="'+side+'"]').forEach(el=>{if(!el.matches(':active'))el.value=s.eq[+el.dataset.band]+s.autoEQ[+el.dataset.band];});
+      fxNames.forEach(name=>{const effect=s.effects[name],button=$('djFX'+side+name),range=root.querySelector('[data-effect-amount="'+side+'"][data-name="'+name+'"]');button.setAttribute('aria-pressed',String(effect.on));button.disabled=!local||(name==='Roll'&&s.fxStatus!=='ready');range.disabled=!local;if(!range.matches(':active'))range.value=effect.amount*100;});
       if (document.activeElement !== $('djBPM'+side)) $('djBPM'+side).value = s.bpm || s.analysis?.bpm || '';
     });
   }
@@ -129,6 +133,7 @@
     if (d.gain) engine.setGain(d.gain, v/100);
     if (d.eq) engine.setEQ(d.eq, +d.band, v);
     if (d.bpm) engine.setBPM(d.bpm, v);
+    if(d.effectAmount)engine.setEffect(d.effectAmount,d.name,engine.state[d.effectAmount].effects[d.name].on,v/100);
   });
   root.addEventListener('change', e => { const side = e.target.dataset.seek; if (side) engine.seek(side, e.target.value/1000*engine.state[side].duration); });
   root.addEventListener('click', e => {
@@ -138,6 +143,7 @@
     if (d.reset) { engine.setRate(d.reset, 1); $('djRate'+d.reset).value = 0; }
     if (d.tap) engine.tap(d.tap);
     if (d.keylock) engine.setKeyLock(d.keylock, !engine.state[d.keylock].keyLock);
+    if(d.effect){const fx=engine.state[d.effect].effects[d.name];engine.setEffect(d.effect,d.name,!fx.on,fx.amount);}
   });
   root.querySelectorAll('[data-nudge]').forEach(b => {
     const stop = () => engine.nudge(b.dataset.nudge, 0);
@@ -148,6 +154,24 @@
   });
   ['A','B'].forEach(side => {
     const disc = $('djDisc'+side);
+    let pointer=null,angle=0,rotation=0,lastX=0,lastRadius=0;
+    const record=disc.querySelector('span');
+    const point=e=>{const r=disc.getBoundingClientRect(),x=e.clientX-r.left-r.width/2,y=e.clientY-r.top-r.height/2;return {angle:Math.atan2(y,x),radius:Math.hypot(x,y),width:r.width};};
+    disc.addEventListener('pointerdown',e=>{
+      if(e.button!==0||pointer!==null||engine.state[side].track?.kind!=='file')return;e.preventDefault();
+      const transform=getComputedStyle(record).transform;if(transform!=='none'){const m=new DOMMatrixReadOnly(transform);rotation=Math.atan2(m.b,m.a)*180/Math.PI;}
+      record.style.animation='none';record.style.transform='rotate('+rotation+'deg)';
+      const p=point(e);pointer=e.pointerId;angle=p.angle;lastRadius=p.radius;lastX=e.clientX;disc.setPointerCapture(pointer);engine.scratchBegin(side);
+    });
+    disc.addEventListener('pointermove',e=>{
+      if(e.pointerId!==pointer)return;const p=point(e);let delta=p.angle-angle;if(delta>Math.PI)delta-=2*Math.PI;if(delta< -Math.PI)delta+=2*Math.PI;
+      if(Math.min(p.radius,lastRadius)<p.width*.15)delta=(e.clientX-lastX)/p.width*2*Math.PI;
+      angle=p.angle;lastRadius=p.radius;lastX=e.clientX;rotation+=delta*180/Math.PI;record.style.transform='rotate('+rotation+'deg)';engine.scratchMove(side,delta/(2*Math.PI)*1.8);
+    });
+    const release=e=>{if(pointer===null||(e?.pointerId!==undefined&&e.pointerId!==pointer))return;pointer=null;record.style.animation='';record.style.transform='';engine.scratchEnd(side);};
+    ['pointerup','pointercancel','lostpointercapture'].forEach(name=>disc.addEventListener(name,release));window.addEventListener('blur',()=>release());
+    disc.addEventListener('keydown',e=>{if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();engine.scratchBegin(side);}if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();engine.seek(side,engine.state[side].time+(e.key==='ArrowLeft'?-1:1));}});
+    disc.addEventListener('keyup',e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();engine.scratchEnd(side);}});
     const deck = disc.closest('.dj-deck');
     DekaFileDrop.attach(deck, files => { const imported=player.importFiles(files); $('djSource').value='files'; sourceChosen=true; if (imported.length) load(side, imported[0].key); }, text=>$('djMessage').textContent=text);
     deck.addEventListener('dragover', e=>{ if (e.dataTransfer.types.includes('application/x-deka-track')) { e.preventDefault(); e.dataTransfer.dropEffect='copy'; deck.classList.add('file-over'); } });

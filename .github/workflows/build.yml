@@ -2,7 +2,7 @@ name: Build and test
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/v0.10.0-sets, feature/desktop-dj-0.11.0, feature/desktop-vinyl-0.12.0, feature/android-vinyl-0.13.0, feature/continuous-mix-0.14.0, feature/desktop-automix-0.15.0]
+    branches: [main, feature/v0.10.0-sets, feature/desktop-dj-0.11.0, feature/desktop-vinyl-0.12.0, feature/android-vinyl-0.13.0, feature/continuous-mix-0.14.0, feature/desktop-automix-0.15.0, feature/desktop-transition-fx-0.16.0]
   pull_request:
     branches: [main]
 permissions:
@@ -32,6 +32,8 @@ jobs:
       - run: python tests/android_dj.py
       - run: python tests/continuous.py
       - run: python tests/automix.py
+      - run: python tests/mp3_transport.py
+      - run: python tests/desktop_session.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

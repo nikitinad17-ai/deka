@@ -69,4 +69,27 @@ body.dj-open .wrap>section:not(#desktopDJ),body.dj-open .keys{display:none}
 #djSource{background:#101318;color:var(--ink);border:1px solid var(--edge);border-radius:6px;padding:7px;min-height:34px}
 #desktopDJ .bar{flex-wrap:wrap;gap:8px}#djAutoState{color:var(--cyan)}
 
-#desktopDJ .dj-disc{cursor:default!important;touch-action:auto;user-select:none}
+#desktopDJ .dj-disc{cursor:grab!important;touch-action:none;user-select:none;width:128px;height:128px;margin:12px auto;font-size:30px}
+#desktopDJ .dj-disc.held{cursor:grabbing!important}
+#desktopDJ .dj-disc:disabled{cursor:default!important;opacity:.65}
+.dj-deck{padding:12px;position:relative}.dj-deck h2{margin-bottom:9px}.dj-track{min-height:51px;padding:8px}
+.dj-vinyl-help{margin-top:-3px;margin-bottom:8px;min-height:13px}
+.dj-transport{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:6px 0 9px}
+.dj-transport .btn{min-height:32px;padding:0 9px;font-size:11px}.dj-transport .play{flex:1;white-space:nowrap}
+.dj-transport label{display:flex;align-items:center;gap:5px;font:11px var(--f-mono);color:var(--ink-2)}
+#desktopDJ .dj-transport input[type=number]{width:64px;font-size:14px;padding:5px;font-weight:700}
+.dj-transport .dj-effective{font-size:11px;min-width:77px;text-align:right}
+.dj-cuefx{display:grid;grid-template-columns:64px minmax(0,1fr);gap:9px;align-items:stretch}
+.dj-cue{display:flex;flex-direction:column;justify-content:space-between;gap:4px;text-align:center;font:11px var(--f-mono);color:var(--ink-2)}
+.dj-cue .btn{min-height:31px;padding:0 6px;font-size:11px}.dj-cue .dj-keylock{min-height:24px;font-size:9px}
+.dj-fx{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 6px;padding:6px;border:1px solid var(--edge);border-radius:7px;background:#0e1318}
+.dj-fx-cell{min-width:0}.dj-fx-cell .btn{width:100%;min-height:26px;padding:0 4px;font:10px var(--f-mono);border-radius:4px}
+#desktopDJ .dj-fx-cell input[type=range]{height:16px;min-height:16px;margin:1px 0 0;display:block;accent-color:var(--accent)}
+.dj-rate-reset{float:right;min-height:22px;padding:0 8px;font-size:10px;margin-top:-2px}
+.dj-eq{clear:both;padding-top:4px;gap:10px}
+#desktopDJ .dj-seek{appearance:none;-webkit-appearance:none;height:28px;min-height:28px;background:transparent;margin:2px 0 4px;--progress:0%}
+#desktopDJ .dj-seek::-webkit-slider-runnable-track{height:9px;background:linear-gradient(to right,var(--accent) 0 var(--progress),#394752 var(--progress) 100%);border:1px solid #6d8495;border-radius:6px;box-shadow:0 0 7px #47dce526}
+#desktopDJ .dj-seek::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:17px;height:17px;border-radius:50%;background:#edffff;border:2px solid var(--accent);margin-top:-5px;box-shadow:0 0 7px #66dfe9a0}
+#desktopDJ .dj-seek::-moz-range-track{height:9px;background:#394752;border-radius:6px}
+#desktopDJ .dj-seek::-moz-range-progress{height:9px;background:var(--accent)}
+@media(max-width:880px){.dj-cuefx{grid-template-columns:54px minmax(0,1fr);gap:5px}.dj-fx{gap:4px;padding:4px}.dj-fx-cell .btn{font-size:9px}.dj-transport .dj-effective{min-width:65px;font-size:10px}}
