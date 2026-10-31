@@ -190,7 +190,7 @@
 <div class="wrap">
   <!-- MAIN -->
   <section class="win win-main" aria-label="Плеер">
-    <div class="bar"><div class="brand">ДЕ<b>КА</b></div><svg class="reels" id="reels" viewBox="0 0 44 18" aria-hidden="true"><g class="reel" style="transform-origin:9px 9px"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9" r="2.2" fill="currentColor"/><path d="M9 4.2v2.2M9 11.6v2.2M4.2 9h2.2M11.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><g class="reel" style="transform-origin:35px 9px"><circle cx="35" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="35" cy="9" r="2.2" fill="currentColor"/><path d="M35 4.2v2.2M35 11.6v2.2M30.2 9h2.2M37.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><path d="M9 16h26" stroke="var(--cyan)" stroke-width="1.2"/></svg><div class="spacer"></div><h2>ретро-дека · v0.14.0</h2><button class="btn dj-launch" id="djToggle" title="Открыть DJ-пульт с двумя деками">◉ DJ · A/B</button></div>
+    <div class="bar"><div class="brand">ДЕ<b>КА</b></div><svg class="reels" id="reels" viewBox="0 0 44 18" aria-hidden="true"><g class="reel" style="transform-origin:9px 9px"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9" r="2.2" fill="currentColor"/><path d="M9 4.2v2.2M9 11.6v2.2M4.2 9h2.2M11.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><g class="reel" style="transform-origin:35px 9px"><circle cx="35" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="35" cy="9" r="2.2" fill="currentColor"/><path d="M35 4.2v2.2M35 11.6v2.2M30.2 9h2.2M37.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><path d="M9 16h26" stroke="var(--cyan)" stroke-width="1.2"/></svg><div class="spacer"></div><h2>ретро-дека · v0.15.0</h2><button class="btn dj-launch" id="djToggle" title="Открыть DJ-пульт с двумя деками">◉ DJ · A/B</button></div>
     <div class="body">
       <div class="lcd">
         <div>
@@ -337,6 +337,7 @@
 
 <script src="vinyl-engine.js"></script>
 <script src="file-drop.js"></script>
+<script src="mix-analysis.js"></script>
 <script src="deck-engine.js"></script>
 <script src="set-core.js"></script>
 <script>
@@ -510,7 +511,7 @@
       if (existing) { imported.push(existing); return; }
       const base=f.name.replace(/\.[^.]+$/,""); let artist="", title=base;
       const m=base.match(/^(.+?)\s+[-–—]\s+(.+)$/); if(m){artist=m[1];title=m[2];}
-      const t={key:'file-'+(++fileSerial), title, artist: artist||"Мои файлы", url:URL.createObjectURL(f), dur:0, size:f.size, signature};
+      const t={key:'file-'+(++fileSerial), title, artist: artist||"Мои файлы", url:URL.createObjectURL(f), dur:0, file:f, size:f.size, signature};
       tracks.push(t); imported.push(t);
       metadataQueue.push(t);
     });
@@ -1040,7 +1041,7 @@
   }
 
   window.DekaDesktopPlayer = {
-    files: () => tracks.filter(t => t.key && t.url && !t.isDemo).map(t => ({ key:t.key, title:t.title, artist:t.artist, kind:'file', url:t.url, duration:t.dur, size:t.size })),
+    files: () => tracks.filter(t => t.key && t.url && !t.isDemo).map(t => ({ key:t.key, title:t.title, artist:t.artist, kind:'file', url:t.url, duration:t.dur, file:t.file, size:t.size })),
     vkItems: () => vkItems.map(t=>({...t,kind:'vk'})),
     command: command => vk(command),
     collect: () => { if($('vkLoad').onclick)$('vkLoad').click(); },
