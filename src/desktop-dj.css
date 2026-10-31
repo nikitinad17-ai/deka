@@ -68,3 +68,5 @@ body.dj-open .wrap>section:not(#desktopDJ),body.dj-open .keys{display:none}
 
 #djSource{background:#101318;color:var(--ink);border:1px solid var(--edge);border-radius:6px;padding:7px;min-height:34px}
 #desktopDJ .bar{flex-wrap:wrap;gap:8px}#djAutoState{color:var(--cyan)}
+
+#desktopDJ .dj-disc{cursor:default!important;touch-action:auto;user-select:none}

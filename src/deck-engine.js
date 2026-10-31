@@ -20,9 +20,10 @@
     opts = opts || {};
     var ctx, output, compressor, safety, masterMeter, cross = 0, master = 0.8, vkSide = 'A', awake = null, destroyed = false;
     var state = {}, elements = {}, nodes = {}, vinyl = {}, preparing = {}, aborts = {};
-    var mix = null, starting = null, autoSerial = 0, autoCross = null, failed = new Set();
+    var mix = null, starting = null, autoSerial = 0, autoCross = null, manualOverlap=false, manualUntil=0, failed = new Set();
+    function resetMixTone(){ ['A','B'].forEach(function(side){if(state[side])state[side].autoEQ=[0,0,0];}); apply(); }
     function cancelAuto() {
-      autoSerial++; mix = null;
+      autoSerial++; mix = null; resetMixTone();
       var pending = starting; starting = null;
       if (pending) {
         var s=state[pending.to]; s.generation++; s.pending=false;
@@ -33,7 +34,7 @@
     }
     function crossTo(value) { cross = clamp(value, -1, 1); apply(); }
     ['A', 'B'].forEach(function (side) { state[side] = { side: side, track: null, list: [], index: -1, paused: true, time: 0, duration: 0,
-      gain: 1, eq: [0, 0, 0], generation: 0, cue: 0, pending: false, status: 'empty', error: '', rate: 1, nudge: 0, bpm: null, taps: [], keyLock: opts.keyLock === undefined ? !!opts.djMode : !!opts.keyLock, held: false, scratchStatus: 'idle' }; });
+      gain: 1, eq: [0, 0, 0], autoEQ:[0,0,0], autoGain:1, analysis:null, analysisStatus:'idle', generation: 0, cue: 0, pending: false, status: 'empty', error: '', rate: 1, nudge: 0, bpm: null, taps: [], keyLock: opts.keyLock === undefined ? !!opts.djMode : !!opts.keyLock, held: false, scratchStatus: 'idle' }; });
     function tell(message) { if (opts.message) opts.message(message); }
     function changed() {
       if (destroyed) return;
@@ -78,7 +79,7 @@
       setup();
       var el = new win.Audio(); el.preload = 'auto'; el.preservesPitch = false; el.loop = !!opts.repeatTrack;
       var source = ctx.createMediaElementSource(el), filters = [120, 1000, 8000].map(function (f, i) {
-        var n = ctx.createBiquadFilter(); n.type = ['lowshelf', 'peaking', 'highshelf'][i]; n.frequency.value = f; n.Q.value = 0.8; return n;
+        var n = ctx.createBiquadFilter(); n.type = ['lowshelf', 'peaking', 'highshelf'][i]; n.frequency.value = opts.smartMix?[180,1000,3500][i]:f; n.Q.value = 0.8; return n;
       });
       var gain = ctx.createGain(), meter = ctx.createAnalyser(), p = source;
       meter.fftSize = 2048;
@@ -95,6 +96,10 @@
           else if (event === 'playing') { s.status = 'playing'; s.pending = false; }
           else if (event === 'pause') { s.status = 'paused'; s.pending = false; }
           else if (event === 'loadedmetadata' || event === 'canplay' || event === 'seeked') s.status = el.paused ? 'ready' : 'playing';
+          if(event==='loadedmetadata'&&opts.analysis&&s.analysisStatus==='idle'){
+            var track=s.track;s.analysisStatus='loading';
+            opts.analysis.analyze(track,s.duration).then(function(data){if(!current()||s.track!==track)return;s.analysis=data;s.analysisStatus=data?'ready':'unavailable';changed();});
+          }
           changed();
         });
       });
@@ -117,6 +122,7 @@
     function rate(side) {
       var s = state[side], el = elements[side];
       if (el) { el.preservesPitch = s.keyLock; el.playbackRate = clamp(s.rate + s.nudge, 0.8, 1.2); }
+      else if(opts.externalTempo&&s.track&&s.track.kind!=='file'&&side===vkSide)vk({type:'rate',value:clamp(s.rate+s.nudge,.8,1.2),preservePitch:s.keyLock});
     }
     function meter(n) {
       if (!n) return null;
@@ -129,7 +135,7 @@
       var w = weights(cross);
       ['A', 'B'].forEach(function (side, i) {
         var s = state[side], n = nodes[side];
-        if (n) { n.gain.gain.setTargetAtTime((opts.djMode ? 0.25 : 1) * s.gain * w[i], ctx.currentTime, 0.02); n.filters.forEach(function (f, j) { f.gain.setTargetAtTime(s.eq[j], ctx.currentTime, 0.02); }); }
+        if (n) { n.gain.gain.setTargetAtTime((opts.djMode ? 0.25 : 1) * s.gain * s.autoGain * w[i], ctx.currentTime, 0.02); n.filters.forEach(function (f, j) { f.gain.setTargetAtTime(clamp(s.eq[j]+s.autoEQ[j],-24,12), ctx.currentTime, 0.04); }); }
       });
       if (output) output.gain.setTargetAtTime(master, ctx.currentTime, 0.02);
       var s = state[vkSide];
@@ -139,7 +145,7 @@
       }
     }
     function pause(side, automatic) {
-      if (!automatic) cancelAuto();
+      if (!automatic) {cancelAuto();manualOverlap=false;}
       var s = state[side];
       if (s.held) { s.held = false; if (vinyl[side]) vinyl[side].release(); if (elements[side]) elements[side].currentTime = s.time; }
       s.generation++; s.pending = false;
@@ -155,6 +161,7 @@
       pause(side, true); release(side); s.list = list.slice(); s.index = Math.floor(clamp(index, 0, list.length - 1));
       s.track = s.list[s.index]; s.time = 0; s.duration = s.track.duration || 0; s.cue = 0; s.rate = 1; s.nudge = 0; s.bpm = null; s.taps = []; s.error = ''; s.status = 'loading';
       s.autoLoaded = !!automatic;
+      s.autoGain=1;s.autoEQ=[0,0,0];s.analysis=null;s.analysisStatus='idle';s.rateTouched=false;s.actualRate=null;
       s.autoBlocked = false;
       if (!automatic && !state[side === 'A' ? 'B' : 'A'].track) state[side === 'A' ? 'B' : 'A'].autoBlocked=false;
       if (!automatic) failed.delete(s.track.key);
@@ -162,6 +169,11 @@
       changed();
     }
     async function play(side, automatic) {
+      var other=state[side==='A'?'B':'A'];
+      if(!automatic&&other.track&&(!other.paused||other.pending)){
+        manualOverlap=true;
+        if(opts.smartMix&&autoCross===null&&Math.abs(cross)>.98)crossTo(0);
+      }
       if (!automatic && autoCross !== null && !state[side === 'A' ? 'B' : 'A'].paused) { crossTo(autoCross); autoCross=null; }
       if (!automatic) cancelAuto();
       var s = state[side]; if (!s || !s.track) { tell('Сначала выберите трек в списке ' + side); return; }
@@ -178,6 +190,7 @@
         } else {
           if (vkSide !== side) { var other = state[vkSide]; if (other.track && other.track.kind !== 'file') { other.paused = true; other.pending = false; other.generation++; tell('VK: переключён один общий поток на деку ' + side); } vkSide = side; }
           apply();
+          rate(side);
           var ok = s.track.key === 'live-vk' ? await vk({ type: 'play' }) : await vk({ type: 'playKey', key: s.track.key });
           if (ok === false) { s.pending = false; s.paused = true; tell('VK не нашёл выбранный трек. Другой трек вместо него не включён.'); return false; }
         }
@@ -264,6 +277,7 @@
     }
     async function finish(side) {
       if (destroyed) return;
+      manualOverlap=false;
       var a = state[side];
       if (opts.repeatTrack && a.status !== 'error') { if (elements[side]) elements[side].currentTime = 0; else vk({type:'seek',time:0}); return play(side, true); }
       if (!opts.djMode) {
@@ -274,7 +288,7 @@
       if (!opts.continuous) return;
       var to = side === 'A' ? 'B' : 'A', b = state[to];
       if (b.held) return;
-      if (!b.paused) { mix = null; crossTo(to === 'A' ? -1 : 1); changed(); return; }
+      if (!b.paused) { mix = null; resetMixTone();crossTo(to === 'A' ? -1 : 1); changed(); return; }
       if (starting) return;
       prepareNext(side, true); b = state[to];
       if (!b.track || b.status === 'error' || failed.has(b.track.key)) { tell('Нет доступного следующего трека. Добавьте аудиофайлы.'); return; }
@@ -295,22 +309,46 @@
         var a = state[mix.from], b = state[mix.to];
         if (b.paused || a.track !== mix.track) { mix = null; return; }
         var progress = clamp((ctx.currentTime - mix.start) / mix.duration, 0, 1);
-        crossTo(mix.from === 'A' ? -1 + 2 * progress : 1 - 2 * progress);
-        if (progress >= 1) { var old = mix.from; mix = null; pause(old, true); state[old].status = 'ended'; }
+        if(mix.plan){
+          a.autoEQ=[-12*progress,-2*progress,-progress];
+          b.autoEQ=[(-12+mix.plan.eq[0])*(1-progress),mix.plan.eq[1]*(1-progress),mix.plan.eq[2]*(1-progress)];
+        }
+        crossTo(mix.startCross+((mix.to==='A'?-1:1)-mix.startCross)*progress);
+        if (progress >= 1) { var old = mix.from; mix = null; pause(old, true); state[old].status = 'ended';manualOverlap=false;resetMixTone(); }
         changed(); return;
       }
       var active = ['A','B'].filter(function (s) { return !state[s].paused && !state[s].pending && state[s].track; });
-      if (active.length !== 1) return;
-      var from = active[0], a = state[from], to = prepareNext(from), b = state[to];
-      if (!opts.autoMix || a.track.kind !== 'file' || !b.track || b.track.kind !== 'file' || b.held) return;
+      if (!active.length||(!opts.smartMix&&active.length!==1)) return;
+      if(opts.smartMix&&active.length===2)active.sort(function(x,y){return (state[x].duration-state[x].time)/(state[x].rate+state[x].nudge)-(state[y].duration-state[y].time)/(state[y].rate+state[y].nudge);});
+      var from = active[0], a = state[from], to = active.length===2?active[1]:prepareNext(from), b = state[to];
+      if (!opts.autoMix || a.track.kind !== 'file' || !b.track || b.track.kind !== 'file' || b.held||b.pending||win.performance.now()<manualUntil) return;
+      if(active.length===1&&manualOverlap)return;
       var el = elements[from], target = elements[to];
       if (!el || !target || target.readyState < 2 || b.status === 'error') return;
       var remaining = (el.duration - el.currentTime) / el.playbackRate;
       var seconds = Math.min(opts.fadeSeconds || 6, el.duration / el.playbackRate / 4, target.duration / target.playbackRate / 4);
       if (!(remaining > 0 && seconds > 0)) return;
-      if (autoCross === null) autoCross = cross;
-      crossTo(from === 'A' ? -1 : 1);
+      if(active.length===1){if (autoCross === null) autoCross = cross;crossTo(from === 'A' ? -1 : 1);}
       if (remaining > seconds) return;
+      var plan=null;
+      if(opts.smartMix&&opts.analysis){
+        var aa=a.analysis,bb=b.analysis;
+        if(a.bpm)aa=Object.assign({},aa||{rms:.2,bands:[.01,.01,.01]},{bpm:a.bpm,confidence:1});
+        if(b.bpm)bb=Object.assign({},bb||{rms:.2,bands:[.01,.01,.01]},{bpm:b.bpm,confidence:1});
+        plan=opts.analysis.plan(aa,bb,a.rate+a.nudge);
+        if(active.length===1){
+          if(!b.rateTouched){b.rate=plan.rate;rate(to);}
+          b.autoGain=clamp(plan.gain*a.autoGain,.35,1.5);
+          if(plan.matched&&aa&&bb&&bb.beatOffset>=0&&b.time<.15){
+            var period=60/aa.bpm,phase=((el.currentTime-aa.beatOffset)%period+period)%period;
+            target.currentTime=Math.max(0,bb.beatOffset+phase*(b.rate/a.rate));
+          }
+          b.autoEQ=[-12+plan.eq[0],plan.eq[1],plan.eq[2]];apply();
+        }
+        a.lastTransition={to:to,rate:b.rate,matched:plan.matched,eq:plan.eq.slice(),gain:b.autoGain};
+      }
+      var initialCross=cross;
+      if(active.length===2){mix={from:from,to:to,track:a.track,start:ctx.currentTime,startCross:initialCross,plan:plan,duration:Math.max(.05,Math.min(seconds,remaining))};changed();return;}
       var token = autoSerial, track = a.track;
       starting = {from:from,to:to};
       play(to, true).then(function (ok) {
@@ -318,7 +356,7 @@
         starting = null;
         if (!ok) { failed.add(b.track.key); return; }
         if (a.paused || el.ended) { crossTo(to === 'A' ? -1 : 1); changed(); return; }
-        mix = {from:from,to:to,track:track,start:ctx.currentTime,duration:Math.max(.05, Math.min(seconds, (el.duration-el.currentTime)/el.playbackRate))};
+        mix = {from:from,to:to,track:track,start:ctx.currentTime,startCross:initialCross,plan:plan,duration:Math.max(.05, Math.min(seconds, (el.duration-el.currentTime)/el.playbackRate))};
       });
     }
     var autoTimer = win && win.setInterval(autoTick, 60);
@@ -330,6 +368,7 @@
       }
       s.time = +data.currentTime || 0; s.duration = +data.duration || 0;
       s.paused = !!data.paused;
+      s.actualRate=+data.playbackRate||null;
       s.status = s.paused ? 'paused' : 'playing';
       if (!data.paused && data.title === s.track.title) s.pending = false;
       changed();
@@ -347,7 +386,7 @@
       setKeyLock: function (side, on) { state[side].keyLock = !!on; rate(side); changed(); },
       clear: function (side) { pause(side); release(side); var s = state[side]; s.track = null; s.list = []; s.index = -1; s.time = s.duration = s.cue = 0; s.status = 'empty'; s.error = ''; s.autoBlocked=true; changed(); },
       cue: function (side) { var s = state[side]; if (s.paused) s.cue = s.time; else { pause(side); seek(side, s.cue); } changed(); },
-      setRate: function (side, value) { state[side].rate = clamp(value, 0.92, 1.08); rate(side); changed(); },
+      setRate: function (side, value) { state[side].rateTouched=true;state[side].rate = clamp(value, 0.92, 1.08); rate(side); changed(); },
       nudge: function (side, value) { state[side].nudge = clamp(value, -0.04, 0.04); rate(side); changed(); },
       setBPM: function (side, value) { var s = state[side]; s.bpm = +value > 0 ? clamp(value, 30, 300) : null; changed(); },
       tap: function (side) { var s = state[side], now = win.performance.now();
@@ -363,7 +402,7 @@
         changed(); return s.bpm;
       },
       meters: function () { return { A: meter(nodes.A && nodes.A.meter), B: meter(nodes.B && nodes.B.meter), master: meter(masterMeter) }; },
-      setCross: function (x) { cancelAuto(); autoCross=null; if(opts.djMode)opts.autoMix=false; crossTo(x); changed(); },
+      setCross: function (x, keepAuto) { cancelAuto();autoCross=null;if(keepAuto)manualUntil=win.performance.now()+1500;else if(opts.djMode)opts.autoMix=false;crossTo(x);changed(); },
       setMaster: function (x) { master = clamp(x, 0, 1); apply(); },
       setGain: function (side, x) { state[side].gain = clamp(x, 0, 1); apply(); },
       setEQ: function (side, band, value) { if (band >= 0 && band < 3) state[side].eq[band] = clamp(value, -12, 12); apply(); },

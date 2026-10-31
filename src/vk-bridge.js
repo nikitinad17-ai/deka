@@ -88,14 +88,18 @@
   // ---------- перехват медиа ----------
   // Плеер ВК создаёт <audio> в памяти, не всегда вставляя его в страницу,
   // поэтому запоминаем элемент в момент первого play().
-  var media = null;
+  var media = null, requestedRate=1, requestedPitch=true, rateControlled=false;
+  try {var storedRate=JSON.parse(sessionStorage.getItem('deka:sourceTempo'));if(storedRate&&isFinite(storedRate.rate)){requestedRate=Math.max(.8,Math.min(1.2,+storedRate.rate));requestedPitch=storedRate.pitch!==false;rateControlled=true;}}catch(_){}
+  function applyRate(el){if(!el||!rateControlled)return;try{el.preservesPitch=requestedPitch;el.playbackRate=requestedRate;}catch(_){}}
+
   var origPlay = HTMLMediaElement.prototype.play;
   function adopt(el) {
-    media = el;
+    media = el;applyRate(el);
     if (!el.__dekaListen) {
       el.__dekaListen = true;
       // К моменту «playing» у элемента уже есть поток, и его можно подключить к эквалайзеру.
-      el.addEventListener("playing", function () { hookFx(el); });
+      el.addEventListener("playing", function () { applyRate(el);hookFx(el); });
+      el.addEventListener("loadedmetadata",function(){if(el===media)applyRate(el);});
       el.addEventListener("ended", function () { if (el === media) emit("vk:ended", {}); });
     }
   }
@@ -151,6 +155,7 @@
       currentTime: media ? media.currentTime : 0,
       duration: media && isFinite(media.duration) ? media.duration : 0,
       paused: media ? media.paused : true,
+      playbackRate: media ? media.playbackRate : requestedRate,
       volume: media ? media.volume : 1,
       hasMedia: !!media,
       loggedIn: isLoggedIn()
@@ -749,6 +754,9 @@
           if (media && media.currentTime > 3) media.currentTime = 0; else action("previoustrack");
           break;
         case "seek": if (media && isFinite(c.time)) media.currentTime = c.time; break;
+        case "rate":
+          if(isFinite(c.value)){requestedRate=Math.max(.8,Math.min(1.2,+c.value));requestedPitch=c.preservePitch!==false;rateControlled=true;try{sessionStorage.setItem('deka:sourceTempo',JSON.stringify({rate:requestedRate,pitch:requestedPitch}));}catch(_){}applyRate(findMedia());}
+          break;
         case "volume": if (media && isFinite(c.value)) media.volume = Math.max(0, Math.min(1, c.value)); break;
         case "playRow": clickRow(c.key); break;
         case "playKey": playKey(c.key); break;

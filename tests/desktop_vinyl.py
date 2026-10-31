@@ -66,34 +66,11 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
     page.click('#djKeyLockB');page.wait_for_timeout(1100); pitched=page.evaluate('measure(712.8)')
     check('Key Lock off gives measured +8% vinyl pitch',pitched['amp']>.08,**pitched)
     page.click('#djKeyLockB');page.locator('[data-reset=B]').click()
-    # Real pointer hold and forward/backward strokes while the other deck keeps playing.
-    page.evaluate("__dj.seek('A',12); __dj.seek('B',12)")
-    disc=page.locator('#djDiscA');box=disc.bounding_box();cx=box['x']+box['width']/2;cy=box['y']+box['height']/2;radius=box['width']*.35
-    page.mouse.move(cx+radius,cy);page.mouse.down()
-    page.wait_for_function("__dj.state.A.scratchStatus==='ready'",timeout=15000)
-    held=page.evaluate('__dj.state.A.time');b_before=page.evaluate('__dj.state.B.time')
-    page.wait_for_timeout(1000);held_output=page.evaluate('measure(440)')
-    check('Mouse hold stops A and silences its output while B advances',page.evaluate(f'__dj.state.A.held && Math.abs(__dj.state.A.time-{held})<.01 && __dj.state.B.time>{b_before}+.5') and held_output['amp']<.001,**held_output)
-    page.evaluate("__dj.setCross(-1)");page.wait_for_timeout(800)
-    positions=[];peaks=[]
-    for i in range(1,41):
-        angle=i/40*math.pi*1.5
-        page.mouse.move(cx+radius*math.cos(angle),cy+radius*math.sin(angle));page.wait_for_timeout(15)
-        if i%10==0:positions.append(page.evaluate('__dj.state.A.time'));peaks.append(page.evaluate('measure()')['peak'])
-    check('Forward mouse stroke moves real position and produces audio',positions[-1]>held+1 and max(peaks)>.05,positions=positions,peaks=peaks)
-    for i in range(40,-1,-1):
-        angle=i/40*math.pi*1.5
-        page.mouse.move(cx+radius*math.cos(angle),cy+radius*math.sin(angle));page.wait_for_timeout(15)
-    check('Reverse mouse stroke moves backward',abs(page.evaluate('__dj.state.A.time')-held)<.04)
-    page.mouse.up();page.wait_for_function('!__dj.state.A.paused && !__dj.state.A.held')
-    page.evaluate("__dj.setCross(0)")
-    check('Release resumes at scratched position and preserves tempo',page.evaluate(f'__dj.state.A.time>={held}-.1 && __dj.state.A.time<{held}+2 && __dj.state.A.rate===1'))
-    # Paused touch must not cause an unexpected start.
-    page.click('#djPlayA');page.mouse.move(cx+radius,cy);page.mouse.down();page.wait_for_timeout(100);page.mouse.up();page.wait_for_timeout(250)
-    check('Touching a paused deck leaves it paused',page.evaluate('__dj.state.A.paused && !__dj.state.A.held'))
-    # Loss of focus must stop scratch and must not leave the platter latched.
-    page.click('#djPlayA');page.mouse.down();page.wait_for_timeout(80);page.evaluate("window.dispatchEvent(new Event('blur'))");page.mouse.up()
-    check('Focus loss releases platter without restarting A or affecting B',page.evaluate('!__dj.state.A.held && __dj.state.A.paused && !__dj.state.B.paused'))
+    # Desktop discs are now indicators/drop targets; gestures must never pause music.
+    disc=page.locator('#djDiscA');box=disc.bounding_box();cx=box['x']+box['width']/2;cy=box['y']+box['height']/2
+    before=page.evaluate('__dj.state.A.time');page.mouse.move(cx,cy);page.mouse.down();page.mouse.move(cx+30,cy+25);page.wait_for_timeout(500);page.mouse.up()
+    check('Mouse gestures on a Desktop disc do not interrupt A or B',page.evaluate(f'!__dj.state.A.paused&&!__dj.state.B.paused&&!__dj.state.A.held&&__dj.state.A.time>{before}+.2'))
+    check('Desktop scratch transport is disabled',page.evaluate("__dj.scratchBegin('A')")==False)
     # A folder can yield multiple readEntries batches; recurse and ignore non-audio.
     folder_count=page.evaluate("""async()=>{
       const f=new File(['invalid wav bytes'],'Nested.wav',{type:'audio/wav',lastModified:321});
@@ -106,8 +83,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
     }""")
     check('Folder entry recurses through batches and skips non-audio',folder_count==3)
     # Dispose a held source and ensure late decode cannot re-adopt it.
-    page.evaluate("__dj.scratchBegin('A'); __dj.clear('A')");page.wait_for_timeout(200)
-    check('Clearing a held deck releases resources and leaves B intact',page.evaluate("!__dj.state.A.track && !__dj.state.A.held && !__dj.state.B.paused"))
+    page.evaluate("__dj.clear('A')");page.wait_for_timeout(200)
+    check('Clearing a deck releases resources and leaves B intact',page.evaluate("!__dj.state.A.track && !__dj.state.A.held && !__dj.state.B.paused"))
     page.click('#djClose');page.click('#tabVk');page.click('#vkLogin')
     check('VK login uses separate native plain-window command',page.evaluate("__calls.some(c=>c[0]==='vk_login')"))
     page.click('#vkLoad')
