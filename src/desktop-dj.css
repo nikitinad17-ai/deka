@@ -81,11 +81,13 @@ body.dj-open .wrap>section:not(#desktopDJ),body.dj-open .keys{display:none}
 .dj-transport .dj-effective{font-size:11px;min-width:77px;text-align:right}
 .dj-cuefx{display:grid;grid-template-columns:64px minmax(0,1fr);gap:9px;align-items:stretch}
 .dj-cue{display:flex;flex-direction:column;justify-content:space-between;gap:4px;text-align:center;font:11px var(--f-mono);color:var(--ink-2)}
-.dj-cue .btn{min-height:31px;padding:0 6px;font-size:11px}.dj-cue .dj-keylock{min-height:24px;font-size:9px}
+.dj-cue .btn{min-height:31px;padding:0 6px;font-size:11px}.dj-cue .dj-keylock{height:24px;min-height:24px;font-size:9px}
 .dj-fx{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 6px;padding:6px;border:1px solid var(--edge);border-radius:7px;background:#0e1318}
-.dj-fx-cell{min-width:0}.dj-fx-cell .btn{width:100%;min-height:26px;padding:0 4px;font:10px var(--f-mono);border-radius:4px}
+.dj-fx-cell{min-width:0}.dj-fx-cell .btn{width:100%;height:28px;min-height:26px;padding:0 4px;font:10px var(--f-mono);border-radius:4px}
 #desktopDJ .dj-fx-cell input[type=range]{height:16px;min-height:16px;margin:1px 0 0;display:block;accent-color:var(--accent)}
-.dj-rate-reset{float:right;min-height:22px;padding:0 8px;font-size:10px;margin-top:-2px}
+.dj-rate-heading{display:flex;align-items:center;gap:8px}.dj-rate-heading label{flex:1}.dj-rate-heading output{float:none}
+.dj-rate-reset{height:22px;min-height:22px;padding:0 7px;font-size:10px}
+.dj-console{padding-top:14px;padding-bottom:14px}
 .dj-eq{clear:both;padding-top:4px;gap:10px}
 #desktopDJ .dj-seek{appearance:none;-webkit-appearance:none;height:28px;min-height:28px;background:transparent;margin:2px 0 4px;--progress:0%}
 #desktopDJ .dj-seek::-webkit-slider-runnable-track{height:9px;background:linear-gradient(to right,var(--accent) 0 var(--progress),#394752 var(--progress) 100%);border:1px solid #6d8495;border-radius:6px;box-shadow:0 0 7px #47dce526}
