@@ -98,10 +98,10 @@ body.dj-open .wrap>section:not(#desktopDJ),body.dj-open .keys{display:none}
 @media(max-width:880px){.dj-cuefx{grid-template-columns:54px minmax(0,1fr);gap:5px}.dj-fx{gap:4px;padding:4px}.dj-fx-cell .btn{font-size:9px}.dj-transport .dj-effective{min-width:65px;font-size:10px}}
 /* A desktop can have less usable height after Windows scaling and window chrome. */
 @media(min-width:621px) and (max-height:760px){
-  body.dj-open{padding-block:8px 16px}
-  #desktopDJ .bar{padding:6px 12px}
-  .dj-intro{padding:6px 14px;line-height:1.25}
-  .dj-console{padding:10px;gap:12px}
+  body.dj-open{padding-block:0 16px}
+  #desktopDJ .bar{padding:6px 12px}#desktopDJ .bar .btn{height:32px}
+  .dj-intro{padding:3px 14px;line-height:1.25}
+  .dj-console{padding:6px;gap:12px}
   .dj-deck{padding:10px}.dj-deck h2{line-height:1.2;margin-bottom:6px}
   .dj-track{min-height:44px;padding:6px}.dj-track small{margin-top:3px}
   #desktopDJ .dj-disc{width:clamp(64px,calc(100dvh - 620px),112px);height:clamp(64px,calc(100dvh - 620px),112px);margin:8px auto}
