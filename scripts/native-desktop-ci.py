@@ -126,7 +126,7 @@ with open(folder/'native-stdout.txt','wb') as stdout,open(folder/'native-stderr.
             except (OSError,ValueError):time.sleep(.3)
         if not ready:raise RuntimeError('Ordinary-user WebView2 main page did not initialize')
         test_env=dict(os.environ,DEKA_CDP=version['webSocketDebuggerUrl'])
-        subprocess.run([sys.executable,'tests/automix.py','--native'],check=True,timeout=180,env=test_env)
+        subprocess.run([sys.executable,'tests/desktop_session.py','--native'],check=True,timeout=180,env=test_env)
     finally:
         if launched:subprocess.run(['taskkill.exe','/PID',str(process.dwProcessId),'/T','/F'],check=False)
         for name in ['native-stdout.txt','native-stderr.txt','app-exit.json']:
