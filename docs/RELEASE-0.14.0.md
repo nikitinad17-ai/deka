@@ -54,10 +54,25 @@
 
 ## Сборки
 
-Windows и APK собираются GitHub Actions после всех проверок. Ветка не публикует release и не сливается в main. При отсутствии защищённого ключа APK имеет отдельный пакет `ru.volna.player.preview`; одноразовая подпись новой Preview не совместима с предыдущей Preview, основную Деку удалять не нужно. Итоговые номера сборок и SHA256 добавляются после успешного CI.
+[GitHub Actions #41174589523](https://github.com/nikitinad17-ai/deka/actions/runs/41174589523), исходный коммит `b60320ae89430c8649bdea493fb6365a53b3cb8e`: quality, windows и android — success; release — skipped. В GitHub повторно прошли все **217 проверок**. [PR #11](https://github.com/nikitinad17-ai/deka/pull/11) остаётся черновиком для пользовательской приёмки; main не изменён.
+
+| Файл | Размер | SHA256 |
+| --- | --- | --- |
+| `Deka.exe` | 4 467 712 | `4790b974161ac6adc2017b509edf0a964c9dff9e60b294fcc78b4f2848055893` |
+| `Deka-setup.exe` | 1 541 649 | `c133a1ba0dc6f73f538b4538b31401a890cd9eb39dfbcf9d6e1e5106d35dbc16` |
+| `Deka-Desktop-0.14.0-Windows.zip` | 3 392 037 | `296fef9fad1e25d3e4e4004b85005a7064ae80c7e230884d82e91613e33551eb` |
+| `Deka-Android-0.14.0-preview.apk` | 7 328 432 | `52e1939d5bbb290848a703d3b23d8ca678ccd606e9a496cd0115412ba1980b3d` |
+
+Проверены CRC архивов, совпадение GitHub artifact digest после скачивания, PE-сигнатуры EXE, x64 у Deka.exe и версия 0.14.0 в обоих EXE. Windows ZIP содержит EXE, установщик, READ-ME.txt и MANIFEST.json.
+
+APK: `ru.volna.player.preview`, versionName `0.14.0`, versionCode `14000`, label `DeKa preview 2.0`, arm64-v8a. `apksigner verify` в CI — success, v2 signing — true. В полученной APK проверены встроенный `DEKA_CONTINUOUS_014`/Auto Mix, DEX-мост `setOrientation` и событие `deka:orientation`, а также системный `onShowFileChooser`. Это проверка состава настоящей сборки, не испытание физического датчика/аудиоустройства.
+
+Preview устанавливается рядом с основной Декой. Подпись одноразовая, поэтому предыдущую Preview перед установкой нужно удалить; основную Деку удалять не нужно.
+
+Артефакты CI: `deka-windows` ID `13032329760`, digest `c0fa71cb8944fd4e591b627859c1a5453990abb9db9b1ca633d49f0bd371cc72`; `deka-android` ID `13032008616`, digest `27dcc39918508c51f1748c0ebbca09e712a3edc97fd0ca46dd4f6fc0214acb39`.
 
 ## Локальная контрольная точка
 
 Код `e8e21e18d4b92e8b3c0d7cafe56c3ac74ccb0493` прошёл итоговый повтор: 26 модульных + 78 browser + 30 Desktop DJ + 30 Desktop Vinyl + 24 Android DJ + 29 continuous = **217 успешных проверок**, а также smoke и отдельную проверку обновления существующего AndroidManifest (валидный XML, сохранение locale/uiMode/keyboard, отсутствие дублей Kotlin после двух запусков). На трёх реальных коротких WAV-переходах минимальный измеренный RMS выхода — 0.103; фактическое перекрытие источников подтверждено.
 
-Отправка новой ветки в `https://github.com/nikitinad17-ai/deka.git` отклонена автоматической проверкой разрешения: она не сочла подтверждённой авторизацию публикации изменений в этом GitHub remote. Read-only проверка подтвердила, что удалённой ветки `feature/continuous-mix-0.14.0` нет. Обход отклонения не выполнялся. 31 октября Алекс прямо разрешил отправку этой ветки в GitHub. Git CLI не имеет настроенных учётных данных для push, поэтому содержимое проверенной рабочей копии передаётся через подключённый GitHub. APK/Windows build проверяется после появления удалённой ветки; результат сборок фиксируется отдельно.
+После прямого разрешения Алекса ветка опубликована через подключённый GitHub. Дерево `42b0b023af055bc1a05ed3eab5cf362fad0fb8cf` в исходном коммите сборки точно совпало с проверенной локальной рабочей копией. Готовые Windows ZIP и APK переданы пользователю; физическая приёмка остаётся по списку выше.
