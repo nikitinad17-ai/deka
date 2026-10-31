@@ -1,3 +1,4 @@
+body.dj-open{padding-block:12px 24px}
 body.dj-open .wrap{max-width:1440px;display:block}
 body.dj-open .wrap>section:not(#desktopDJ),body.dj-open .keys{display:none}
 #desktopDJ[hidden]{display:none}
@@ -95,3 +96,20 @@ body.dj-open .wrap>section:not(#desktopDJ),body.dj-open .keys{display:none}
 #desktopDJ .dj-seek::-moz-range-track{height:9px;background:#394752;border-radius:6px}
 #desktopDJ .dj-seek::-moz-range-progress{height:9px;background:var(--accent)}
 @media(max-width:880px){.dj-cuefx{grid-template-columns:54px minmax(0,1fr);gap:5px}.dj-fx{gap:4px;padding:4px}.dj-fx-cell .btn{font-size:9px}.dj-transport .dj-effective{min-width:65px;font-size:10px}}
+/* A desktop can have less usable height after Windows scaling and window chrome. */
+@media(min-width:621px) and (max-height:760px){
+  body.dj-open{padding-block:8px 16px}
+  #desktopDJ .bar{padding:6px 12px}
+  .dj-intro{padding:6px 14px;line-height:1.25}
+  .dj-console{padding:10px;gap:12px}
+  .dj-deck{padding:10px}.dj-deck h2{line-height:1.2;margin-bottom:6px}
+  .dj-track{min-height:44px;padding:6px}.dj-track small{margin-top:3px}
+  #desktopDJ .dj-disc{width:clamp(64px,calc(100dvh - 620px),112px);height:clamp(64px,calc(100dvh - 620px),112px);margin:8px auto}
+  .dj-vinyl-help{line-height:1.2;margin-bottom:5px}
+  .dj-transport{margin:5px 0 7px}
+  .dj-transport .btn{height:32px}
+  .dj-rate-heading .dj-label{margin-top:6px}
+  .dj-eq{padding-top:2px}.dj-deck>meter{height:10px}
+  .dj-mixer{padding:10px 0;gap:10px}.dj-mixer small{line-height:1.45}
+  .dj-cross{margin-top:16px;padding:12px 0}
+}

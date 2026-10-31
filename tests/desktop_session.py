@@ -6,8 +6,9 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1];OUT=ROOT/'test-output';OUT.mkdir(exist_ok=True)
 native='--native'in sys.argv;checks=[];began=time.monotonic()
+if hasattr(sys.stdout,'reconfigure'):sys.stdout.reconfigure(encoding='utf-8')
 def report():
-    (OUT/('native-desktop-session-report.json'if native else'desktop-session-report.json')).write_text(json.dumps({'tests':checks,'elapsed_seconds':time.monotonic()-began,'method':'Actual local MP3, native mouse events, measured PCM/media clocks, Web Audio DSP; '+('built WebView2 EXE, no mocked IPC'if native else'Chromium over local HTTP')},indent=2))
+    (OUT/('native-desktop-session-report.json'if native else'desktop-session-report.json')).write_text(json.dumps({'tests':checks,'elapsed_seconds':time.monotonic()-began,'method':'Actual local MP3, native mouse events, measured PCM/media clocks, Web Audio DSP; '+('built WebView2 EXE, no mocked IPC'if native else'Chromium over local HTTP')},indent=2),encoding='utf-8')
 atexit.register(report)
 def check(name,ok=True,**details):
     checks.append(dict(test=name,passed=bool(ok),**details));print(('PASS 'if ok else'FAIL ')+name,details,flush=True);assert ok,(name,details)
@@ -46,7 +47,15 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
     check('CUE, compact Key Lock, BPM/TAP remain; Nudge and large channel levels are removed',page.locator('[data-cue]').count()==2 and page.locator('[data-keylock]').count()==2 and page.locator('[data-bpm]').count()==2 and page.locator('[data-tap]').count()==2 and page.locator('[data-nudge]').count()==0 and page.locator('[data-gain]').count()==0)
     check('Six independent effects per deck, arranged in three columns',page.locator('.dj-fx-cell').count()==12 and page.locator('.dj-fx').first.evaluate("e=>getComputedStyle(e).gridTemplateColumns.split(' ').length===3"))
     page.evaluate('window.scrollTo(0,0)');page.wait_for_timeout(100)
-    check('Both complete deck panels fit the normal desktop viewport',page.evaluate("document.documentElement.scrollWidth<=innerWidth&&[...document.querySelectorAll('.dj-deck')].every(e=>{const r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;})"))
+    layouts=[]
+    for viewport in ([None]if native else[{'width':1120,'height':780},{'width':1024,'height':700},{'width':1024,'height':640},{'width':896,'height':624}]):
+        if viewport:page.set_viewport_size(viewport)
+        page.evaluate('window.scrollTo(0,0)');page.wait_for_timeout(100)
+        layouts.append(page.evaluate("({width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,decks:[...document.querySelectorAll('.dj-deck')].map(e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom};})})"))
+    fits=all(x['scrollWidth']<=x['width']and all(d['top']>=0 and d['bottom']<=x['height']for d in x['decks'])for x in layouts)
+    if not fits:page.screenshot(path=str(OUT/'desktop-layout-failure.png'),full_page=True)
+    check('Both complete deck panels fit the normal desktop viewport',fits,layouts=layouts)
+    if not native:page.set_viewport_size({'width':1120,'height':780})
     page.click('#djPlayA');page.wait_for_timeout(350)
     page.evaluate('window.__realResume=__measure.context.resume.bind(__measure.context);__measure.context.resume=()=>new Promise(r=>setTimeout(()=>__realResume().then(r),350))')
     page.click('#djPlayB');page.wait_for_timeout(1000);page.evaluate('__measure.context.resume=__realResume')
