@@ -1,167 +1,144 @@
-"""Launch the exact built GUI at standard-user integrity on a disposable CI runner.
+"""Run the exact release GUI under a disposable standard Windows CI account.
 
-WebView2 ignores user-scoped diagnostic environment flags in elevated hosts.
-This harness reduces the CI token; it never changes policies, elevates the
-application, or embeds debug settings into the shipped executable.
+CreateRestrictedToken is unsupported by WebView2 (WebView2Feedback #4850).
+No UAC, sandbox or OS policies are changed; no app is elevated.
 """
 from __future__ import annotations
 import ctypes as C
 from ctypes import wintypes as W
-import json
-import msvcrt
-import os
+import hashlib,json,os,secrets,shutil,subprocess,sys,time,urllib.request,uuid
 from pathlib import Path
-import shutil
-import subprocess
-import sys
-import time
-import urllib.request
-import uuid
 
 
-def main() -> None:
-    if os.name != 'nt' or os.environ.get('GITHUB_ACTIONS') != 'true':
+def main():
+    if os.name!='nt' or os.environ.get('GITHUB_ACTIONS')!='true':
         raise RuntimeError('Disposable Windows CI only')
-    exe = Path(sys.argv[1]).resolve(strict=True)
-    if exe.name.lower() != 'deka.exe':
-        raise RuntimeError('Only the installed Deka executable is accepted')
-    out = Path('test-output'); out.mkdir(exist_ok=True)
-    # WebView2 itself creates this empty profile under the ordinary user's tree.
-    profile = Path(os.environ['LOCALAPPDATA']) / ('Deka-AutoMix-CI-' + str(uuid.uuid4()))
-    kernel = C.WinDLL('kernel32', use_last_error=True)
-    adv = C.WinDLL('advapi32', use_last_error=True)
-    PTR = C.c_void_p
-
+    exe=Path(sys.argv[1]).resolve(strict=True)
+    if exe.name.lower()!='deka.exe':raise RuntimeError('Only the built Deka executable is accepted')
+    out=Path('test-output');out.mkdir(exist_ok=True)
+    account='DekaCI'+uuid.uuid4().hex[:10];password=secrets.token_urlsafe(24)+'aA1!'
+    print('::add-mask::'+password,flush=True)
+    folder=Path(os.environ['PUBLIC'])/account
+    kernel=C.WinDLL('kernel32',use_last_error=True);adv=C.WinDLL('advapi32',use_last_error=True)
+    net=C.WinDLL('netapi32',use_last_error=True);userenv=C.WinDLL('userenv',use_last_error=True);PTR=C.c_void_p
     class SID_AND_ATTRIBUTES(C.Structure):
-        _fields_ = [('Sid', PTR), ('Attributes', W.DWORD)]
-
+        _fields_=[('Sid',PTR),('Attributes',W.DWORD)]
+    class USER_INFO_1(C.Structure):
+        _fields_=[('name',W.LPWSTR),('password',W.LPWSTR),('password_age',W.DWORD),('priv',W.DWORD),
+                  ('home_dir',W.LPWSTR),('comment',W.LPWSTR),('flags',W.DWORD),('script_path',W.LPWSTR)]
+    class MEMBER(C.Structure):
+        _fields_=[('name',W.LPWSTR)]
     class STARTUPINFO(C.Structure):
-        _fields_ = [('cb', W.DWORD), ('lpReserved', W.LPWSTR), ('lpDesktop', W.LPWSTR),
-                    ('lpTitle', W.LPWSTR), ('dwX', W.DWORD), ('dwY', W.DWORD),
-                    ('dwXSize', W.DWORD), ('dwYSize', W.DWORD), ('dwXCountChars', W.DWORD),
-                    ('dwYCountChars', W.DWORD), ('dwFillAttribute', W.DWORD),
-                    ('dwFlags', W.DWORD), ('wShowWindow', W.WORD), ('cbReserved2', W.WORD),
-                    ('lpReserved2', PTR), ('hStdInput', W.HANDLE), ('hStdOutput', W.HANDLE),
-                    ('hStdError', W.HANDLE)]
-
+        _fields_=[('cb',W.DWORD),('lpReserved',W.LPWSTR),('lpDesktop',W.LPWSTR),('lpTitle',W.LPWSTR),
+                  ('dwX',W.DWORD),('dwY',W.DWORD),('dwXSize',W.DWORD),('dwYSize',W.DWORD),
+                  ('dwXCountChars',W.DWORD),('dwYCountChars',W.DWORD),('dwFillAttribute',W.DWORD),
+                  ('dwFlags',W.DWORD),('wShowWindow',W.WORD),('cbReserved2',W.WORD),('lpReserved2',PTR),
+                  ('hStdInput',W.HANDLE),('hStdOutput',W.HANDLE),('hStdError',W.HANDLE)]
     class PROCESS_INFORMATION(C.Structure):
-        _fields_ = [('hProcess', W.HANDLE), ('hThread', W.HANDLE),
-                    ('dwProcessId', W.DWORD), ('dwThreadId', W.DWORD)]
-
-    def bind(dll, name, restype, argtypes):
-        fn = getattr(dll, name); fn.restype = restype; fn.argtypes = argtypes
-        return fn
-
-    current = bind(kernel, 'GetCurrentProcess', W.HANDLE, [])
-    close = bind(kernel, 'CloseHandle', W.BOOL, [W.HANDLE])
-    local_free = bind(kernel, 'LocalFree', PTR, [PTR])
-    open_token = bind(adv, 'OpenProcessToken', W.BOOL, [W.HANDLE, W.DWORD, C.POINTER(W.HANDLE)])
-    get_token = bind(adv, 'GetTokenInformation', W.BOOL, [W.HANDLE, C.c_int, PTR, W.DWORD, C.POINTER(W.DWORD)])
-    restrict = bind(adv, 'CreateRestrictedToken', W.BOOL,
-                    [W.HANDLE, W.DWORD, W.DWORD, PTR, W.DWORD, PTR, W.DWORD, PTR, C.POINTER(W.HANDLE)])
-    sid_from_string = bind(adv, 'ConvertStringSidToSidW', W.BOOL, [W.LPCWSTR, C.POINTER(PTR)])
-    sid_to_string = bind(adv, 'ConvertSidToStringSidW', W.BOOL, [PTR, C.POINTER(W.LPWSTR)])
-    sid_length = bind(adv, 'GetLengthSid', W.DWORD, [PTR])
-    set_token = bind(adv, 'SetTokenInformation', W.BOOL, [W.HANDLE, C.c_int, PTR, W.DWORD])
-    create_process = bind(adv, 'CreateProcessAsUserW', W.BOOL,
-                          [W.HANDLE, W.LPCWSTR, W.LPWSTR, PTR, PTR, W.BOOL, W.DWORD, PTR,
-                           W.LPCWSTR, C.POINTER(STARTUPINFO), C.POINTER(PROCESS_INFORMATION)])
-    exit_code = bind(kernel, 'GetExitCodeProcess', W.BOOL, [W.HANDLE, C.POINTER(W.DWORD)])
-
-    def check(ok, operation):
-        if not ok:
-            raise OSError(C.get_last_error(), operation + ': ' + C.FormatError(C.get_last_error()))
-
-    def token_info(token):
-        size = W.DWORD()
-        get_token(token, 25, None, 0, C.byref(size))  # TokenIntegrityLevel
-        buffer = C.create_string_buffer(size.value)
-        check(get_token(token, 25, buffer, size, C.byref(size)), 'Read integrity level')
-        label = C.cast(buffer, C.POINTER(SID_AND_ATTRIBUTES)).contents
-        sid_text = W.LPWSTR()
-        check(sid_to_string(label.Sid, C.byref(sid_text)), 'Convert integrity SID')
+        _fields_=[('hProcess',W.HANDLE),('hThread',W.HANDLE),('dwProcessId',W.DWORD),('dwThreadId',W.DWORD)]
+    def bind(dll,name,result,args):
+        fn=getattr(dll,name);fn.restype=result;fn.argtypes=args;return fn
+    close=bind(kernel,'CloseHandle',W.BOOL,[W.HANDLE]);local_free=bind(kernel,'LocalFree',PTR,[PTR])
+    open_process=bind(kernel,'OpenProcess',W.HANDLE,[W.DWORD,W.BOOL,W.DWORD])
+    exit_code=bind(kernel,'GetExitCodeProcess',W.BOOL,[W.HANDLE,C.POINTER(W.DWORD)])
+    open_token=bind(adv,'OpenProcessToken',W.BOOL,[W.HANDLE,W.DWORD,C.POINTER(W.HANDLE)])
+    get_token=bind(adv,'GetTokenInformation',W.BOOL,[W.HANDLE,C.c_int,PTR,W.DWORD,C.POINTER(W.DWORD)])
+    sid_to_string=bind(adv,'ConvertSidToStringSidW',W.BOOL,[PTR,C.POINTER(W.LPWSTR)])
+    restricted=bind(adv,'IsTokenRestricted',W.BOOL,[W.HANDLE])
+    create_process=bind(adv,'CreateProcessWithLogonW',W.BOOL,
+        [W.LPCWSTR,W.LPCWSTR,W.LPCWSTR,W.DWORD,W.LPCWSTR,W.LPWSTR,W.DWORD,PTR,W.LPCWSTR,
+         C.POINTER(STARTUPINFO),C.POINTER(PROCESS_INFORMATION)])
+    add_user=bind(net,'NetUserAdd',W.DWORD,[W.LPCWSTR,W.DWORD,PTR,C.POINTER(W.DWORD)])
+    delete_user=bind(net,'NetUserDel',W.DWORD,[W.LPCWSTR,W.LPCWSTR])
+    add_group=bind(net,'NetLocalGroupAddMembers',W.DWORD,[W.LPCWSTR,W.LPCWSTR,W.DWORD,PTR,W.DWORD])
+    delete_profile=bind(userenv,'DeleteProfileW',W.BOOL,[W.LPCWSTR,W.LPCWSTR,W.LPCWSTR])
+    def check(ok,operation):
+        if not ok:raise OSError(C.get_last_error(),operation+': '+C.FormatError(C.get_last_error()))
+    def token_info(handle):
+        token=W.HANDLE();check(open_token(handle,0x8,C.byref(token)),'Read child token')
         try:
-            integrity = int(sid_text.value.rsplit('-', 1)[1])
-        finally:
-            local_free(C.cast(sid_text, PTR))
-        elevated = W.DWORD()
-        check(get_token(token, 20, C.byref(elevated), C.sizeof(elevated), C.byref(size)), 'Read elevation')
-        return {'integrity': integrity, 'elevated': bool(elevated.value)}
-
-    original = W.HANDLE(); reduced = W.HANDLE(); medium_sid = PTR()
-    process = PROCESS_INFORMATION(); launched = False; streams = []
+            size=W.DWORD()
+            def token_sid(kind):
+                get_token(token,kind,None,0,C.byref(size));buffer=C.create_string_buffer(size.value)
+                check(get_token(token,kind,buffer,size,C.byref(size)),'Read token SID')
+                label=C.cast(buffer,C.POINTER(SID_AND_ATTRIBUTES)).contents;sid=W.LPWSTR()
+                check(sid_to_string(label.Sid,C.byref(sid)),'Convert token SID')
+                try:return sid.value
+                finally:local_free(C.cast(sid,PTR))
+            integrity=int(token_sid(25).rsplit('-',1)[1]);sid=token_sid(1);elevated=W.DWORD()
+            check(get_token(token,20,C.byref(elevated),C.sizeof(elevated),C.byref(size)),'Read elevation')
+            return dict(integrity=integrity,elevated=bool(elevated.value),restricted=bool(restricted(token)),sid=sid)
+        finally:close(token)
+    process=PROCESS_INFORMATION();app_handle=None;created=False;launched=False;sid=None
     try:
-        # Rights to query, duplicate, assign the reduced token and lower its integrity.
-        check(open_token(current(), 0x0001 | 0x0002 | 0x0008 | 0x0080, C.byref(original)), 'Open own token')
-        parent_info = token_info(original)
-        # Prefer the OS's standard-user token from the same logon session.
-        linked_size = W.DWORD()
-        linked = get_token(original, 19, C.byref(reduced), C.sizeof(reduced), C.byref(linked_size))
-        if not linked:
-            # DISABLE_MAX_PRIVILEGE | LUA_TOKEN; never SANDBOX_INERT.
-            check(restrict(original, 0x1 | 0x4, 0, None, 0, None, 0, None, C.byref(reduced)), 'Reduce own token')
-        check(sid_from_string('S-1-16-8192', C.byref(medium_sid)), 'Create medium integrity label')
-        label = SID_AND_ATTRIBUTES(medium_sid, 0x20)  # SE_GROUP_INTEGRITY
-        check(set_token(reduced, 25, C.byref(label), C.sizeof(label) + sid_length(medium_sid)), 'Lower integrity')
-        child_info = token_info(reduced)
-        if child_info['elevated'] or child_info['integrity'] > 8192:
-            raise RuntimeError('Refusing to run the browser host elevated')
-        env = dict(os.environ)
-        env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = '--remote-debugging-address=127.0.0.1 --remote-debugging-port=9225'
-        env['WEBVIEW2_USER_DATA_FOLDER'] = str(profile)
-        env['RUST_BACKTRACE'] = '1'
-        env_block = C.create_unicode_buffer('\0'.join(k + '=' + v for k, v in sorted(env.items(), key=lambda p: p[0].upper())) + '\0\0')
-        command = C.create_unicode_buffer('"' + str(exe) + '"')
-        startup = STARTUPINFO(); startup.cb = C.sizeof(startup)
-        startup.lpDesktop = r'winsta0\default'
-        startup.dwFlags = 0x100  # STARTF_USESTDHANDLES: retain actual startup failure text
-        for file in [open(os.devnull, 'rb'), open(out/'native-stdout.txt', 'wb'), open(out/'native-stderr.txt', 'wb')]:
-            streams.append(file)
-            os.set_handle_inheritable(msvcrt.get_osfhandle(file.fileno()), True)
-        startup.hStdInput, startup.hStdOutput, startup.hStdError = [msvcrt.get_osfhandle(f.fileno()) for f in streams]
-        check(create_process(reduced, str(exe), command, None, None, True, 0x400,
-                             env_block, str(exe.parent), C.byref(startup), C.byref(process)), 'Launch standard-user app')
-        launched = True
-        # Verify the real child's primary token, not just the prepared one.
-        actual_token = W.HANDLE()
-        check(open_token(process.hProcess, 0x8, C.byref(actual_token)), 'Read child token')
-        try:
-            actual_info = token_info(actual_token)
-        finally:
-            close(actual_token)
-        (out / 'native-integrity.json').write_text(json.dumps({'parent': parent_info, 'child': actual_info,
-                                                              'linkedToken': bool(linked), 'pid': process.dwProcessId}, indent=2))
-        if actual_info['elevated'] or actual_info['integrity'] > 8192:
-            raise RuntimeError('Actual browser host is elevated')
-        print('Installed GUI PID', process.dwProcessId, 'at standard-user integrity', actual_info, flush=True)
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        ready = False
-        for _ in range(100):
-            code = W.DWORD(); check(exit_code(process.hProcess, C.byref(code)), 'Read app exit code')
-            if code.value != 259:
-                raise RuntimeError('Installed GUI exited: ' + str(code.value))
+        # Unique account, in Users only. Never add administrator rights.
+        info=USER_INFO_1(account,password,0,1,None,'Disposable Deka audio verification',0x1|0x200|0x10000,None)
+        parameter=W.DWORD();status=add_user(None,1,C.byref(info),C.byref(parameter))
+        if status:raise OSError(status,'Create disposable standard user')
+        created=True;member=MEMBER(os.environ['COMPUTERNAME']+'\\'+account)
+        status=add_group(None,'Users',3,C.byref(member),1)
+        if status not in (0,1378):raise OSError(status,'Add disposable user to Users')
+        folder.mkdir();target=folder/'Deka.exe';shutil.copy2(exe,target)
+        assert hashlib.sha256(target.read_bytes()).digest()==hashlib.sha256(exe.read_bytes()).digest()
+        # This new task directory is the only ACL changed.
+        subprocess.run(['icacls.exe',str(folder),'/grant:r',account+':(OI)(CI)M'],check=True)
+        bootstrap=folder/'launch.py'
+        bootstrap.write_text("""import json,os,subprocess
+from pathlib import Path
+folder=Path(__file__).resolve().parent
+env=dict(os.environ)
+env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']='--remote-debugging-address=127.0.0.1 --remote-debugging-port=9225'
+env['WEBVIEW2_USER_DATA_FOLDER']=str(Path(os.environ['LOCALAPPDATA'])/'Deka-AutoMix-CI')
+env['RUST_BACKTRACE']='1'
+with open(folder/'native-stdout.txt','wb') as stdout,open(folder/'native-stderr.txt','wb') as stderr:
+ app=subprocess.Popen([str(folder/'Deka.exe')],cwd=folder,env=env,stdout=stdout,stderr=stderr)
+ (folder/'app-pid.json').write_text(json.dumps({'pid':app.pid}))
+ code=app.wait()
+ (folder/'app-exit.json').write_text(json.dumps({'code':code}))
+""")
+        # NULL environment and LOGON_WITH_PROFILE load the real user's profile.
+        # The bootstrap passes the diagnostic flags only to its Deka child.
+        command=C.create_unicode_buffer(subprocess.list2cmdline([sys.executable,str(bootstrap)]))
+        startup=STARTUPINFO();startup.cb=C.sizeof(startup)
+        check(create_process(account,'.',password,1,sys.executable,command,0x08000000,
+                             None,str(folder),C.byref(startup),C.byref(process)),'Launch standard-user bootstrap')
+        launched=True;bootstrap_info=token_info(process.hProcess);sid=bootstrap_info['sid']
+        if bootstrap_info['elevated'] or bootstrap_info['restricted'] or bootstrap_info['integrity']!=8192:
+            raise RuntimeError('Bootstrap must be an ordinary, unrestricted standard user')
+        opener=urllib.request.build_opener(urllib.request.ProxyHandler({}));ready=False
+        for _ in range(160):
+            code=W.DWORD();check(exit_code(process.hProcess,C.byref(code)),'Read bootstrap exit')
+            if code.value!=259:raise RuntimeError('GUI bootstrap exited: '+str(code.value))
+            if (folder/'app-exit.json').exists():raise RuntimeError('GUI exited: '+(folder/'app-exit.json').read_text())
+            if app_handle is None and (folder/'app-pid.json').exists():
+                pid=json.loads((folder/'app-pid.json').read_text())['pid']
+                app_handle=open_process(0x1000,False,pid);check(app_handle,'Read actual app process')
+                app_info=token_info(app_handle)
+                (out/'native-integrity.json').write_text(json.dumps(dict(bootstrap=bootstrap_info,child=app_info,pid=pid),indent=2))
+                if app_info!=bootstrap_info:raise RuntimeError('Actual GUI identity differs from ordinary-user bootstrap')
+                print('Built GUI PID',pid,'under ordinary Windows user',app_info,flush=True)
             try:
-                with opener.open('http://127.0.0.1:9225/json/version', timeout=0.5) as response:
-                    version = json.load(response)
+                with opener.open('http://127.0.0.1:9225/json/list',timeout=.5) as response:targets=json.load(response)
+                if not any('tauri.localhost' in t.get('url','') for t in targets):raise ValueError('Main controller not ready')
+                with opener.open('http://127.0.0.1:9225/json/version',timeout=.5) as response:version=json.load(response)
                 if version.get('webSocketDebuggerUrl'):
-                    (out / 'webview-version.json').write_text(json.dumps(version, indent=2)); ready = True; break
-            except (OSError, ValueError):
-                time.sleep(0.3)
-        if not ready:
-            raise RuntimeError('Standard-user WebView2 did not expose the per-process test endpoint')
-        subprocess.run([sys.executable, 'tests/automix.py', '--native'], check=True, timeout=180)
+                    (out/'webview-version.json').write_text(json.dumps(version,indent=2));ready=True;break
+            except (OSError,ValueError):time.sleep(.3)
+        if not ready:raise RuntimeError('Ordinary-user WebView2 main page did not initialize')
+        test_env=dict(os.environ,DEKA_CDP=version['webSocketDebuggerUrl'])
+        subprocess.run([sys.executable,'tests/automix.py','--native'],check=True,timeout=180,env=test_env)
     finally:
-        if launched:
-            # Only the process tree created by this CI harness, never another app.
-            subprocess.run(['taskkill.exe', '/PID', str(process.dwProcessId), '/T', '/F'], check=False)
-        for handle in [process.hThread, process.hProcess, reduced, original]:
-            if handle: close(handle)
-        if medium_sid: local_free(medium_sid)
-        for file in streams: file.close()
-        err = out/'native-stderr.txt'
-        if err.exists(): print(err.read_text(errors='replace'), flush=True)
-        shutil.rmtree(profile, ignore_errors=True)
+        if launched:subprocess.run(['taskkill.exe','/PID',str(process.dwProcessId),'/T','/F'],check=False)
+        for name in ['native-stdout.txt','native-stderr.txt','app-exit.json']:
+            p=folder/name
+            if p.exists():
+                shutil.copy2(p,out/name)
+                if name=='native-stderr.txt':print(p.read_text(errors='replace'),flush=True)
+        for handle in [app_handle,process.hThread,process.hProcess]:
+            if handle:close(handle)
+        if sid:print('Disposable profile cleanup:',bool(delete_profile(sid,None,None)),flush=True)
+        if created:print('Disposable account cleanup status:',delete_user(None,account),flush=True)
+        shutil.rmtree(folder,ignore_errors=True)
 
 
-if __name__ == '__main__':
-    main()
+if __name__=='__main__':main()

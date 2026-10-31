@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
         with wave.open(str(f),'w')as w:w.setnchannels(1);w.setsampwidth(2);w.setframerate(sr);w.writeframes(b''.join(data))
     if native:
         print('Connecting to the built WebView2',flush=True)
-        browser=p.chromium.connect_over_cdp('http://127.0.0.1:9225');ctx=browser.contexts[0]
+        browser=p.chromium.connect_over_cdp(os.environ.get('DEKA_CDP','http://127.0.0.1:9225'),timeout=30000);ctx=browser.contexts[0]
         print('Connected',browser.version,'pages:',[q.url for q in ctx.pages],flush=True)
         pages=[q for q in ctx.pages if 'tauri.localhost'in q.url];assert pages,[q.url for q in ctx.pages]
         page=pages[0];page.add_init_script(HOOK);page.reload()
@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
         browser=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH'),args=['--no-sandbox','--autoplay-policy=no-user-gesture-required'])
         ctx=browser.new_context(viewport={'width':1360,'height':1100});ctx.add_init_script(HOOK);page=ctx.new_page();page.goto((ROOT/'src/index.html').as_uri())
     errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-    page.click('#djToggle');page.set_input_files('#file',paths)
+    page.click('#djToggle');page.set_input_files('#file',[{'name':Path(f).name,'mimeType':'audio/wav','buffer':Path(f).read_bytes()} for f in paths]if native else paths)
     if native:print('Local WAV files imported',flush=True)
     def load(side,name):page.get_by_role('button',name='В '+side+': '+name,exact=True).click()
     load('A','Tone440');load('B','Tone660');page.wait_for_function('__dj.state.A.duration===24&&__dj.state.B.duration===24')
