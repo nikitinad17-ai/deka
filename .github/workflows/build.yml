@@ -139,6 +139,7 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          cache-on-failure: true
       - run: npm install
       - name: Generate native project
         run: |
@@ -170,6 +171,7 @@ jobs:
               assert any(b'onShowFileChooser' in z.read(n) for n in z.namelist() if n.endswith('.dex')), 'System file chooser handler missing'
           print('Android Vinyl bundle and native file chooser found in APK')
           PYVERIFY
+          mkdir -p test-output
           cp "$RUNNER_TEMP/deka-badging.txt" test-output/android-badging.txt
           "$signer" verify --verbose --print-certs "$APK_NAME" > test-output/android-signature.txt
           sha256sum "$APK_NAME" > test-output/android-sha256.txt
