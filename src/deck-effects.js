@@ -19,15 +19,20 @@
     const flanger=stages.Flanger,fd=delay(.05),feedback=gain();fd.delayTime.value=.006;feedback.gain.value=.25;
     flanger.source.connect(fd);fd.connect(feedback).connect(fd);fd.connect(flanger.wet);
     flanger.depth=lfo(.28,.0035,fd.delayTime);flanger.feedback=feedback;
-    const echo=stages.Echo,ed=delay(1),ef=gain();ed.delayTime.value=.25;ef.gain.value=.3;
-    echo.source.connect(ed);ed.connect(ef).connect(ed);ed.connect(echo.wet);echo.feedback=ef;echo.delay=ed;
+    const echo=stages.Echo,ed=delay(2.1),ef=gain(),echoTone=biquad('lowpass',4200);ed.delayTime.value=.5;ef.gain.value=.3;
+    echo.source.connect(ed);ed.connect(echoTone).connect(ef).connect(ed);ed.connect(echo.wet);echo.feedback=ef;echo.delay=ed;
     const reverb=stages.Reverb,convolver=ctx.createConvolver();all.push(convolver);
     if(!impulses.has(ctx)){
-      const impulse=ctx.createBuffer(2,Math.ceil(ctx.sampleRate*1.6),ctx.sampleRate);let seed=17;
-      for(let ch=0;ch<2;ch++){const data=impulse.getChannelData(ch);for(let i=0;i<data.length;i++){seed=(1664525*seed+1013904223)>>>0;data[i]=(seed/2147483648-1)*Math.pow(1-i/data.length,3);}}
+      const impulse=ctx.createBuffer(2,Math.ceil(ctx.sampleRate*3.6),ctx.sampleRate);let seed=17;
+      for(let ch=0;ch<2;ch++){
+        const data=impulse.getChannelData(ch);
+        for(let i=0;i<data.length;i++){seed=(1664525*seed+1013904223)>>>0;const t=i/ctx.sampleRate;data[i]=(seed/2147483648-1)*.015*Math.exp(-t/1.1)*Math.min(1,t/.015);}
+        [.027,.043,.069,.113,.179,.283,.431,.653,.977,1.47,2.21].forEach((t,i)=>{data[Math.round((t+ch*.004)*ctx.sampleRate)]+=(i%2?-.3:.3)*Math.exp(-t);});
+        const energy=data.reduce((sum,v)=>sum+v*v,0),scale=Math.sqrt(1.2/energy);for(let i=0;i<data.length;i++)data[i]*=scale;
+      }
       impulses.set(ctx,impulse);
     }
-    convolver.buffer=impulses.get(ctx);reverb.source.connect(convolver).connect(reverb.wet);
+    convolver.normalize=false;convolver.buffer=impulses.get(ctx);reverb.source.connect(convolver).connect(reverb.wet);
     const filter=stages.Filter;filter.node=biquad('lowpass',18000);filter.node.Q.value=.8;filter.source.connect(filter.node).connect(filter.wet);
     const phaser=stages.Phaser,phases=[350,700,1400,2800].map(f=>biquad('allpass',f));let pp=phaser.source;
     phases.forEach(n=>{pp.connect(n);pp=n;});pp.connect(phaser.wet);phaser.depths=phases.map((n,i)=>lfo(.19,150*(i+1),n.frequency));
@@ -37,8 +42,12 @@
       const s=stages[name],amount=s.on?s.amount:0,ready=s.status==='ready',wet=ready?amount:0;
       target(s.dry.gain,name==='Filter'&&s.on?0:1-wet*.3);
       target(s.wet.gain,name==='Filter'&&s.on?1:wet*(name==='Echo'||name==='Reverb'?.5:.7));
+      if(name==='Echo'||name==='Reverb'){
+        const blend=ready?(name==='Echo'?.65*amount:.82*Math.pow(amount,1.15)):0;
+        target(s.dry.gain,Math.sqrt(1-blend));target(s.wet.gain,Math.sqrt(blend)*(name==='Reverb'?.9:.95));
+      }
       if(name==='Flanger'){target(s.depth.gain,.001+amount*.004);target(s.feedback.gain,.15+amount*.3);}
-      if(name==='Echo'){target(s.feedback.gain,.15+amount*.45);target(s.delay.delayTime,60/bpm/2);}
+      if(name==='Echo'){target(s.feedback.gain,.12+.66*Math.pow(amount,.8));target(s.delay.delayTime,Math.min(2,60/bpm));}
       if(name==='Filter'){target(s.node.frequency,Math.max(180,18000*Math.pow(.01,s.amount)));target(s.node.Q,.7+s.amount*1.8);}
       if(name==='Phaser')s.depths.forEach((n,i)=>target(n.gain,(80+amount*250)*(i+1)));
       if(name==='Roll'&&s.processor)s.processor.port.postMessage({type:'config',on:s.on,amount:s.amount,bpm});
