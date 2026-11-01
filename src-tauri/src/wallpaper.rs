@@ -1,8 +1,8 @@
 //! Windows-only shell placement; audio and the existing WebView are never recreated.
 //! WorkerW is a shell implementation detail; all failures detach to an ordinary window.
-use std::{sync::Mutex, time::{Duration, Instant}};
+use std::{sync::Mutex, time::Duration};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 
@@ -18,7 +18,6 @@ type Hwnd=isize;
  fn SetParent(window:Hwnd,parent:Hwnd)->Hwnd;
  fn GetParent(window:Hwnd)->Hwnd;
  fn GetWindowRect(window:Hwnd,rect:*mut Rect)->i32;
- fn GetClientRect(window:Hwnd,rect:*mut Rect)->i32;
  fn SetWindowPos(window:Hwnd,after:Hwnd,x:i32,y:i32,w:i32,h:i32,flags:u32)->i32;
  fn EnableWindow(window:Hwnd,enabled:i32)->i32;
  fn IsWindow(window:Hwnd)->i32;
@@ -66,7 +65,7 @@ fn ordinary(app:&AppHandle,w:&WebviewWindow,s:&mut Session)->Result<(),String>{
  let _=w.set_ignore_cursor_events(false);let _=w.set_decorations(true);let _=w.set_skip_taskbar(false);let _=w.set_always_on_top(false);let _=w.unminimize();
  let all=screens(app);let mut r=s.rect;
  if !rect_visible(r,&all){if let Some(m)=all.first(){r=Rect{left:m.x+20,top:m.y+20,right:m.x+20+(m.width.saturating_sub(40).min(1120))as i32,bottom:m.y+20+(m.height.saturating_sub(80).min(780))as i32};}}
- if r.right>r.left&&r.bottom>r.top{let _=w.set_position(PhysicalPosition::new(r.left,r.top));let _=w.set_size(PhysicalSize::new((r.right-r.left)as u32,(r.bottom-r.top)as u32));}
+ if r.right>r.left&&r.bottom>r.top{unsafe{SetWindowPos(h,0,r.left,r.top,r.right-r.left,r.bottom-r.top,0x20|0x40);}}
  s.mode="normal".into();s.shell=0;s.shell_pid=0;w.show().map_err(|e|e.to_string())?;let _=w.set_focus();Ok(())
 }
 fn notify(app:&AppHandle,s:&Session){let _=app.emit_to("main","wallpaper:state",json!({"mode":s.mode,"selected":s.selected,"error":s.error,"quiet":s.quiet,"recoveries":s.recoveries}));}
@@ -87,10 +86,10 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
     Ok((parent,def,raised))=>unsafe{
      let mut point=Point{x:selected.x,y:selected.y};MapWindowPoints(0,parent,&mut point,1);
      let host=CreateWindowExW((TRANSPARENT|NOACTIVATE|if raised{0x80000}else{0})as u32,wide("Static").as_ptr(),wide("Deka Wallpaper Host").as_ptr(),(CHILD|0x10000000|0x04000000|0x02000000)as u32,point.x,point.y,selected.width as i32,selected.height as i32,parent,0,0,std::ptr::null_mut());
-     if host==0{s.error="Не удалось создать слой; обычное окно".into();ordinary(app,&w,&mut s)?;}else{
+     if host==0{s.error=format!("Не удалось создать слой; обычное окно: {}",std::io::Error::last_os_error());ordinary(app,&w,&mut s)?;}else{
       s.host=host;if raised{SetLayeredWindowAttributes(host,0,255,2);SetWindowPos(host,def,point.x,point.y,selected.width as i32,selected.height as i32,0x10|0x40);}
       SetWindowLongPtrW(h,-16,(s.style&!POPUP&!0x00C40000)|CHILD);SetWindowLongPtrW(h,-20,(s.ex&!APPWINDOW)|TOOLWINDOW|NOACTIVATE|TRANSPARENT);SetParent(h,host);
-      if GetParent(h)!=host{s.error="Не удалось привязать к рабочему столу; обычное окно".into();ordinary(app,&w,&mut s)?;}else{
+      if GetParent(h)!=host{s.error=format!("Не удалось привязать к рабочему столу; обычное окно: {}",std::io::Error::last_os_error());ordinary(app,&w,&mut s)?;}else{
        SetWindowPos(h,0,0,0,selected.width as i32,selected.height as i32,0x10|0x20|0x40);EnableWindow(h,0);let _=w.set_ignore_cursor_events(true);let _=w.set_skip_taskbar(true);s.mode="background".into();s.shell=parent;GetWindowThreadProcessId(parent,&mut s.shell_pid);
       }
      }

@@ -83,17 +83,34 @@ def main():
         # This new task directory is the only ACL changed.
         subprocess.run(['icacls.exe',str(folder),'/grant:r',account+':(OI)(CI)M'],check=True)
         bootstrap=folder/'launch.py'
-        bootstrap.write_text("""import json,os,subprocess
+        bootstrap.write_text("""import ctypes,json,os,subprocess,time
 from pathlib import Path
 folder=Path(__file__).resolve().parent
 env=dict(os.environ)
 env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']='--remote-debugging-address=127.0.0.1 --remote-debugging-port=9225'
 env['WEBVIEW2_USER_DATA_FOLDER']=str(Path(os.environ['LOCALAPPDATA'])/'Deka-AutoMix-CI')
 env['RUST_BACKTRACE']='1'
+u=ctypes.WinDLL('user32')
+u.FindWindowW.restype=ctypes.c_void_p
+u.FindWindowW.argtypes=[ctypes.c_wchar_p,ctypes.c_wchar_p]
+def shell():
+ if not u.FindWindowW('Progman',None):
+  subprocess.Popen([str(Path(os.environ['WINDIR'])/'explorer.exe')],env=dict(os.environ))
+ for _ in range(150):
+  if u.FindWindowW('Progman',None) and u.FindWindowW('Shell_TrayWnd',None):return
+  time.sleep(.2)
+ raise RuntimeError('Real Explorer desktop did not initialize in the disposable CI account')
+shell()
 with open(folder/'native-stdout.txt','wb') as stdout,open(folder/'native-stderr.txt','wb') as stderr:
  app=subprocess.Popen([str(folder/'Deka.exe')],cwd=folder,env=env,stdout=stdout,stderr=stderr)
  (folder/'app-pid.json').write_text(json.dumps({'pid':app.pid}))
- code=app.wait()
+ while app.poll() is None:
+  request=folder/'restart-explorer'
+  if request.exists():
+   request.unlink()
+   shell()
+  time.sleep(.1)
+ code=app.returncode
  (folder/'app-exit.json').write_text(json.dumps({'code':code}))
 """)
         # NULL environment and LOGON_WITH_PROFILE load the real user's profile.
@@ -125,7 +142,7 @@ with open(folder/'native-stdout.txt','wb') as stdout,open(folder/'native-stderr.
                     (out/'webview-version.json').write_text(json.dumps(version,indent=2));ready=True;break
             except (OSError,ValueError):time.sleep(.3)
         if not ready:raise RuntimeError('Ordinary-user WebView2 main page did not initialize')
-        test_env=dict(os.environ,DEKA_CDP=version['webSocketDebuggerUrl'])
+        test_env=dict(os.environ,DEKA_CDP=version['webSocketDebuggerUrl'],DEKA_CI_SHELL_REQUEST=str(folder/'restart-explorer'))
         subprocess.run([sys.executable,'tests/wallpaper_native.py'],check=True,timeout=360,env=test_env)
     finally:
         if launched:subprocess.run(['taskkill.exe','/PID',str(process.dwProcessId),'/T','/F'],check=False)
