@@ -373,7 +373,7 @@
       if(!s||!el||!s.track||s.track.kind!=='file'||s.held||(!s.braking&&el.paused)||![.5,1,1.5,2,2.5,3.5].includes(seconds)||!n.brake||n.brake.status!=='ready')return false;
       if(!opts.reverseMix||!opts.autoMix){cancelAuto();autoCross=null;return startBrake(side,seconds);}
       if(starting&&starting.reverse&&starting.from===side){starting.seconds=seconds;return true;}
-      if(!other.track||other.track.kind!=='file'||!target||target.readyState<2||other.status==='error'||other.held||other.braking||other.pending){
+      if(!other.track||other.track.kind!=='file'||other.completed||other.status==='ended'||!target||target.readyState<2||other.status==='error'||other.held||other.braking||other.pending){
         tell('Для перехода «Реверс» загрузите готовый локальный трек в деку '+to+'. Текущий трек продолжает играть.');return false;
       }
       if(reverseMix&&reverseMix.from===side&&s.braking){
@@ -381,7 +381,9 @@
         return startBrake(side,seconds);
       }
       if(s.braking){tell('Дождитесь остановки деки '+side+' или продолжите её кнопкой «Играть».');return false;}
+      var bases={A:state.A.eq.slice(),B:state.B.eq.slice()},tones={A:effectiveEQ('A'),B:effectiveEQ('B')};
       cancelAuto();autoCross=null;
+      ['A','B'].forEach(function(deck){state[deck].eq=bases[deck];state[deck].autoEQ=tones[deck].map(function(v,j){return v-bases[deck][j];});});
       var playing=!target.paused,token=autoSerial,track=s.track,toTrack=other.track,fromGeneration=s.generation;
       var pending={from:side,to:to,alreadyPlaying:playing,reverse:true,seconds:seconds,restoreGain:other.autoGain};starting=pending;
       var inEQ=effectiveEQ(to),targetEQ=other.eq.slice(),plan=opts.analysis?opts.analysis.plan(sourceMeta(side),sourceMeta(to),el.playbackRate):null;
