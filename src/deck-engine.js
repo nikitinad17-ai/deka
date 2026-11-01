@@ -208,7 +208,7 @@
           el.__dekaStart();await nativePlay.call(el);
           if (generation !== s.generation || elements[side] !== el) return;
         } else {
-          if (vkSide !== side) { var other = state[vkSide]; if (other.track && other.track.kind !== 'file') { other.paused = true; other.pending = false; other.generation++; tell('VK: переключён один общий поток на деку ' + side); } vkSide = side; }
+          if (vkSide !== side) { var other = state[vkSide]; if (other.track && other.track.kind !== 'file') { if(!other.paused||other.pending)other.generation++;other.paused = true; other.pending = false; tell('VK: переключён один общий поток на деку ' + side); } vkSide = side; }
           apply();
           rate(side);
           var ok = s.track.key === 'live-vk' ? await vk({ type: 'play' }) : await vk({ type: 'playKey', key: s.track.key });

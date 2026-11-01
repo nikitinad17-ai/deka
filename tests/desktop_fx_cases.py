@@ -22,7 +22,7 @@ def run(page,check,reset):
 
     # Master PCM proves a real pitch fall with Key Lock both enabled and disabled.
     for key_lock in [True,False]:
-        reset('NoBeat','BPM125');page.evaluate(f"__dj.setCross(-1);__dj.setKeyLock('A',{str(key_lock).lower()});__dj.play('A');__dj.play('B')");page.wait_for_function('!__dj.state.A.paused&&!__dj.state.B.paused');page.wait_for_timeout(300)
+        reset('NoBeat','BPM125');page.evaluate(f"__dj.setKeyLock('A',{str(key_lock).lower()});__dj.play('A');__dj.play('B')");page.wait_for_function('!__dj.state.A.paused&&!__dj.state.B.paused');page.evaluate('__dj.setCross(-1)');page.wait_for_timeout(300)
         page.evaluate('startRecord(1.5,true)');page.evaluate("__dj.brake('A',1)");record=page.evaluate('window.__recording');page.wait_for_function('__dj.state.A.paused&&!__dj.state.A.braking');last=page.evaluate('__dj.state.A.lastBrake')
         pcm=array.array('h',base64.b64decode(record['channels'][0]));sr=record['sampleRate'];start=last['audioStart']-record['first']
         def hz(lo,hi):

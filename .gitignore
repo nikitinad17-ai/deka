@@ -13,3 +13,4 @@ android/signing.json
 
 # Local test results (CI uploads them as an artifact).
 test-output/
+__pycache__/

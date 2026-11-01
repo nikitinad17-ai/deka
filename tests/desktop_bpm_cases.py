@@ -116,7 +116,7 @@ def run(page,check,native=False):
                 page.wait_for_function(f'!__dj.state.{old}.paused');page.evaluate(f"__dj.seek('{old}',__dj.state.{old}.duration-currentAudio('{old}').playbackRate*1.55)");page.wait_for_function('__dj.diagnostics().mixing',timeout=5000)
                 check(old+'→'+new+' '+mode+' CUE starts from 00:00',page.evaluate('__entry!==null&&__entry<.12')and page.evaluate(f'__dj.state.{new}.cueActive')==(mode=='zero'),start=page.evaluate('__entry'))
 
-        reset();page.locator('#djBPMB').fill('130');page.evaluate("__dj.setRate('B',1.04);__dj.play('B')");page.wait_for_function('!__dj.state.B.paused')
+        reset();page.locator('#djBPMB').fill('130');page.locator('#djBPMB').blur();page.evaluate("__dj.setRate('B',1.04);__dj.play('B')");page.wait_for_function('!__dj.state.B.paused')
         page.evaluate("(()=>{const real=performance.now.bind(performance);let t=0;performance.now=()=>t;for(let i=0;i<5;i++){t=i*60000/130;__dj.tap('B');}performance.now=real;})()")
         check('TAP of a playing pitched deck corrects source BPM exactly once',page.evaluate('Math.abs(__dj.state.B.bpm-125)<.1')and page.locator('#djBPMB').input_value()=='125')
         page.evaluate("__dj.pause('B');__dj.setRate('A',1.04);__dj.setAutoMix(true);__dj.play('A')");page.wait_for_function('!__dj.state.A.paused');page.evaluate("__dj.seek('A',__dj.state.A.duration-currentAudio('A').playbackRate*2.2)");page.wait_for_function('__dj.diagnostics().mixing',timeout=5000)

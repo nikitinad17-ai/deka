@@ -121,6 +121,8 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
         check(f'{old}→{new} fade {i}: actual media rates hold common BPM for the entire overlap',result['matched'] and all(abs(s['out']-expected['out'])<.00001 and abs(s['incoming']-expected['plan']['rate'])<.00001 for s in samples),out=last['out'],incoming=last['incoming'],targetBPM=result['targetBPM'])
         check(f'{old}→{new} fade {i}: all three EQ bands move smoothly with tempo',first['inEQ'][0]<-5.8 and last['outEQ'][0]<-11.6 and all(max(abs(v+12*s['elapsed']/17)for v in s['outEQ'])<.1 and max(abs(v-start*(1-s['elapsed']/17))for v,start in zip(s['inEQ'],[-6,-3,-3]))<.1 for s in samples))
         check(f'{old}→{new} fade {i}: real output never drops out and incoming settles',min_rms>.002 and abs(data['inRate']-expected['plan']['rate'])<.0001 and all(abs(v)<.001 for v in data['inEQ']),minimum_rms=min_rms,peak=max(s['peak']for s in samples))
+    from desktop_bpm_cases import run as bpm_cases
+    bpm_cases(page,check,native)
     page.click('#djCenter');check('Center leaves Auto Mix armed',page.locator('#djAutoMix').get_attribute('aria-pressed')=='true')
     page.click('#djPauseAll');page.wait_for_timeout(1000) # Flush the 32768-frame (~683ms) measurement window.
     paused=page.evaluate('({a:__dj.state.A.paused,b:__dj.state.B.paused,held:__dj.state.A.held||__dj.state.B.held,...outputStats()})')
