@@ -9,7 +9,15 @@ use tauri::tray::TrayIconBuilder;
 type Hwnd=isize;
 #[repr(C)] #[derive(Default, Clone, Copy)] struct Rect{left:i32,top:i32,right:i32,bottom:i32}
 #[repr(C)] #[derive(Default)] struct Point{x:i32,y:i32}
+#[repr(C)] struct HostClass{
+ style:u32,procedure:Option<unsafe extern "system" fn(Hwnd,u32,usize,isize)->isize>,
+ class_extra:i32,window_extra:i32,instance:Hwnd,icon:Hwnd,cursor:Hwnd,background:Hwnd,
+ menu:*const u16,name:*const u16
+}
+#[link(name="kernel32")] extern "system"{fn GetModuleHandleW(name:*const u16)->Hwnd;}
 #[link(name="user32")] extern "system" {
+ fn RegisterClassW(class:*const HostClass)->u16;
+ fn DefWindowProcW(window:Hwnd,message:u32,wparam:usize,lparam:isize)->isize;
  fn FindWindowW(class:*const u16,title:*const u16)->Hwnd;
  fn FindWindowExW(parent:Hwnd,after:Hwnd,class:*const u16,title:*const u16)->Hwnd;
  fn EnumWindows(callback:unsafe extern "system" fn(Hwnd,isize)->i32,param:isize)->i32;
@@ -34,6 +42,17 @@ type Hwnd=isize;
 const CHILD:isize=0x40000000;const POPUP:isize=0x80000000u32 as isize;
 const TRANSPARENT:isize=0x20;const NOACTIVATE:isize=0x08000000;const TOOLWINDOW:isize=0x80;const APPWINDOW:isize=0x40000;
 fn wide(s:&str)->Vec<u16>{s.encode_utf16().chain(Some(0)).collect()}
+unsafe extern "system" fn host_procedure(h:Hwnd,message:u32,wparam:usize,lparam:isize)->isize{
+ if message==0x0084{return -1;} // HTTRANSPARENT: desktop owns all pointer input.
+ DefWindowProcW(h,message,wparam,lparam)
+}
+fn register_host()->Result<(),String>{
+ let name=wide("DekaWallpaperHost");
+ let class=HostClass{style:0,procedure:Some(host_procedure),class_extra:0,window_extra:0,instance:unsafe{GetModuleHandleW(std::ptr::null())},icon:0,cursor:0,background:0,menu:std::ptr::null(),name:name.as_ptr()};
+ let atom=unsafe{RegisterClassW(&class)};
+ if atom==0&&std::io::Error::last_os_error().raw_os_error()!=Some(1410){return Err(format!("Не удалось подготовить слой обоев: {}",std::io::Error::last_os_error()));}
+ Ok(())
+}
 fn find(class:&str)->Hwnd{unsafe{FindWindowW(wide(class).as_ptr(),std::ptr::null())}}
 fn child(parent:Hwnd,class:&str)->Hwnd{unsafe{FindWindowExW(parent,0,wide(class).as_ptr(),std::ptr::null())}}
 fn main_window(app:&AppHandle)->Result<WebviewWindow,String>{app.get_webview_window("main").ok_or("Окно не найдено".into())}
@@ -97,9 +116,9 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
    match shell_layer(){
     Ok((parent,def,raised))=>unsafe{
      let mut point=Point{x:selected.x,y:selected.y};MapWindowPoints(0,parent,&mut point,1);
-     let host=CreateWindowExW((TRANSPARENT|NOACTIVATE|if raised{0x80000}else{0})as u32,wide("Static").as_ptr(),wide("Deka Wallpaper Host").as_ptr(),(CHILD|0x10000000|0x04000000|0x02000000)as u32,point.x,point.y,selected.width as i32,selected.height as i32,parent,0,0,std::ptr::null_mut());
+     let host=CreateWindowExW((TRANSPARENT|NOACTIVATE|if raised{0x80000}else{0})as u32,wide("DekaWallpaperHost").as_ptr(),wide("Deka Wallpaper Host").as_ptr(),(CHILD|0x10000000|0x04000000|0x02000000)as u32,point.x,point.y,selected.width as i32,selected.height as i32,parent,0,GetModuleHandleW(std::ptr::null()),std::ptr::null_mut());
      if host==0{s.error=format!("Не удалось создать слой; обычное окно: {}",std::io::Error::last_os_error());ordinary(app,&w,&mut s)?;}else{
-      s.host=host;if raised{SetLayeredWindowAttributes(host,0,255,2);SetWindowPos(host,def,point.x,point.y,selected.width as i32,selected.height as i32,0x10|0x40);}
+      s.host=host;EnableWindow(host,0);if raised{SetLayeredWindowAttributes(host,0,255,2);SetWindowPos(host,def,point.x,point.y,selected.width as i32,selected.height as i32,0x10|0x40);}
       SetWindowLongPtrW(h,-16,(s.style&!POPUP&!0x00C40000)|CHILD);SetWindowLongPtrW(h,-20,(s.ex&!APPWINDOW)|TOOLWINDOW|NOACTIVATE|TRANSPARENT);SetParent(h,host);
       if GetParent(h)!=host{s.error=format!("Не удалось привязать к рабочему столу; обычное окно: {}",std::io::Error::last_os_error());ordinary(app,&w,&mut s)?;}else{
        SetWindowPos(h,0,0,0,selected.width as i32,selected.height as i32,0x10|0x20|0x40);EnableWindow(h,0);let _=w.set_ignore_cursor_events(true);let _=w.set_skip_taskbar(true);s.mode="background".into();s.shell=parent;GetWindowThreadProcessId(parent,&mut s.shell_pid);
@@ -134,6 +153,7 @@ fn install_tray(app:&AppHandle)->tauri::Result<()>{
  if let Some(icon)=app.default_window_icon(){builder=builder.icon(icon.clone());}builder.build(app)?;Ok(())
 }
 pub fn setup(app:&AppHandle)->Result<(),Box<dyn std::error::Error>>{
+ register_host()?;
  let w=main_window(app)?;let h=hwnd(&w)?;let mut rect=Rect::default();unsafe{GetWindowRect(h,&mut rect);}
  let selected=configuration(app).and_then(|p|std::fs::read_to_string(p).ok()).and_then(|s|serde_json::from_str::<Value>(&s).ok()).and_then(|v|v["selected_monitor"].as_str().map(str::to_owned)).unwrap_or_default();
  app.manage(Wallpaper(Mutex::new(Session{mode:"normal".into(),selected,rect,style:unsafe{GetWindowLongPtrW(h,-16)},ex:unsafe{GetWindowLongPtrW(h,-20)},..Default::default()})));
