@@ -146,6 +146,13 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  check('Actual Explorer restart restores an accessible window, tray and the same running audio engine',state['recoveries']>=1 and state['tray'] and state['tray_rect'] is not None and enabled(h)and not get_parent(h)and page.evaluate(f'__dj===__sameEngine&&!__dj.state.B.paused&&currentAudio("B").currentTime>{before_engine}'),recoveries=state['recoveries'],tray_rect=state['tray_rect'])
  state=native('background');page.wait_for_timeout(1200)
  check('Background display can be recreated after Explorer restart without replacing audio',state['mode']=='background' and state['engine_hwnd']==h and state['engine_parent']==0 and page.evaluate('__dj===__sameEngine&&!__dj.state.B.paused'))
+ actual=[]
+ for _ in range(20):
+  actual=screen_pixel(sx,sy)
+  if all(abs(a-b)<=8 for a,b in zip(actual,[217,31,193])):break
+  page.wait_for_timeout(100)
+ ImageGrab.grab(all_screens=True).save(OUT/'wallpaper-screen-recovered.png')
+ check('Recreated background surface is visible on the actual desktop',all(abs(a-b)<=8 for a,b in zip(actual,[217,31,193])),screen_pixel=actual)
  native('normal')
  saved=page.evaluate("__TAURI__.core.invoke('wallpaper_report')")
  check('Save report writes native placement diagnostics',Path(saved).exists() and 'shell' in Path(saved).read_text(encoding='utf-8'))

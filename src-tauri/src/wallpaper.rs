@@ -66,7 +66,7 @@ fn hwnd(w:&WebviewWindow)->Result<Hwnd,String>{w.hwnd().map(|h|h.0 as Hwnd).map_
 #[derive(Clone)]struct Screen{name:String,x:i32,y:i32,width:u32,height:u32,scale:f64}
 fn screens(app:&AppHandle)->Vec<Screen>{app.available_monitors().unwrap_or_default().iter().map(|m|Screen{name:m.name().cloned().unwrap_or_else(||"Монитор".into()),x:m.position().x,y:m.position().y,width:m.size().width,height:m.size().height,scale:m.scale_factor()}).collect()}
 fn screen_json(s:&Screen)->Value{json!({"name":s.name,"x":s.x,"y":s.y,"width":s.width,"height":s.height,"scale":s.scale})}
-#[derive(Default)]struct Session{mode:String,selected:String,host:Hwnd,display:Hwnd,shell:Hwnd,icons:Hwnd,icon_root:Hwnd,raised:bool,shell_pid:u32,rect:Rect,style:isize,ex:isize,error:String,recoveries:u32,quiet:bool,geometry:String,tray_retries:u8}
+#[derive(Default)]struct Session{mode:String,selected:String,host:Hwnd,display:Hwnd,shell:Hwnd,icons:Hwnd,icon_root:Hwnd,raised:bool,shell_pid:u32,rect:Rect,style:isize,ex:isize,error:String,recoveries:u32,quiet:bool,geometry:String,tray_attempts:u8,tray_shell:Hwnd}
 pub struct Wallpaper(Mutex<Session>);
 fn configuration(app:&AppHandle)->Option<std::path::PathBuf>{app.path().app_config_dir().ok().map(|p|p.join("wallpaper-settings.json"))}
 fn journal(app:&AppHandle)->Option<std::path::PathBuf>{configuration(app).map(|p|p.with_file_name("wallpaper-diagnostics.jsonl"))}
@@ -223,7 +223,7 @@ fn snapshot(app:&AppHandle)->Result<Value,String>{
  let engine_h=h;let h=if s.mode=="background"{s.display}else{engine_h};
  let all=screens(app);let mut r=Rect::default();unsafe{GetWindowRect(h,&mut r);}
  let tray=app.tray_by_id("deka-wallpaper").is_some();let tray_rect=app.tray_by_id("deka-wallpaper").and_then(|t|t.rect().ok().flatten()).map(|r|format!("{r:?}"));
- Ok(json!({"version":"0.1.1-rc.1","mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"engine_hwnd":engine_h,"engine_parent":unsafe{GetParent(engine_h)},"engine_visible":unsafe{IsWindowVisible(engine_h)!=0},"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_rect":tray_rect,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
+ Ok(json!({"version":"0.1.1-rc.1","mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"engine_hwnd":engine_h,"engine_parent":unsafe{GetParent(engine_h)},"engine_visible":unsafe{IsWindowVisible(engine_h)!=0},"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_rect":tray_rect,"tray_shell":s.tray_shell,"tray_attempts":s.tray_attempts,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
 }
 pub fn action(app:&AppHandle,id:&str){
  if id=="exit"{let _=place(app,"normal",None);app.exit(0);return;}
@@ -238,7 +238,7 @@ fn install_tray(app:&AppHandle)->tauri::Result<()>{
  let monitors=Submenu::new(app,"Выбор монитора",true)?;
  for(i,m)in screens(app).iter().enumerate(){monitors.append(&MenuItem::with_id(app,format!("monitor:{}",m.name),format!("{} · {} · {}×{} · {}%",i+1,m.name,m.width,m.height,(m.scale*100.)as u32),true,None::<&str>)?)?;}
  menu.append(&monitors)?;menu.append(&MenuItem::with_id(app,"exit","Выход",true,None::<&str>)?)?;
- let mut builder=TrayIconBuilder::with_id("deka-wallpaper").menu(&menu).tooltip("Deka Desktop Wallpaper · режимы и выход").show_menu_on_left_click(true).on_menu_event(|app,event|action(app,event.id.as_ref()));
+ let mut builder=TrayIconBuilder::with_id("deka-wallpaper").menu(&menu).tooltip("Deka Desktop Wallpaper · режимы и выход").show_menu_on_left_click(true);
  if let Some(icon)=app.default_window_icon(){builder=builder.icon(icon.clone());}builder.build(app)?;Ok(())
 }
 pub fn setup(app:&AppHandle)->Result<(),Box<dyn std::error::Error>>{
@@ -246,18 +246,21 @@ pub fn setup(app:&AppHandle)->Result<(),Box<dyn std::error::Error>>{
  let w=main_window(app)?;let h=hwnd(&w)?;let mut rect=Rect::default();unsafe{GetWindowRect(h,&mut rect);}
  let selected=configuration(app).and_then(|p|std::fs::read_to_string(p).ok()).and_then(|s|serde_json::from_str::<Value>(&s).ok()).and_then(|v|v["selected_monitor"].as_str().map(str::to_owned)).unwrap_or_default();
  app.manage(Wallpaper(Mutex::new(Session{mode:"normal".into(),selected,rect,style:unsafe{GetWindowLongPtrW(h,-16)},ex:unsafe{GetWindowLongPtrW(h,-20)},..Default::default()})));
+ app.on_menu_event(|app,event|action(app,event.id.as_ref()));
  install_tray(app)?;
- let app=app.clone();std::thread::spawn(move||{let mut last_shell=find("Shell_TrayWnd");loop{
+ let app=app.clone();std::thread::spawn(move||{loop{
   std::thread::sleep(Duration::from_millis(1000));let handle=app.clone();let _=app.run_on_main_thread(move||{
    let all=screens(&handle);let geometry=all.iter().map(|m|format!("{}:{},{},{},{}:{}",m.name,m.x,m.y,m.width,m.height,m.scale)).collect::<Vec<_>>().join("|");
    let shell=find("Shell_TrayWnd");
    let st=handle.state::<Wallpaper>();let mut s=st.0.lock().unwrap();let mut recover=false;
-   if shell!=0&&shell!=last_shell{
-    let _=handle.remove_tray_by_id("deka-wallpaper");let _=install_tray(&handle);s.tray_retries=10;
-   }else if shell!=0&&s.tray_retries>0{
-    let visible=handle.tray_by_id("deka-wallpaper").and_then(|t|t.rect().ok().flatten()).is_some();
-    if visible{s.tray_retries=0;}else{let _=handle.remove_tray_by_id("deka-wallpaper");let _=install_tray(&handle);s.tray_retries-=1;}
-   }
+   // Observe and update shell identity in the same UI-thread transaction.
+   // Also detect a missing icon independently of the shell HWND transition.
+   let tray_visible=handle.tray_by_id("deka-wallpaper").and_then(|t|t.rect().ok().flatten()).is_some();
+   if shell!=s.tray_shell{s.tray_attempts=0;s.tray_shell=shell;}
+   if shell!=0&&!tray_visible&&s.tray_attempts<10{
+    s.tray_attempts+=1;let _=handle.remove_tray_by_id("deka-wallpaper");
+    let result=install_tray(&handle);eprintln!("Wallpaper tray recovery attempt {}: {:?}",s.tray_attempts,result);
+   }else if tray_visible{s.tray_attempts=0;}
    if s.mode!="normal"{
     if !all.iter().any(|m|m.name==s.selected){s.error="Монитор отключён; возвращено обычное окно".into();recover=true;}
     else if s.mode=="background"&&(!attached(s.display,&s)||main_window(&handle).and_then(|w|hwnd(&w)).map(|h|unsafe{IsWindowVisible(h)!=0}).unwrap_or(true)){s.error="Слой обоев изменился; управление восстановлено в окне".into();recover=true;}
@@ -270,7 +273,7 @@ pub fn setup(app:&AppHandle)->Result<(),Box<dyn std::error::Error>>{
     let quiet=s.mode=="background"||unsafe{IsIconic(h)}!=0||unsafe{IsWindowVisible(h)}==0||covered;
     if s.quiet!=quiet{s.quiet=quiet;notify(&handle,&s);}
    }}
-  });last_shell=find("Shell_TrayWnd");
+  });
  }});Ok(())
 }
 #[tauri::command]
