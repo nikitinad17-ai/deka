@@ -30,8 +30,11 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  page.click('#djToggle');page.set_input_files('#file',list(map(str,Path(td).glob('*.mp3'))))
  page.get_by_role('button',name='В A: Wallpaper-0',exact=True).click();page.get_by_role('button',name='В B: Wallpaper-1',exact=True).click();page.wait_for_function("()=>['A','B'].every(s=>__dj.state[s].duration>40&&__dj.state[s].analysisStatus==='ready')")
  page.evaluate("__dj.setAutoMix(false);__dj.setRepeat(true);__dj.setBPM('A',120);__dj.setBPM('B',125);__dj.setRate('A',1.04);__dj.setGain('A',.72);__dj.setGain('B',.85);__dj.setEQ('A',0,-3);__dj.setEQ('B',2,2);__dj.setCross(.15);__dj.play('A');__dj.play('B');window.__sameEngine=__dj;window.__sameContext=__measure.context;window.__sourceRefs=[currentAudio('A'),currentAudio('B')];window.__shellSamples=[];window.__shellTimer=setInterval(()=>__shellSamples.push(outputStats().rms),60);window.__saved=JSON.stringify(['A','B'].map(s=>{const x=__dj.state[s];return {key:x.track.key,rate:x.rate,eq:x.eq,gain:x.gain,cue:x.cue,keyLock:x.keyLock};}));")
- page.wait_for_function("()=>!__dj.state.A.paused&&!__dj.state.B.paused&&outputStats().rms>.01")
- check('Two actual MP3 sources are audible; scratching is disabled',page.evaluate("amp(440)>.02&&amp(660)>.02&&!__djopts.vinyl&&document.getElementById('djDiscA').disabled"))
+ # A playing event and the first nonzero PCM block precede the full FFT
+ # window. Wait for both tones, rather than testing the second decoder
+ # immediately after the first decoder becomes audible.
+ page.wait_for_function("()=>!__dj.state.A.paused&&!__dj.state.B.paused&&amp(440)>.02&&amp(660)>.02",timeout=10000)
+ check('Two actual MP3 sources are audible; scratching is disabled',page.evaluate("amp(440)>.02&&amp(660)>.02&&!__djopts.vinyl&&document.getElementById('djDiscA').disabled"),signal=page.evaluate('({a:amp(440),b:amp(660),rms:outputStats().rms})'))
  resources=[]
  def sample_resource(mode):
   before={q.pid:sum(q.cpu_times()[:2])for q in[process]+process.children(recursive=True)if q.is_running()};start=time.monotonic();rss=[]
