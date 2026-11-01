@@ -23,6 +23,20 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  def native(mode=None,monitor=None):
   if mode is None:return page.evaluate("__TAURI__.core.invoke('wallpaper_state')")
   return page.evaluate("([mode,monitor])=>__TAURI__.core.invoke('wallpaper_set',{mode,monitor})",[mode,monitor])
+ # Record the real Explorer layout; do not fabricate a WorkerW window.
+ shell_pid=W.DWORD();pid_of(find('Progman',None),C.byref(shell_pid))
+ print('Explorer desktop owner',psutil.Process(shell_pid.value).username(),flush=True)
+ enum_windows=bind('EnumWindows',W.BOOL,[C.WINFUNCTYPE(W.BOOL,W.HWND,W.LPARAM),W.LPARAM])
+ enum_children=bind('EnumChildWindows',W.BOOL,[W.HWND,C.WINFUNCTYPE(W.BOOL,W.HWND,W.LPARAM),W.LPARAM])
+ callback_type=C.WINFUNCTYPE(W.BOOL,W.HWND,W.LPARAM)
+ def describe(top,_):
+  if classname(top) in ['Progman','WorkerW']:
+   children=[]
+   @callback_type
+   def each(h,_):children.append({'class':classname(h),'hwnd':h,'parent':get_parent(h)});return True
+   enum_children(top,each,0);print('REAL SHELL TREE',classname(top),top,children,flush=True)
+  return True
+ enumerate_callback=callback_type(describe);enum_windows(enumerate_callback,0)
  state=native();initial_settings=state['settings_file'];h=state['hwnd'];identity=json.loads((OUT/'native-integrity.json').read_text());process=psutil.Process(identity['pid'])
  check('Separate Wallpaper identity, ordinary window, tray, no autostart',state['mode']=='normal'and state['tray']and 'ru.volna.deka.wallpaper'in initial_settings and not state['autostart'],settings=initial_settings,monitors=state['monitors'],tray_rect=state['tray_rect'])
  for i,hz in enumerate([440,660,440,660]):

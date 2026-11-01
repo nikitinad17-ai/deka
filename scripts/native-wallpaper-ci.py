@@ -82,6 +82,24 @@ def main():
         assert hashlib.sha256(target.read_bytes()).digest()==hashlib.sha256(exe.read_bytes()).digest()
         # This new task directory is the only ACL changed.
         subprocess.run(['icacls.exe',str(folder),'/grant:r',account+':(OI)(CI)M'],check=True)
+
+        # The disposable CI desktop may already have an administrator-owned
+        # Explorer. A real standard-user shell must own the desktop used by
+        # this test, just as on a user's workstation. Never run this harness
+        # outside GitHub Actions.
+        u=C.WinDLL('user32',use_last_error=True)
+        fw=bind(u,'FindWindowW',W.HWND,[W.LPCWSTR,W.LPCWSTR])
+        window_pid=bind(u,'GetWindowThreadProcessId',W.DWORD,[W.HWND,C.POINTER(W.DWORD)])
+        shell=fw('Progman',None)
+        if shell:
+            shell_id=W.DWORD();window_pid(shell,C.byref(shell_id))
+            if shell_id.value:
+                print('Replacing CI-owned Explorer with the disposable standard-user desktop',shell_id.value,flush=True)
+                subprocess.run(['taskkill.exe','/PID',str(shell_id.value),'/F'],check=True)
+                for _ in range(50):
+                    if not fw('Progman',None):break
+                    time.sleep(.1)
+
         bootstrap=folder/'launch.py'
         bootstrap.write_text("""import ctypes,json,os,subprocess,time
 from pathlib import Path
@@ -131,6 +149,12 @@ with open(folder/'native-stdout.txt','wb') as stdout,open(folder/'native-stderr.
                 pid=json.loads((folder/'app-pid.json').read_text())['pid']
                 app_handle=open_process(0x1000,False,pid);check(app_handle,'Read actual app process')
                 app_info=token_info(app_handle)
+                shell_id=W.DWORD();window_pid(fw('Progman',None),C.byref(shell_id))
+                shell_handle=open_process(0x1000,False,shell_id.value);check(shell_handle,'Read shell process')
+                try:shell_info=token_info(shell_handle)
+                finally:close(shell_handle)
+                print('Real Explorer shell token',shell_info,flush=True)
+                if shell_info['sid']!=app_info['sid'] or shell_info['integrity']!=8192:raise RuntimeError('Explorer must belong to the same ordinary test account as Wallpaper')
                 (out/'native-integrity.json').write_text(json.dumps(dict(bootstrap=bootstrap_info,child=app_info,pid=pid),indent=2))
                 if app_info!=bootstrap_info:raise RuntimeError('Actual GUI identity differs from ordinary-user bootstrap')
                 print('Built GUI PID',pid,'under ordinary Windows user',app_info,flush=True)
