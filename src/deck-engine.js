@@ -353,7 +353,7 @@
       var s=state[side],el=elements[side],n=nodes[side],previous=s.braking;
       var b={id:++brakeSerial,track:s.track,origin:previous?previous.origin:el.currentTime,baseRate:previous?previous.baseRate:el.playbackRate,speed:previous?previous.speed:1,elapsed:0,duration:+seconds};
       s.braking=b;s.manualStopped=true;s.autoBlocked=true;s.completed=false;s.generation++;s.pending=false;el.loop=false;
-      n.brake.start(b.id,b.duration);changed();return true;
+      n.brake.start(b.id,b.duration);tell('Реверс '+side+(reverseMix?' → '+reverseMix.to:'')+' · '+String(seconds).replace('.',',')+' с');changed();return true;
     }
     function effectiveEQ(side){return state[side].eq.map(function(v,j){return v+state[side].autoEQ[j];});}
     function reverseFade(r,progress){
@@ -604,7 +604,7 @@
       noteVK: noteVK, endedVK: endedVK,
       scratchBegin: scratchBegin, scratchMove: scratchMove, scratchEnd: scratchEnd,brake:brake,
       setKeyLock: function (side, on) { state[side].keyLock = !!on; rate(side); changed(); },
-      clear: function (side) { pause(side); release(side); var s = state[side]; s.track = null; s.list = []; s.index = -1; s.time = s.duration = s.cue = 0;s.cueActive=false;s.cueStage=0;s.manualStopped=false;s.syncBPM=null; s.status = 'empty'; s.error = ''; s.autoBlocked=true; changed(); },
+      clear: function (side) { pause(side); release(side);emptyState(side,true);changed(); },
       cue:cycleCue,
       setRate:manualRate,
       nudge: function (side, value) { state[side].nudge = clamp(value, -0.04, 0.04); rate(side); changed(); },
@@ -631,7 +631,10 @@
       destroy: function () { win.clearInterval(autoTimer); pause('A'); pause('B'); destroyed = true; release('A'); release('B'); if (ctx && !opts.context) ctx.close(); },
       diagnostics: function () { return { cross: cross, weights: weights(cross), master: master, vkSide: vkSide, localPlayers: Object.keys(elements).length, djMode:!!opts.djMode, shuffle:!!opts.shuffle, repeatTrack:!!opts.repeatTrack, autoMix:!!opts.autoMix, mixing:!!mix,lastReverse:lastReverse,reverse:reverseMix?{from:reverseMix.from,to:reverseMix.to,duration:reverseMix.duration,elapsed:ctx.currentTime-reverseMix.start}:null,preparing:!!starting,phaseTimer:phaseTimer!==null,rateRamps:Object.keys(rateRamps).length,transition:mix?{from:mix.from,to:mix.to,duration:mix.duration,elapsed:ctx.currentTime-mix.start,mode:mix.beat?'beat':mix.sweep?'sweep':'balance',matched:!!(mix.plan&&mix.plan.matched),reason:mix.plan&&mix.plan.reason,targetBPM:mix.plan&&mix.plan.targetBPM}:null,effects:Object.fromEntries(['A','B'].map(function(side){return [side,nodes[side]&&nodes[side].fx?nodes[side].fx.diagnostics():null];})) }; }
     };
-    function invalidateNext() { cancelAuto(); ['A','B'].forEach(function (side) { if (state[side].autoLoaded && state[side].paused) { pause(side,true); release(side); state[side].track=null; state[side].status='empty'; } }); }
+    function emptyState(side,blocked){
+      Object.assign(state[side],{track:null,list:[],index:-1,time:0,duration:0,cue:0,cueActive:false,cueStage:0,manualStopped:false,syncBPM:null,bpm:null,analysis:null,analysisStatus:'idle',rate:1,nudge:0,autoRate:null,autoGain:1,autoEQ:[0,0,0],status:'empty',error:'',autoBlocked:blocked,autoLoaded:false,completed:false,pending:false});
+    }
+    function invalidateNext() { cancelAuto(); ['A','B'].forEach(function (side) { if (state[side].autoLoaded && state[side].paused) { pause(side,true); release(side);emptyState(side,false); } }); }
   }
   return { create: create, weights: weights, clamp: clamp, nextIndex: nextIndex };
 });

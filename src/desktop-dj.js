@@ -66,7 +66,7 @@
       const actualRate=s.braking?s.braking.baseRate*s.braking.speed:s.actualRate||(s.autoRate===null?s.rate+s.nudge:s.autoRate);
       disc.querySelector('span').style.animationDuration = (1.8 / actualRate)+'s';
       disc.disabled=!local;
-      $('djVinyl'+side).textContent = !local?'VK · один поток':s.scratchStatus==='loading'?'Готовлю скретч…':s.scratchStatus==='error'?'Скретч недоступен для этого файла':s.held?'VINYL · пластинка удерживается':s.analysisStatus==='loading'?'Анализирую ритм…':'VINYL · удержание / скретч'+(s.analysis?.bpm?' · ≈ '+s.analysis.bpm+' BPM':'');
+      $('djVinyl'+side).textContent = !s.track?'Выберите аудиофайл':!local?'VK · один поток':s.scratchStatus==='loading'?'Готовлю скретч…':s.scratchStatus==='error'?'Скретч недоступен для этого файла':s.held?'VINYL · пластинка удерживается':s.analysisStatus==='loading'?'Анализирую ритм…':'VINYL · удержание / скретч'+(s.analysis?.bpm?' · ≈ '+s.analysis.bpm+' BPM':'');
       $('djKeyLock'+side).setAttribute('aria-pressed', String(s.keyLock));
       const baseBPM=s.syncBPM||s.bpm||s.analysis?.bpm; $('djEffectiveBPM'+side).textContent = '→ '+(baseBPM ? (baseBPM*actualRate).toFixed(1) : '—')+' BPM';
       const percent=(actualRate-1)*100;
