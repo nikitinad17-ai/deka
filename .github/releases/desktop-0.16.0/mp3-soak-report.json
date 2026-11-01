@@ -1,0 +1,177 @@
+{
+  "tests": [
+    {
+      "test": "405-second real-time MP3 soak contains no output gap",
+      "passed": true,
+      "elapsed": 413.10019999999554,
+      "minimum_rms": 0.03692115703648692,
+      "samples": 4128
+    },
+    {
+      "test": "Full 12-track queue plays in order and wraps without skips",
+      "passed": true,
+      "starts": [
+        {
+          "side": "A",
+          "title": "Soak-00",
+          "elapsed": 0.10019999999552966
+        },
+        {
+          "side": "B",
+          "title": "Soak-01",
+          "elapsed": 30.1
+        },
+        {
+          "side": "A",
+          "title": "Soak-02",
+          "elapsed": 61.50009999999404
+        },
+        {
+          "side": "B",
+          "title": "Soak-03",
+          "elapsed": 92.8
+        },
+        {
+          "side": "A",
+          "title": "Soak-04",
+          "elapsed": 124.10009999999404
+        },
+        {
+          "side": "B",
+          "title": "Soak-05",
+          "elapsed": 155.40319999999554
+        },
+        {
+          "side": "A",
+          "title": "Soak-06",
+          "elapsed": 186.701
+        },
+        {
+          "side": "B",
+          "title": "Soak-07",
+          "elapsed": 218.10009999999403
+        },
+        {
+          "side": "A",
+          "title": "Soak-08",
+          "elapsed": 249.40259999999404
+        },
+        {
+          "side": "B",
+          "title": "Soak-09",
+          "elapsed": 280.70009999999405
+        },
+        {
+          "side": "A",
+          "title": "Soak-10",
+          "elapsed": 312.00009999999406
+        },
+        {
+          "side": "B",
+          "title": "Soak-11",
+          "elapsed": 343.300099999994
+        },
+        {
+          "side": "A",
+          "title": "Soak-00",
+          "elapsed": 374.70009999999405
+        },
+        {
+          "side": "B",
+          "title": "Soak-01",
+          "elapsed": 406.00009999999406
+        }
+      ]
+    },
+    {
+      "test": "Both directions keep the same two players without output overload",
+      "passed": true,
+      "peak": 0.22045540809631348
+    },
+    {
+      "test": "No runtime errors during the uninterrupted soak",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "test": "Pause after long playback stays paused",
+      "passed": true
+    }
+  ],
+  "elapsed_seconds": 413.10019999999554,
+  "source": "Two synthetic MP3 signals; 12 files; full 17-second fades without seeks",
+  "minimum_rms": 0.03692115703648692,
+  "peak": 0.22045540809631348,
+  "starts": [
+    {
+      "side": "A",
+      "title": "Soak-00",
+      "elapsed": 0.10019999999552966
+    },
+    {
+      "side": "B",
+      "title": "Soak-01",
+      "elapsed": 30.1
+    },
+    {
+      "side": "A",
+      "title": "Soak-02",
+      "elapsed": 61.50009999999404
+    },
+    {
+      "side": "B",
+      "title": "Soak-03",
+      "elapsed": 92.8
+    },
+    {
+      "side": "A",
+      "title": "Soak-04",
+      "elapsed": 124.10009999999404
+    },
+    {
+      "side": "B",
+      "title": "Soak-05",
+      "elapsed": 155.40319999999554
+    },
+    {
+      "side": "A",
+      "title": "Soak-06",
+      "elapsed": 186.701
+    },
+    {
+      "side": "B",
+      "title": "Soak-07",
+      "elapsed": 218.10009999999403
+    },
+    {
+      "side": "A",
+      "title": "Soak-08",
+      "elapsed": 249.40259999999404
+    },
+    {
+      "side": "B",
+      "title": "Soak-09",
+      "elapsed": 280.70009999999405
+    },
+    {
+      "side": "A",
+      "title": "Soak-10",
+      "elapsed": 312.00009999999406
+    },
+    {
+      "side": "B",
+      "title": "Soak-11",
+      "elapsed": 343.300099999994
+    },
+    {
+      "side": "A",
+      "title": "Soak-00",
+      "elapsed": 374.70009999999405
+    },
+    {
+      "side": "B",
+      "title": "Soak-01",
+      "elapsed": 406.00009999999406
+    }
+  ]
+}

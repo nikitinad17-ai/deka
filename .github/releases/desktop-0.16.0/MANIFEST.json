@@ -1,0 +1,38 @@
+{
+  "product": "Deka Desktop",
+  "version": "0.16.0",
+  "platform": "Windows x64",
+  "source_commit": "2e81b9821f55a047d93740467786fe97ffbfeca3",
+  "branch": "feature/desktop-transition-fx-0.16.0",
+  "workflow_run": 41239453470,
+  "pull_request": "https://github.com/nikitinad17-ai/deka/pull/13",
+  "checks": {
+    "quality_passed": 310,
+    "native_desktop_passed": 37,
+    "local_soak_passed": 5,
+    "total": 352,
+    "runtime": "Edg/155.0.4283.62",
+    "standard_user": true,
+    "synthetic_mp3": true,
+    "user_audio_device_tested": false
+  },
+  "files": {
+    "Deka.exe": {
+      "size": 4479488,
+      "sha256": "c3a92878095025f4a2f194826f7d542b4f6d948b4fed3888eeda7c8b9bf558a2",
+      "pe_machine": "0x8664",
+      "version": "0.16.0"
+    },
+    "Deka-setup.exe": {
+      "size": 1553226,
+      "sha256": "c1cd49473a2ad49dbb92a7d99d68ef647cd673a10d936f89238d569e16434022",
+      "pe_machine": "0x14c",
+      "version": "0.16.0"
+    }
+  },
+  "artifact_digests": {
+    "quality": "71e98b433923484d6aa5ee4c61260f61552216d45421cf12e0e372c8ce6d8feb",
+    "native": "9a681e5060d2124e9f7e9bc404179596d51c035c2a1c9d6c6c841c31503b9844",
+    "windows": "2e6c0f7525dd0aaf23cf2f1a2317778cb2300600dc62b208374ed386e29c2a47"
+  }
+}
