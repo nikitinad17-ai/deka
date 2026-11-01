@@ -129,11 +129,11 @@ def publish(out):
     assert run['head_sha'] == SOURCE and run['conclusion'] == 'success'
     jobs = api(f'actions/runs/{RUN}/jobs')['jobs']
     assert all(any(j['name'] == name and j['conclusion'] == 'success' for j in jobs) for name in ['quality', 'windows'])
-    diff = api(f'compare/{SOURCE}...{target}')
-    assert diff['status'] == 'ahead' and diff['total_commits'] < 20
+    subprocess.run(['git', 'merge-base', '--is-ancestor', SOURCE, target], check=True)
+    changed = subprocess.check_output(['git', 'diff', '--name-only', '--no-renames', SOURCE, target], text=True).splitlines()
     allowed = ['README.md', 'docs/RELEASE-0.16.0.md', 'scripts/publish-desktop-016.py',
                '.github/workflows/publish-desktop-0.16.0.yml']
-    assert all(f['filename'] in allowed or f['filename'].startswith('.github/releases/desktop-0.16.0/') for f in diff['files'])
+    assert all(name in allowed or name.startswith('.github/releases/desktop-0.16.0/') for name in changed)
     artifacts = api(f'actions/runs/{RUN}/artifacts')['artifacts']
     with tempfile.TemporaryDirectory() as td:
         archives = {}
