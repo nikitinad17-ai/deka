@@ -40,7 +40,6 @@ jobs:
           name: browser-regression-results
           path: test-output/
   windows:
-    needs: quality
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

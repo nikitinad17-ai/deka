@@ -404,13 +404,15 @@
         changed();return;
       }
       var active=['A','B'].filter(function(side){var s=state[side];return !s.paused&&!s.pending&&s.track&&!s.braking&&!s.manualStopped;});
-      if(!active.length||!opts.autoMix||win.performance.now()<manualUntil)return;
+      if(!active.length)return;
       active.sort(function(x,y){return (state[x].duration-state[x].time)/elements[x]?.playbackRate-(state[y].duration-state[y].time)/elements[y]?.playbackRate;});
       var from=active[0],a=state[from],to=active.length===2?active[1]:prepareNext(from),b=state[to],el=elements[from],target=elements[to];
+      if(!opts.autoMix||win.performance.now()<manualUntil)return;
       if(a.track.kind!=='file'||!el||!b.track||b.track.kind!=='file'||b.braking||b.manualStopped||b.held||b.pending||!target||target.readyState<2||b.status==='error'||(active.length===1&&manualOverlap))return;
       var aa=sourceMeta(from),bb=sourceMeta(to),plan=opts.analysis?opts.analysis.plan(aa,bb,el.playbackRate):{matched:false,reason:'no-bpm',targetBPM:null,gain:1},incomingRate=plan.matched?plan.rate:target.playbackRate;
       var cue=active.length===2?target.currentTime:b.cueActive?b.cue:0;
       var requested=opts.fadeSeconds||17,seconds=Math.min(requested,el.duration/el.playbackRate-.1,(target.duration-cue)/incomingRate-.1);
+      if(el.duration/el.playbackRate<requested*1.05||(target.duration-cue)/incomingRate<requested*1.05)seconds=Math.min(seconds,el.duration/el.playbackRate/4,(target.duration-cue)/incomingRate/4);
       var remaining=(el.duration-el.currentTime)/el.playbackRate,lead=aa.bpm?60/aa.bpm/el.playbackRate+.35:.35;
       if(!(seconds>.05&&remaining>0)||remaining>seconds+lead)return;
       if(active.length===1){if(autoCross===null)autoCross=cross;crossTo(from==='A'?-1:1);}
