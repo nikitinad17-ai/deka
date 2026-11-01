@@ -1,1 +1,1 @@
-{"identifier":"wallpaper-display","description":"Passive wallpaper display receives visual frames only","windows":["wallpaper-display"],"permissions":["core:event:allow-listen"]}
+{"identifier":"wallpaper-display","description":"Passive wallpaper display receives visual frames only","windows":["wallpaper-display-*"],"permissions":["core:event:allow-listen"]}

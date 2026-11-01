@@ -10,8 +10,8 @@
   try{
    const clone=document.body.cloneNode(true);
    const sources=document.body.querySelectorAll('canvas'),copies=clone.querySelectorAll('canvas');
-   sources.forEach((canvas,i)=>{try{const img=document.createElement('img');img.src=canvas.toDataURL();img.className=canvas.className;img.style.cssText=canvas.style.cssText;img.width=canvas.width;img.height=canvas.height;copies[i].replaceWith(img);}catch{copies[i].remove();}});
-   document.body.querySelectorAll('input,select').forEach((src,i)=>{const dst=clone.querySelectorAll('input,select')[i];if(!dst)return;if(src.tagName==='SELECT')Array.from(dst.options).forEach((o,j)=>o.selected=j===src.selectedIndex);else{dst.setAttribute('value',src.value);if(src.checked)dst.setAttribute('checked','');else dst.removeAttribute('checked');}});
+   sources.forEach((canvas,i)=>{try{copies[i].setAttribute('data-deka-pixels',canvas.toDataURL());}catch{copies[i].removeAttribute('data-deka-pixels');}});
+   document.body.querySelectorAll('input,select').forEach((src,i)=>{const dst=clone.querySelectorAll('input,select')[i];if(!dst)return;if(src.tagName==='SELECT')Array.from(dst.options).forEach((o,j)=>o.toggleAttribute('selected',j===src.selectedIndex));else{dst.setAttribute('value',src.value);if(src.checked)dst.setAttribute('checked','');else dst.removeAttribute('checked');}});
    clone.querySelectorAll('script,audio,video,iframe,object,embed').forEach(e=>e.remove());
    clone.querySelectorAll('*').forEach(e=>Array.from(e.attributes).filter(a=>a.name.startsWith('on')).forEach(a=>e.removeAttribute(a.name)));
    await invoke('wallpaper_mirror',{frame:{html:clone.innerHTML,styles:Array.from(document.head.querySelectorAll('style,link[rel="stylesheet"]')).map(e=>e.outerHTML).join(''),bodyClass:document.body.className,rootClass:document.documentElement.className}});

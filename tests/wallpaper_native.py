@@ -134,7 +134,11 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  # Restart only Explorer in this disposable GitHub Actions desktop, never a user workstation.
  before_engine=page.evaluate('currentAudio("B").currentTime');subprocess.run(['taskkill.exe','/PID',str(shell_pid.value),'/F'],check=True,capture_output=True);page.wait_for_timeout(1300);subprocess.Popen(['explorer.exe']) if os.environ.get('DEKA_EXISTING_SHELL') else Path(os.environ['DEKA_CI_SHELL_REQUEST']).write_text('restart',encoding='utf-8')
  page.wait_for_function('()=>DekaWallpaper.mode==="normal"',timeout=15000);page.wait_for_timeout(1800);state=native()
- check('Actual Explorer restart restores an accessible window, tray and the same running audio engine',state['recoveries']>=1 and state['tray']and enabled(h)and not get_parent(h)and page.evaluate(f'__dj===__sameEngine&&!__dj.state.B.paused&&currentAudio("B").currentTime>{before_engine}'),recoveries=state['recoveries'],tray_rect=state['tray_rect'])
+ for _ in range(40):
+  state=native()
+  if state['tray_rect']:break
+  page.wait_for_timeout(250)
+ check('Actual Explorer restart restores an accessible window, tray and the same running audio engine',state['recoveries']>=1 and state['tray'] and state['tray_rect'] is not None and enabled(h)and not get_parent(h)and page.evaluate(f'__dj===__sameEngine&&!__dj.state.B.paused&&currentAudio("B").currentTime>{before_engine}'),recoveries=state['recoveries'],tray_rect=state['tray_rect'])
  state=native('background');page.wait_for_timeout(1200)
  check('Background display can be recreated after Explorer restart without replacing audio',state['mode']=='background' and state['engine_hwnd']==h and state['engine_parent']==0 and page.evaluate('__dj===__sameEngine&&!__dj.state.B.paused'))
  native('normal')

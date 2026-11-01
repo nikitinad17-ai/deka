@@ -66,7 +66,7 @@ fn hwnd(w:&WebviewWindow)->Result<Hwnd,String>{w.hwnd().map(|h|h.0 as Hwnd).map_
 #[derive(Clone)]struct Screen{name:String,x:i32,y:i32,width:u32,height:u32,scale:f64}
 fn screens(app:&AppHandle)->Vec<Screen>{app.available_monitors().unwrap_or_default().iter().map(|m|Screen{name:m.name().cloned().unwrap_or_else(||"Монитор".into()),x:m.position().x,y:m.position().y,width:m.size().width,height:m.size().height,scale:m.scale_factor()}).collect()}
 fn screen_json(s:&Screen)->Value{json!({"name":s.name,"x":s.x,"y":s.y,"width":s.width,"height":s.height,"scale":s.scale})}
-#[derive(Default)]struct Session{mode:String,selected:String,host:Hwnd,display:Hwnd,shell:Hwnd,icons:Hwnd,icon_root:Hwnd,raised:bool,shell_pid:u32,rect:Rect,style:isize,ex:isize,error:String,recoveries:u32,quiet:bool,geometry:String}
+#[derive(Default)]struct Session{mode:String,selected:String,host:Hwnd,display:Hwnd,shell:Hwnd,icons:Hwnd,icon_root:Hwnd,raised:bool,shell_pid:u32,rect:Rect,style:isize,ex:isize,error:String,recoveries:u32,quiet:bool,geometry:String,tray_retries:u8}
 pub struct Wallpaper(Mutex<Session>);
 fn configuration(app:&AppHandle)->Option<std::path::PathBuf>{app.path().app_config_dir().ok().map(|p|p.join("wallpaper-settings.json"))}
 fn journal(app:&AppHandle)->Option<std::path::PathBuf>{configuration(app).map(|p|p.with_file_name("wallpaper-diagnostics.jsonl"))}
@@ -131,14 +131,23 @@ fn shell_layer()->Result<Layer,String>{
  Err("Windows не предоставила слой обоев; возвращаю обычное окно".into())
 }
 fn rect_visible(r:Rect,all:&[Screen])->bool{all.iter().any(|m|r.right>m.x+64&&r.left<m.x+m.width as i32-64&&r.bottom>m.y+64&&r.top<m.y+m.height as i32-64)}
+fn display_window(app:&AppHandle)->Option<WebviewWindow>{
+ app.webview_windows().into_values().find(|w|w.label().starts_with("wallpaper-display-")&&hwnd(w).map(|h|unsafe{IsWindow(h)!=0}).unwrap_or(false))
+}
 fn ensure_display(app:&AppHandle)->Result<(),String>{
- if let Some(w)=app.get_webview_window("wallpaper-display"){if hwnd(&w).map(|h|unsafe{IsWindow(h)!=0}).unwrap_or(false){return Ok(());}}
- // Called off the UI thread; the passive WebView can be recreated after
- // Explorer destroys its child windows. The real player is never parented.
- tauri::WebviewWindowBuilder::new(app,"wallpaper-display",tauri::WebviewUrl::App("wallpaper-display.html".into()))
+ static SERIAL:std::sync::atomic::AtomicU64=std::sync::atomic::AtomicU64::new(0);
+ static CREATION:Mutex<()>=Mutex::new(());
+ let _lock=CREATION.lock().map_err(|_|"Экран обоев занят")?;
+ if display_window(app).is_some(){return Ok(());}
+ // Explorer can destroy a native HWND without releasing Tauri's old label.
+ // Retire stale wrappers and use a fresh label for this passive generation.
+ for w in app.webview_windows().into_values().filter(|w|w.label().starts_with("wallpaper-display-")){let _=w.destroy();}
+ let label=format!("wallpaper-display-{}",SERIAL.fetch_add(1,std::sync::atomic::Ordering::Relaxed));
+ tauri::WebviewWindowBuilder::new(app,label,tauri::WebviewUrl::App("wallpaper-display.html".into()))
   .title("Deka Wallpaper Display").visible(false).focused(false).decorations(false).skip_taskbar(true)
   .additional_browser_args(crate::BROWSER_ARGS).build().map(|_|()).map_err(|e|e.to_string())
 }
+
 fn ordinary(app:&AppHandle,w:&WebviewWindow,s:&mut Session,focus:bool)->Result<(),String>{
  let h=hwnd(w)?;
  unsafe{if s.display!=0&&IsWindow(s.display)!=0{ShowWindow(s.display,0);SetParent(s.display,0);SetWindowLongPtrW(s.display,-16,POPUP);}
@@ -170,7 +179,7 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
    unsafe{SetWindowLongPtrW(h,-16,(s.style&!CHILD&!0x00C40000)|POPUP);SetWindowPos(h,-2,selected.x,selected.y,selected.width as i32,selected.height as i32,0x20|0x40);}
    s.mode="active".into();unsafe{ShowWindow(h,5);SetForegroundWindow(h);SetFocus(h);}
   }else{
-   let display=app.get_webview_window("wallpaper-display").ok_or("Экран обоев ещё не готов")?;let display_h=hwnd(&display)?;
+   let display=display_window(app).ok_or("Экран обоев ещё не готов")?;let display_h=hwnd(&display)?;
    match shell_layer(){
     Ok(layer)=>unsafe{
      let Layer{parent,icons:def,icon_root,raised,..}=layer;
@@ -241,8 +250,14 @@ pub fn setup(app:&AppHandle)->Result<(),Box<dyn std::error::Error>>{
  let app=app.clone();std::thread::spawn(move||{let mut last_shell=find("Shell_TrayWnd");loop{
   std::thread::sleep(Duration::from_millis(1000));let handle=app.clone();let _=app.run_on_main_thread(move||{
    let all=screens(&handle);let geometry=all.iter().map(|m|format!("{}:{},{},{},{}:{}",m.name,m.x,m.y,m.width,m.height,m.scale)).collect::<Vec<_>>().join("|");
-   let shell=find("Shell_TrayWnd");if shell!=0&&shell!=last_shell{let _=handle.remove_tray_by_id("deka-wallpaper");let _=install_tray(&handle);} // Re-register after Explorer recreates its tray.
+   let shell=find("Shell_TrayWnd");
    let st=handle.state::<Wallpaper>();let mut s=st.0.lock().unwrap();let mut recover=false;
+   if shell!=0&&shell!=last_shell{
+    let _=handle.remove_tray_by_id("deka-wallpaper");let _=install_tray(&handle);s.tray_retries=10;
+   }else if shell!=0&&s.tray_retries>0{
+    let visible=handle.tray_by_id("deka-wallpaper").and_then(|t|t.rect().ok().flatten()).is_some();
+    if visible{s.tray_retries=0;}else{let _=handle.remove_tray_by_id("deka-wallpaper");let _=install_tray(&handle);s.tray_retries-=1;}
+   }
    if s.mode!="normal"{
     if !all.iter().any(|m|m.name==s.selected){s.error="Монитор отключён; возвращено обычное окно".into();recover=true;}
     else if s.mode=="background"&&(!attached(s.display,&s)||main_window(&handle).and_then(|w|hwnd(&w)).map(|h|unsafe{IsWindowVisible(h)!=0}).unwrap_or(true)){s.error="Слой обоев изменился; управление восстановлено в окне".into();recover=true;}
@@ -261,11 +276,11 @@ pub fn setup(app:&AppHandle)->Result<(),Box<dyn std::error::Error>>{
 #[tauri::command]
 pub fn wallpaper_mirror(app:AppHandle,window:WebviewWindow,frame:Value)->Result<(),String>{
  if window.label()!="main"{return Err("Недоступно".into());}
- app.emit_to("wallpaper-display","wallpaper:frame",frame).map_err(|e|e.to_string())
+ if let Some(display)=display_window(&app){app.emit_to(display.label(),"wallpaper:frame",frame).map_err(|e|e.to_string())}else{Ok(())}
 }
 #[tauri::command]
 pub fn wallpaper_display_ready(app:AppHandle,window:WebviewWindow)->Result<(),String>{
- if window.label()!="wallpaper-display"{return Err("Недоступно".into());}
+ if !window.label().starts_with("wallpaper-display-"){return Err("Недоступно".into());}
  app.emit_to("main","wallpaper:mirror-request",()).map_err(|e|e.to_string())
 }
 #[tauri::command]
