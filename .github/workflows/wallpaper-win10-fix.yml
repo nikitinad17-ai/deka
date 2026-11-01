@@ -11,6 +11,8 @@ jobs:
   shell:
     runs-on: windows-2022
     timeout-minutes: 25
+    permissions:
+      contents: write
     env:
       PYTHONUTF8: '1'
       PYTHONIOENCODING: utf-8
@@ -50,3 +52,26 @@ jobs:
             test-output/*.json
             test-output/*.txt
             test-output/*.png
+      - name: Package verified release candidate
+        env:
+          DEKA_SOURCE_SHA: ${{ github.sha }}
+          DEKA_TEST_RUN: ${{ github.run_id }}
+        run: python scripts/package-wallpaper-win10-fix.py
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: wallpaper-v0.1.1-rc.1
+          target_commitish: ${{ github.sha }}
+          name: Deka Wallpaper 0.1.1 RC1 — исправление фона Windows 10
+          prerelease: true
+          make_latest: false
+          body_path: wallpaper-fix-out/READ-ME-FIRST.txt
+          files: |
+            wallpaper-fix-out/Deka-Wallpaper-0.1.1-RC1-Windows.zip
+            wallpaper-fix-out/Deka-Wallpaper.exe
+            wallpaper-fix-out/Deka-Wallpaper-setup.exe
+            wallpaper-fix-out/SHA256SUMS.txt
+          fail_on_unmatched_files: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wallpaper-win10-fix-release
+          path: wallpaper-fix-out/

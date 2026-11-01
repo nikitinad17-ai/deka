@@ -91,8 +91,11 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
    page.screenshot(path=str(OUT/('wallpaper-webview-'+mode+'.png')))
    check('Actual composed desktop shows Wallpaper in '+mode,all(abs(a-b)<=8 for a,b in zip(actual,[217,31,193])),screen_pixel=actual,position=[sx,sy])
   if mode=='background':
-   parent=get_parent(h);grand=get_parent(parent);check('Real background parent is a child layer of WorkerW or Progman, with native input disabled',parent==state['host']and grand==state['shell']and classname(grand)in['WorkerW','Progman']and not enabled(h)and get_ex(h,-20)&0x08000020==0x08000020,parent_class=classname(grand))
+   background_h=state['hwnd'];parent=get_parent(background_h);grand=get_parent(parent);check('Real background parent is a child layer of WorkerW or Progman, with native input disabled',parent==state['host']and grand==state['shell']and classname(grand)in['WorkerW','Progman']and not enabled(background_h)and get_ex(background_h,-20)&0x08000020==0x08000020,parent_class=classname(grand))
    check('Native placement remains below the visible icon layer',state.get('placement_verified') is True)
+   check('Audio player stays outside Explorer; wallpaper surface contains no audio engine',state['engine_hwnd']==h and state['engine_parent']==0 and state['hwnd']!=h)
+   passive=next(q for q in context.pages if 'wallpaper-display.html' in q.url)
+   check('Passive display has no audio elements or DJ engine',passive.evaluate('typeof __dj===\"undefined\"&&!document.querySelector(\"audio,video\")'))
    if os.environ.get('DEKA_EXISTING_SHELL'):
     frame=ImageGrab.grab(all_screens=True).convert('RGB');pixels=frame.load();points=[]
     for y in range(0,frame.height,2):
@@ -128,6 +131,11 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  before_engine=page.evaluate('currentAudio("B").currentTime');subprocess.run(['taskkill.exe','/PID',str(shell_pid.value),'/F'],check=True,capture_output=True);page.wait_for_timeout(1300);subprocess.Popen(['explorer.exe']) if os.environ.get('DEKA_EXISTING_SHELL') else Path(os.environ['DEKA_CI_SHELL_REQUEST']).write_text('restart',encoding='utf-8')
  page.wait_for_function('()=>DekaWallpaper.mode==="normal"',timeout=15000);page.wait_for_timeout(1800);state=native()
  check('Actual Explorer restart restores an accessible window, tray and the same running audio engine',state['recoveries']>=1 and state['tray']and enabled(h)and not get_parent(h)and page.evaluate(f'__dj===__sameEngine&&!__dj.state.B.paused&&currentAudio("B").currentTime>{before_engine}'),recoveries=state['recoveries'],tray_rect=state['tray_rect'])
+ state=native('background');page.wait_for_timeout(1200)
+ check('Background display can be recreated after Explorer restart without replacing audio',state['mode']=='background' and state['engine_hwnd']==h and state['engine_parent']==0 and page.evaluate('__dj===__sameEngine&&!__dj.state.B.paused'))
+ native('normal')
+ saved=page.evaluate("__TAURI__.core.invoke('wallpaper_report')")
+ check('Save report writes native placement diagnostics',Path(saved).exists() and 'shell' in Path(saved).read_text(encoding='utf-8'))
  check('Windows provides monitor selection; mixed-DPI/unplug geometry is also unit-tested',len(state['monitors'])>=1,physical_monitor_count=len(state['monitors']),physical_two_monitors_tested=False,physical_dpi_change_tested=False)
  # A second launch must hand back to the existing instance, never make another player.
  copied=Path(os.environ['DEKA_EXE']) if os.environ.get('DEKA_EXE') else next(Path(os.environ['PUBLIC']).glob('DekaCI*/Deka.exe'));second=subprocess.Popen([str(copied)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);second.wait(timeout=12);page.wait_for_timeout(300)

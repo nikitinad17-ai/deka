@@ -4,6 +4,21 @@
  const invoke=window.__TAURI__?.core?.invoke,listen=window.__TAURI__?.event?.listen;
  if(!invoke)return;
  const api=window.DekaWallpaper={mode:'normal',quiet:false,state:null};
+ let mirroring=false;
+ async function mirror(){
+  if(api.mode!=='background'||mirroring)return;mirroring=true;
+  try{
+   const clone=document.body.cloneNode(true);
+   const sources=document.body.querySelectorAll('canvas'),copies=clone.querySelectorAll('canvas');
+   sources.forEach((canvas,i)=>{try{const img=document.createElement('img');img.src=canvas.toDataURL();img.className=canvas.className;img.style.cssText=canvas.style.cssText;img.width=canvas.width;img.height=canvas.height;copies[i].replaceWith(img);}catch{copies[i].remove();}});
+   document.body.querySelectorAll('input,select').forEach((src,i)=>{const dst=clone.querySelectorAll('input,select')[i];if(!dst)return;if(src.tagName==='SELECT')Array.from(dst.options).forEach((o,j)=>o.selected=j===src.selectedIndex);else{dst.setAttribute('value',src.value);if(src.checked)dst.setAttribute('checked','');else dst.removeAttribute('checked');}});
+   clone.querySelectorAll('script,audio,video,iframe,object,embed').forEach(e=>e.remove());
+   clone.querySelectorAll('*').forEach(e=>Array.from(e.attributes).filter(a=>a.name.startsWith('on')).forEach(a=>e.removeAttribute(a.name)));
+   await invoke('wallpaper_mirror',{frame:{html:clone.innerHTML,styles:Array.from(document.head.querySelectorAll('style,link[rel="stylesheet"]')).map(e=>e.outerHTML).join(''),bodyClass:document.body.className,rootClass:document.documentElement.className}});
+  }finally{mirroring=false;}
+ }
+ setInterval(()=>mirror().catch(()=>{}),1000);
+ listen('wallpaper:mirror-request',()=>mirror().catch(()=>{}));
  const bar=document.createElement('aside');bar.className='wallpaper-toolbar';bar.setAttribute('aria-label','Режим рабочего стола');
  bar.innerHTML='<strong>DEKA · Wallpaper <small>0.1.1 · RC1</small></strong><select id="wallMonitor" aria-label="Монитор"></select><button id="wallActive">Активно</button><button id="wallBackground">Фон</button><button id="wallNormal">Обычное окно · Esc</button><button id="wallReport">Сохранить отчёт</button><output id="wallState">Обычное окно</output>';
  document.body.prepend(bar);const $=id=>document.getElementById(id);
@@ -13,6 +28,7 @@
   if(s.selected)$('wallMonitor').value=s.selected;
   for(const [id,mode]of[['wallActive','active'],['wallBackground','background'],['wallNormal','normal']])$(id).setAttribute('aria-pressed',String(api.mode===mode));
   $('wallState').textContent=s.error||({normal:'Обычное окно',active:'Активно · Esc — в окно',background:'Фон · управление в трее'}[api.mode]);
+  if(api.mode==='background')requestAnimationFrame(()=>mirror().catch(()=>{}));
  }
  async function set(mode){try{render(await invoke('wallpaper_set',{mode,monitor:$('wallMonitor').value||null}));}catch(e){$('wallState').textContent=String(e);}}
  $('wallReport').onclick=async()=>{try{$('wallState').textContent='Сохранено: '+await invoke('wallpaper_report');}catch(e){$('wallState').textContent=String(e);}};
