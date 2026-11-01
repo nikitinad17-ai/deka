@@ -28,6 +28,9 @@ type Hwnd=isize;
  fn GetWindowRect(window:Hwnd,rect:*mut Rect)->i32;
  fn SetWindowPos(window:Hwnd,after:Hwnd,x:i32,y:i32,w:i32,h:i32,flags:u32)->i32;
  fn EnableWindow(window:Hwnd,enabled:i32)->i32;
+ fn ShowWindow(window:Hwnd,command:i32)->i32;
+ fn SetForegroundWindow(window:Hwnd)->i32;
+ fn SetFocus(window:Hwnd)->Hwnd;
  fn IsWindow(window:Hwnd)->i32;
  fn IsWindowVisible(window:Hwnd)->i32;
  fn IsIconic(window:Hwnd)->i32;
@@ -93,11 +96,13 @@ fn rect_visible(r:Rect,all:&[Screen])->bool{all.iter().any(|m|r.right>m.x+64&&r.
 fn ordinary(app:&AppHandle,w:&WebviewWindow,s:&mut Session)->Result<(),String>{
  let h=hwnd(w)?;
  unsafe{EnableWindow(h,1);SetParent(h,0);SetWindowLongPtrW(h,-16,s.style);SetWindowLongPtrW(h,-20,s.ex);if s.host!=0&&IsWindow(s.host)!=0{DestroyWindow(s.host);}s.host=0;}
- let _=w.set_ignore_cursor_events(false);let _=w.set_decorations(true);let _=w.set_skip_taskbar(false);let _=w.set_always_on_top(false);let _=w.unminimize();
+ // Window setters in winit are queued and reapply cached top-level styles.
+ // Keep native parenting/style changes in one Win32 transaction instead.
+ unsafe{ShowWindow(h,9);}
  let all=screens(app);let mut r=s.rect;
  if !rect_visible(r,&all){if let Some(m)=all.first(){r=Rect{left:m.x+20,top:m.y+20,right:m.x+20+(m.width.saturating_sub(40).min(1120))as i32,bottom:m.y+20+(m.height.saturating_sub(80).min(780))as i32};}}
  if r.right>r.left&&r.bottom>r.top{unsafe{SetWindowPos(h,0,r.left,r.top,r.right-r.left,r.bottom-r.top,0x20|0x40);}}
- s.mode="normal".into();s.shell=0;s.shell_pid=0;w.show().map_err(|e|e.to_string())?;let _=w.set_focus();Ok(())
+ s.mode="normal".into();s.shell=0;s.shell_pid=0;unsafe{SetWindowPos(h,-2,0,0,0,0,0x1|0x2|0x20|0x40);ShowWindow(h,5);SetForegroundWindow(h);SetFocus(h);}Ok(())
 }
 fn notify(app:&AppHandle,s:&Session){let _=app.emit_to("main","wallpaper:state",json!({"mode":s.mode,"selected":s.selected,"error":s.error,"quiet":s.quiet,"recoveries":s.recoveries}));}
 fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,String>{
@@ -108,10 +113,9 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
  s.error.clear();ordinary(app,&w,&mut s)?;
  if requested!="normal"{
   let all=screens(app);let selected=all.iter().find(|m|m.name==s.selected).or_else(||all.first()).ok_or("Нет доступного монитора")?.clone();s.selected=selected.name.clone();
-  let _=w.set_decorations(false);let _=w.set_always_on_top(false);
   if requested=="active"{
-   unsafe{SetWindowLongPtrW(h,-16,(s.style&!CHILD&!0x00C40000)|POPUP);SetWindowPos(h,0,selected.x,selected.y,selected.width as i32,selected.height as i32,0x20|0x40);}
-   s.mode="active".into();w.show().map_err(|e|e.to_string())?;let _=w.set_focus();
+   unsafe{SetWindowLongPtrW(h,-16,(s.style&!CHILD&!0x00C40000)|POPUP);SetWindowPos(h,-2,selected.x,selected.y,selected.width as i32,selected.height as i32,0x20|0x40);}
+   s.mode="active".into();unsafe{ShowWindow(h,5);SetForegroundWindow(h);SetFocus(h);}
   }else{
    match shell_layer(){
     Ok((parent,def,raised))=>unsafe{
@@ -130,7 +134,7 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
        if raised{SetLayeredWindowAttributes(host,0,255,2);}
        SetWindowPos(host,if raised{def}else{0},point.x,point.y,selected.width as i32,selected.height as i32,0x10|0x20|0x40);
        SetWindowPos(h,0,0,0,selected.width as i32,selected.height as i32,0x10|0x20|0x40);
-       EnableWindow(host,0);EnableWindow(h,0);let _=w.set_ignore_cursor_events(true);let _=w.set_skip_taskbar(true);
+       EnableWindow(host,0);EnableWindow(h,0);
        s.mode="background".into();s.shell=parent;GetWindowThreadProcessId(parent,&mut s.shell_pid);
       }
      }
