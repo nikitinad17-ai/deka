@@ -1,4 +1,4 @@
-"""Real Windows shell + exact Wallpaper EXE, under native-wallpaper-ci standard account."""
+"""Real Windows shell + exact Wallpaper EXE; actual token recorded in environment."""
 import ast,ctypes as C,json,os,subprocess,tempfile,time
 from ctypes import wintypes as W
 from pathlib import Path
@@ -141,9 +141,27 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  check('Explorer restart fixture provides a real desktop and taskbar',bool(find('Progman',None)) and bool(find('Shell_TrayWnd',None)))
  for _ in range(40):
   state=native()
-  if state['tray_rect']:break
+  if state.get('tray_registered'):break
   page.wait_for_timeout(250)
- check('Actual Explorer restart restores an accessible window, tray and the same running audio engine',state['recoveries']>=1 and state['tray'] and state['tray_rect'] is not None and enabled(h)and not get_parent(h)and page.evaluate(f'__dj===__sameEngine&&!__dj.state.B.paused&&currentAudio("B").currentTime>{before_engine}'),recoveries=state['recoveries'],tray_rect=state['tray_rect'])
+ print('TRAY REGISTRATION',state.get('tray_registered'),state.get('tray_attempts'),state['tray_rect'],flush=True)
+ if not state['tray_rect']:
+  # Explorer may move a successfully restored icon into the hidden-icons popup.
+  # Open the real chevron with a mouse click before requiring its coordinates.
+  candidates=[]
+  @callback_type
+  def tray_child(q,_):
+   title=C.create_unicode_buffer(256);U.GetWindowTextW(q,title,256)
+   if classname(q)=='Button' and is_visible(q):candidates.append(q)
+   print('TRAY CHILD',q,classname(q),title.value,flush=True);return True
+  enum_children(find('Shell_TrayWnd',None),tray_child,0)
+  for q in candidates:
+   r=W.RECT();get_rect=bind('GetWindowRect',W.BOOL,[W.HWND,C.POINTER(W.RECT)]);get_rect(q,C.byref(r))
+   cursor=bind('SetCursorPos',W.BOOL,[C.c_int,C.c_int]);cursor((r.left+r.right)//2,(r.top+r.bottom)//2)
+   click=bind('mouse_event',None,[W.DWORD,W.DWORD,W.DWORD,W.DWORD,C.c_size_t]);click(2,0,0,0,0);click(4,0,0,0,0)
+   page.wait_for_timeout(500);state=native()
+   if state['tray_rect']:break
+ ImageGrab.grab(all_screens=True).save(OUT/'wallpaper-restored-tray.png')
+ check('Actual Explorer restart restores an accessible window, tray and the same running audio engine',state['recoveries']>=1 and state['tray'] and state['tray_rect'] is not None and enabled(h)and not get_parent(h)and page.evaluate(f'__dj===__sameEngine&&!__dj.state.B.paused&&currentAudio("B").currentTime>{before_engine}'),recoveries=state['recoveries'],tray_rect=state['tray_rect'],registered=state.get('tray_registered'))
  state=native('background');page.wait_for_timeout(1200)
  check('Background display can be recreated after Explorer restart without replacing audio',state['mode']=='background' and state['engine_hwnd']==h and state['engine_parent']==0 and page.evaluate('__dj===__sameEngine&&!__dj.state.B.paused'))
  actual=[]

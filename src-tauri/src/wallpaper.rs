@@ -218,12 +218,17 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
  }
  s.quiet=s.mode=="background";save(app,&s);notify(app,&s);drop(s);let result=snapshot(app)?;record(app,requested,result.clone());Ok(result)
 }
+fn tray_registered(app:&AppHandle)->bool{
+ // NIM_MODIFY succeeds for an existing icon even when Explorer puts it in
+ // the closed overflow area, where Shell_NotifyIconGetRect can return None.
+ app.tray_by_id("deka-wallpaper").map(|t|t.set_tooltip(Some("Deka Desktop Wallpaper · режимы и выход")).is_ok()).unwrap_or(false)
+}
 fn snapshot(app:&AppHandle)->Result<Value,String>{
  let w=main_window(app)?;let h=hwnd(&w)?;let state=app.state::<Wallpaper>();let s=state.0.lock().map_err(|_|"Состояние занято")?;
  let engine_h=h;let h=if s.mode=="background"{s.display}else{engine_h};
  let all=screens(app);let mut r=Rect::default();unsafe{GetWindowRect(h,&mut r);}
  let tray=app.tray_by_id("deka-wallpaper").is_some();let tray_rect=app.tray_by_id("deka-wallpaper").and_then(|t|t.rect().ok().flatten()).map(|r|format!("{r:?}"));
- Ok(json!({"version":"0.1.1-rc.1","mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"engine_hwnd":engine_h,"engine_parent":unsafe{GetParent(engine_h)},"engine_visible":unsafe{IsWindowVisible(engine_h)!=0},"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_rect":tray_rect,"tray_shell":s.tray_shell,"tray_attempts":s.tray_attempts,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
+ Ok(json!({"version":"0.1.1-rc.1","mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"engine_hwnd":engine_h,"engine_parent":unsafe{GetParent(engine_h)},"engine_visible":unsafe{IsWindowVisible(engine_h)!=0},"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_registered":tray_registered(app),"tray_rect":tray_rect,"tray_shell":s.tray_shell,"tray_attempts":s.tray_attempts,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
 }
 pub fn action(app:&AppHandle,id:&str){
  if id=="exit"{let _=place(app,"normal",None);app.exit(0);return;}
@@ -254,8 +259,8 @@ pub fn setup(app:&AppHandle)->Result<(),Box<dyn std::error::Error>>{
    let shell=find("Shell_TrayWnd");
    let st=handle.state::<Wallpaper>();let mut s=st.0.lock().unwrap();let mut recover=false;
    // Observe and update shell identity in the same UI-thread transaction.
-   // Also detect a missing icon independently of the shell HWND transition.
-   let tray_visible=handle.tray_by_id("deka-wallpaper").and_then(|t|t.rect().ok().flatten()).is_some();
+   // Probe registration, not geometry: a valid icon can be in closed overflow.
+   let tray_visible=tray_registered(&handle);
    if shell!=s.tray_shell{s.tray_attempts=0;s.tray_shell=shell;}
    if shell!=0&&!tray_visible&&s.tray_attempts<10{
     s.tray_attempts+=1;let _=handle.remove_tray_by_id("deka-wallpaper");
