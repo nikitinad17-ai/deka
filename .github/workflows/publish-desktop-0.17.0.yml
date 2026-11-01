@@ -1,0 +1,41 @@
+name: Publish verified Desktop 0.17.0
+on:
+  push:
+    branches: [release/desktop-0.17.0]
+    paths:
+      - .github/workflows/publish-desktop-0.17.0.yml
+      - scripts/publish-desktop-017.py
+      - .github/releases/desktop-0.17.0/**
+permissions:
+  contents: read
+concurrency:
+  group: deka-publish-desktop-0.17.0
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'nikitinad17-ai/deka'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify existing CI artifacts and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/publish-desktop-017.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-0.17.0-publication
+          path: |
+            release-out/publication-report.json
+            release-out/Deka-Desktop-0.17.0-Windows.zip
+          if-no-files-found: ignore

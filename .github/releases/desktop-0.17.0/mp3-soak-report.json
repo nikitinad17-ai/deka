@@ -1,0 +1,208 @@
+{
+  "tests": [
+    {
+      "test": "405-second real-time MP3 soak contains no output gap",
+      "passed": true,
+      "elapsed": 413.20020000000113,
+      "minimum_rms": 0.037525156175543854,
+      "samples": 4130
+    },
+    {
+      "test": "Full 12-track queue plays in order and wraps without skips",
+      "passed": true,
+      "starts": [
+        {
+          "side": "A",
+          "title": "Soak-00",
+          "elapsed": 0.1005
+        },
+        {
+          "side": "B",
+          "title": "Soak-01",
+          "elapsed": 24.00020000000112
+        },
+        {
+          "side": "A",
+          "title": "Soak-02",
+          "elapsed": 50.000200000001115
+        },
+        {
+          "side": "B",
+          "title": "Soak-03",
+          "elapsed": 74.50020000000112
+        },
+        {
+          "side": "A",
+          "title": "Soak-04",
+          "elapsed": 100.60020000000112
+        },
+        {
+          "side": "B",
+          "title": "Soak-05",
+          "elapsed": 125.10020000000112
+        },
+        {
+          "side": "A",
+          "title": "Soak-06",
+          "elapsed": 151.1002000000011
+        },
+        {
+          "side": "B",
+          "title": "Soak-07",
+          "elapsed": 175.6002000000011
+        },
+        {
+          "side": "A",
+          "title": "Soak-08",
+          "elapsed": 201.60220000000112
+        },
+        {
+          "side": "B",
+          "title": "Soak-09",
+          "elapsed": 226.10040000000038
+        },
+        {
+          "side": "A",
+          "title": "Soak-10",
+          "elapsed": 252.101
+        },
+        {
+          "side": "B",
+          "title": "Soak-11",
+          "elapsed": 276.6002000000011
+        },
+        {
+          "side": "A",
+          "title": "Soak-00",
+          "elapsed": 302.7001000000015
+        },
+        {
+          "side": "B",
+          "title": "Soak-01",
+          "elapsed": 327.20020000000113
+        },
+        {
+          "side": "A",
+          "title": "Soak-02",
+          "elapsed": 353.20020000000113
+        },
+        {
+          "side": "B",
+          "title": "Soak-03",
+          "elapsed": 377.7009000000004
+        },
+        {
+          "side": "A",
+          "title": "Soak-04",
+          "elapsed": 403.70020000000113
+        }
+      ]
+    },
+    {
+      "test": "Both directions keep the same two players without output overload",
+      "passed": true,
+      "peak": 0.22055917978286743
+    },
+    {
+      "test": "No runtime errors during the uninterrupted soak",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "test": "Pause after long playback stays paused",
+      "passed": true
+    }
+  ],
+  "elapsed_seconds": 413.20020000000113,
+  "source": "Two synthetic MP3 signals; 12 files; full 17-second fades without seeks",
+  "minimum_rms": 0.037525156175543854,
+  "peak": 0.22055917978286743,
+  "starts": [
+    {
+      "side": "A",
+      "title": "Soak-00",
+      "elapsed": 0.1005
+    },
+    {
+      "side": "B",
+      "title": "Soak-01",
+      "elapsed": 24.00020000000112
+    },
+    {
+      "side": "A",
+      "title": "Soak-02",
+      "elapsed": 50.000200000001115
+    },
+    {
+      "side": "B",
+      "title": "Soak-03",
+      "elapsed": 74.50020000000112
+    },
+    {
+      "side": "A",
+      "title": "Soak-04",
+      "elapsed": 100.60020000000112
+    },
+    {
+      "side": "B",
+      "title": "Soak-05",
+      "elapsed": 125.10020000000112
+    },
+    {
+      "side": "A",
+      "title": "Soak-06",
+      "elapsed": 151.1002000000011
+    },
+    {
+      "side": "B",
+      "title": "Soak-07",
+      "elapsed": 175.6002000000011
+    },
+    {
+      "side": "A",
+      "title": "Soak-08",
+      "elapsed": 201.60220000000112
+    },
+    {
+      "side": "B",
+      "title": "Soak-09",
+      "elapsed": 226.10040000000038
+    },
+    {
+      "side": "A",
+      "title": "Soak-10",
+      "elapsed": 252.101
+    },
+    {
+      "side": "B",
+      "title": "Soak-11",
+      "elapsed": 276.6002000000011
+    },
+    {
+      "side": "A",
+      "title": "Soak-00",
+      "elapsed": 302.7001000000015
+    },
+    {
+      "side": "B",
+      "title": "Soak-01",
+      "elapsed": 327.20020000000113
+    },
+    {
+      "side": "A",
+      "title": "Soak-02",
+      "elapsed": 353.20020000000113
+    },
+    {
+      "side": "B",
+      "title": "Soak-03",
+      "elapsed": 377.7009000000004
+    },
+    {
+      "side": "A",
+      "title": "Soak-04",
+      "elapsed": 403.70020000000113
+    }
+  ],
+  "source_commit": "73f27bf41f075d5ffe242129a5795cd49498539b"
+}

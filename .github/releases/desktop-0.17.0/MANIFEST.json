@@ -1,0 +1,59 @@
+{
+  "product": "Deka Desktop",
+  "version": "0.17.0",
+  "platform": "Windows x64",
+  "source_commit": "8ae40b27c75ec3863c8524143b093cdb32f4c798",
+  "branch": "feature/desktop-bpm-0.17.0",
+  "workflow_run": 41279896331,
+  "pull_request": "https://github.com/nikitinad17-ai/deka/pull/14",
+  "checks": {
+    "quality_passed": 384,
+    "quality_node_passed": 44,
+    "quality_desktop_passed": 119,
+    "native_desktop_passed": 103,
+    "local_soak_passed": 5,
+    "local_fx_levels_passed": 2,
+    "total": 494,
+    "runtime": "Edg/155.0.4283.62",
+    "standard_user": true,
+    "synthetic_audio": true,
+    "live_vk_account_tested": false,
+    "user_audio_device_tested": false
+  },
+  "files": {
+    "Deka.exe": {
+      "size": 4486144,
+      "sha256": "4d3d8dc4aebdd7c97d5a586f9102d10171f609fa6b0a6ded6d422f9fd274aaf5",
+      "pe_machine": "0x8664",
+      "version": "0.17.0"
+    },
+    "Deka-setup.exe": {
+      "size": 1558750,
+      "sha256": "5f631a6a03a1053a425190808d47cba17605c39d85091b4a4c94d844522083b4",
+      "pe_machine": "0x14c",
+      "version": "0.17.0"
+    }
+  },
+  "artifact_digests": {
+    "native": "019d647588cc215eea30257195c08749acc1c85e85822cf05004a296c6283b1f",
+    "quality": "a8201667c77fc4c80383b986074a06c082bdc9d18c8128063bc6b294b4c984cb",
+    "windows": "fdbfd3a0206a93d92328305fd7b907672e6d50e7e267a0215c3a5af2bf909e1d"
+  },
+  "quality_reports": {
+    "report.json": 78,
+    "desktop-dj-report.json": 30,
+    "desktop-vinyl-report.json": 26,
+    "android-dj-report.json": 24,
+    "continuous-report.json": 29,
+    "automix-report.json": 19,
+    "mp3-transport-report.json": 15,
+    "desktop-session-report.json": 119
+  },
+  "soak_source_commit": "73f27bf41f075d5ffe242129a5795cd49498539b",
+  "fx_verification_source": "73f27bf41f075d5ffe242129a5795cd49498539b",
+  "application_objects": {
+    "src": "a851f3d2fbf03919792ceea101faafb03b0bb820",
+    "src-tauri": "80318bcb1aededf5870bea20e1d2f52838bf0f4b",
+    "package.json": "4fefceeed808a0219b9e8b5e997a276d0b77e2f2"
+  }
+}
