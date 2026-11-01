@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Deka",
+  "productName": "Deka Dar Music",
   "version": "0.18.0",
-  "identifier": "ru.volna.player",
+  "identifier": "ru.volna.deka.darmusic",
   "build": {
     "frontendDist": "../src"
   },
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Дека",
+        "title": "dar music · Deka 0.18",
         "width": 1120,
         "height": 780,
         "minWidth": 420,
