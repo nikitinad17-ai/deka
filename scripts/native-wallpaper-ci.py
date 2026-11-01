@@ -90,6 +90,19 @@ def main():
         u=C.WinDLL('user32',use_last_error=True)
         fw=bind(u,'FindWindowW',W.HWND,[W.LPCWSTR,W.LPCWSTR])
         window_pid=bind(u,'GetWindowThreadProcessId',W.DWORD,[W.HWND,C.POINTER(W.DWORD)])
+
+        get_station=bind(u,'GetProcessWindowStation',W.HANDLE,[])
+        get_desktop=bind(u,'GetThreadDesktop',W.HANDLE,[W.DWORD])
+        thread_id=bind(kernel,'GetCurrentThreadId',W.DWORD,[])
+        object_info=bind(u,'GetUserObjectInformationW',W.BOOL,[W.HANDLE,C.c_int,PTR,W.DWORD,C.POINTER(W.DWORD)])
+        def object_name(obj):
+            name=C.create_unicode_buffer(256);size=W.DWORD()
+            check(object_info(obj,2,name,C.sizeof(name),C.byref(size)),'Read desktop context')
+            return name.value
+        station=get_station();flags=(W.DWORD*3)();size=W.DWORD()
+        check(object_info(station,1,flags,C.sizeof(flags),C.byref(size)),'Read window station visibility')
+        print('CAPTURE DESKTOP CONTEXT',dict(station=object_name(station),desktop=object_name(get_desktop(thread_id())),visible=bool(flags[2]&1)),flush=True)
+
         shell=fw('Progman',None)
         if shell:
             shell_id=W.DWORD();window_pid(shell,C.byref(shell_id))
@@ -101,9 +114,12 @@ def main():
                     time.sleep(.1)
 
         bootstrap=folder/'launch.py'
-        bootstrap.write_text("""import ctypes,json,os,subprocess,time
+        bootstrap.write_text("""import ctypes,json,os,subprocess,time,sys,traceback
 from pathlib import Path
 folder=Path(__file__).resolve().parent
+def log_error(t,v,tb):
+ (folder/'bootstrap-error.txt').write_text(''.join(traceback.format_exception(t,v,tb)),encoding='utf-8')
+sys.excepthook=log_error
 env=dict(os.environ)
 env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']='--remote-debugging-address=127.0.0.1 --remote-debugging-port=9225'
 env['WEBVIEW2_USER_DATA_FOLDER']=str(Path(os.environ['LOCALAPPDATA'])/'Deka-AutoMix-CI')
@@ -134,7 +150,7 @@ with open(folder/'native-stdout.txt','wb') as stdout,open(folder/'native-stderr.
         # NULL environment and LOGON_WITH_PROFILE load the real user's profile.
         # The bootstrap passes the diagnostic flags only to its Deka child.
         command=C.create_unicode_buffer(subprocess.list2cmdline([sys.executable,str(bootstrap)]))
-        startup=STARTUPINFO();startup.cb=C.sizeof(startup);startup.lpDesktop='winsta0\\default'
+        startup=STARTUPINFO();startup.cb=C.sizeof(startup)
         check(create_process(account,'.',password,1,sys.executable,command,0x08000000,
                              None,str(folder),C.byref(startup),C.byref(process)),'Launch standard-user bootstrap')
         launched=True;bootstrap_info=token_info(process.hProcess);sid=bootstrap_info['sid']
@@ -170,11 +186,11 @@ with open(folder/'native-stdout.txt','wb') as stdout,open(folder/'native-stderr.
         subprocess.run([sys.executable,'tests/wallpaper_native.py'],check=True,timeout=360,env=test_env)
     finally:
         if launched:subprocess.run(['taskkill.exe','/PID',str(process.dwProcessId),'/T','/F'],check=False)
-        for name in ['native-stdout.txt','native-stderr.txt','app-exit.json']:
+        for name in ['native-stdout.txt','native-stderr.txt','bootstrap-error.txt','app-exit.json']:
             p=folder/name
             if p.exists():
                 shutil.copy2(p,out/name)
-                if name=='native-stderr.txt':print(p.read_text(errors='replace'),flush=True)
+                if name in ['native-stderr.txt','bootstrap-error.txt']:print(p.read_text(errors='replace'),flush=True)
         for handle in [app_handle,process.hThread,process.hProcess]:
             if handle:close(handle)
         if sid:print('Disposable profile cleanup:',bool(delete_profile(sid,None,None)),flush=True)
