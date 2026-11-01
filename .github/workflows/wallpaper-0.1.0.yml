@@ -1,0 +1,72 @@
+name: Wallpaper 0.1.0 Windows shell verification
+on:
+  push:
+    branches: [feature/desktop-wallpaper-0.1.0]
+permissions:
+  contents: read
+concurrency:
+  group: deka-wallpaper-010
+  cancel-in-progress: true
+jobs:
+  windows-wallpaper:
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+      - run: npm install
+      - run: npm test
+      - name: Native monitor geometry tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wallpaper010-candidate
+          path: |
+            Deka-Wallpaper.exe
+            Deka-Wallpaper-setup.exe
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/requirements.txt psutil pillow
+      - name: Exact EXE, real shell and Explorer restart under standard user
+        timeout-minutes: 8
+        run: python scripts/native-wallpaper-ci.py Deka-Wallpaper.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wallpaper010-verification
+          path: test-output/
+      - run: python scripts/package-wallpaper010.py
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: wallpaper-v0.1.0
+          target_commitish: ${{ github.sha }}
+          name: Deka Desktop Wallpaper 0.1.0 — эксперимент
+          prerelease: true
+          make_latest: false
+          body_path: wallpaper-out/RELEASE-NOTES.md
+          files: |
+            wallpaper-out/*.exe
+            wallpaper-out/Deka-Desktop-Wallpaper-0.1.0-Windows.zip
+            wallpaper-out/SHA256SUMS.txt
+            wallpaper-out/TEST-REPORT.txt
+          fail_on_unmatched_files: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wallpaper010-release
+          path: wallpaper-out/
