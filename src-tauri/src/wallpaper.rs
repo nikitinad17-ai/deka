@@ -50,11 +50,23 @@ unsafe extern "system" fn find_classic(top:Hwnd,param:isize)->i32{
 }
 fn shell_layer()->Result<(Hwnd,Hwnd,bool),String>{
  let prog=find("Progman");if prog==0{return Err("Проводник Windows недоступен".into());}
- unsafe{let mut result=0;for(l,r)in[(0xDu64,0isize),(0xD,1),(0,0)]{SendMessageTimeoutW(prog,0x052C,l as usize,r,2,700,&mut result);}
-  let mut worker=0;EnumWindows(find_classic,&mut worker as *mut Hwnd as isize);
-  if worker!=0{return Ok((worker,0,false));}
-  let def=child(prog,"SHELLDLL_DefView");let raised=child(prog,"WorkerW");
-  if def!=0&&raised!=0{return Ok((prog,def,true));}
+ unsafe{
+  // Inspect after each shell message: different Explorer generations handle
+  // these forms differently, so a later request must not undo a valid layer.
+  for(l,r)in[(0xDu64,0isize),(0xD,1),(0,0)]{
+   let mut result=0;
+   let sent=SendMessageTimeoutW(prog,0x052C,l as usize,r,2,700,&mut result);
+   eprintln!("Wallpaper shell request {l}/{r}: sent={sent}, result={result}, error={}",std::io::Error::last_os_error());
+   let mut worker=0;EnumWindows(find_classic,&mut worker as *mut Hwnd as isize);
+   if worker!=0{return Ok((worker,0,false));}
+   let def=child(prog,"SHELLDLL_DefView");let raised=child(prog,"WorkerW");
+   if def!=0&&raised!=0{return Ok((prog,def,true));}
+  }
+  // Classic shells may keep DefView directly under Progman without creating
+  // an empty WorkerW. Our layered host is placed behind the actual icon view,
+  // never over it. Native acceptance verifies rendered screen pixels and input.
+  let def=child(prog,"SHELLDLL_DefView");
+  if def!=0{return Ok((prog,def,true));}
  }
  Err("Windows не предоставила слой обоев; возвращаю обычное окно".into())
 }

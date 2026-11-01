@@ -16,6 +16,13 @@ def bind(name,ret,args):
 get_parent=bind('GetParent',W.HWND,[W.HWND]);enabled=bind('IsWindowEnabled',W.BOOL,[W.HWND]);get_class=bind('GetClassNameW',C.c_int,[W.HWND,W.LPWSTR,C.c_int]);get_ex=bind('GetWindowLongPtrW',C.c_ssize_t,[W.HWND,C.c_int]);find=bind('FindWindowW',W.HWND,[W.LPCWSTR,W.LPCWSTR]);pid_of=bind('GetWindowThreadProcessId',W.DWORD,[W.HWND,C.POINTER(W.DWORD)])
 class POINT(C.Structure):_fields_=[('x',W.LONG),('y',W.LONG)]
 from_point=bind('WindowFromPoint',W.HWND,[POINT])
+screen_dc=bind('GetDC',W.HDC,[W.HWND]);release_dc=bind('ReleaseDC',C.c_int,[W.HWND,W.HDC])
+gdi=C.WinDLL('gdi32',use_last_error=True);pixel=gdi.GetPixel;pixel.restype=W.DWORD;pixel.argtypes=[W.HDC,C.c_int,C.c_int]
+def screen_pixel(x,y):
+ dc=screen_dc(None)
+ try:
+  color=pixel(dc,x,y);return [color&255,(color>>8)&255,(color>>16)&255]
+ finally:release_dc(None,dc)
 def classname(h):
  b=C.create_unicode_buffer(256);get_class(h,b,256);return b.value
 with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
@@ -49,6 +56,9 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  # immediately after the first decoder becomes audible.
  page.wait_for_function("()=>!__dj.state.A.paused&&!__dj.state.B.paused&&amp(440)>.02&&amp(660)>.02",timeout=10000)
  check('Two actual MP3 sources are audible; scratching is disabled',page.evaluate("amp(440)>.02&&amp(660)>.02&&!__djopts.vinyl&&document.getElementById('djDiscA').disabled"),signal=page.evaluate('({a:amp(440),b:amp(660),rms:outputStats().rms})'))
+ # A temporary render canary proves that the actual desktop displays our
+ # WebView below the real icons, not just that its HWND has a shell parent.
+ page.evaluate("""()=>{const p=document.createElement('div');p.id='shellRenderProbe';p.style.cssText='position:fixed;left:85%;top:80%;width:32px;height:32px;z-index:2147483647;background:rgb(217,31,193);pointer-events:none';document.body.append(p);}""")
  resources=[]
  def sample_resource(mode):
   before={q.pid:sum(q.cpu_times()[:2])for q in[process]+process.children(recursive=True)if q.is_running()};start=time.monotonic();rss=[]
@@ -60,6 +70,9 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
   before=page.evaluate("[currentAudio('A').currentTime,currentAudio('B').currentTime]");state=native(mode);page.wait_for_timeout(250);print('MODE STATE',json.dumps(state,ensure_ascii=False),flush=True)
   check(mode+' preserves one engine, both tracks and all manual audio settings',state['mode']==mode and page.evaluate("__dj===__sameEngine&&__measure.context===__sameContext&&['A','B'].every((s,i)=>currentAudio(s)===__sourceRefs[i]&&!__dj.state[s].paused)&&__saved===JSON.stringify(['A','B'].map(s=>{const x=__dj.state[s];return {key:x.track.key,rate:x.rate,eq:x.eq,gain:x.gain,cue:x.cue,keyLock:x.keyLock};}))"))
   if mode=='background':
+   probe=page.locator('#shellRenderProbe').bounding_box();viewport=page.evaluate('({w:innerWidth,h:innerHeight})')
+   sx=state['rect']['x']+round((probe['x']+16)*state['rect']['width']/viewport['w']);sy=state['rect']['y']+round((probe['y']+16)*state['rect']['height']/viewport['h'])
+   actual=screen_pixel(sx,sy);check('Actual desktop pixels show the Wallpaper beneath the icon layer',all(abs(a-b)<=8 for a,b in zip(actual,[217,31,193])),screen_pixel=actual,position=[sx,sy])
    parent=get_parent(h);grand=get_parent(parent);check('Real background parent is a child layer of WorkerW or Progman, with native input disabled',parent==state['host']and grand==state['shell']and classname(grand)in['WorkerW','Progman']and not enabled(h)and get_ex(h,-20)&0x08000020==0x08000020,parent_class=classname(grand))
    before_cross=page.evaluate('__dj.diagnostics().cross');page.evaluate("document.getElementById('djPauseAll').click();document.getElementById('djCross').value=-100;document.getElementById('djCross').dispatchEvent(new Event('input',{bubbles:true}));window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));")
    check('Background blocks click, slider and keyboard transport input',page.evaluate(f'!__dj.state.A.paused&&!__dj.state.B.paused&&__dj.diagnostics().cross==={before_cross}&&DekaWallpaper.mode==="background"'))
