@@ -49,6 +49,7 @@ def main():
  shell_process=open_process(0x1000,False,shell_pid.value);check(shell_process,'Read interactive Explorer process')
  shell_info=token_info(shell_process)
  if shell_info['integrity']!=8192 or shell_info['elevated'] or shell_info['restricted']:raise RuntimeError('Existing Explorer must supply an ordinary medium-integrity token: '+str(shell_info))
+ subprocess.run(['icacls.exe',str(folder),'/grant:r','*'+shell_info['sid']+':(OI)(CI)M'],check=True)
  source_token=W.HANDLE();check(open_token(shell_process,0xB,C.byref(source_token)),'Open genuine Explorer primary token')
  target=folder/'Deka.exe';shutil.copy2(exe,target);assert hashlib.sha256(target.read_bytes()).digest()==hashlib.sha256(exe.read_bytes()).digest()
  bootstrap=folder/'launch.py'
