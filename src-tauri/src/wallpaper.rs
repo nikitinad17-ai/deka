@@ -25,6 +25,8 @@ type Hwnd=isize;
  fn SetWindowLongPtrW(window:Hwnd,index:i32,value:isize)->isize;
  fn SetParent(window:Hwnd,parent:Hwnd)->Hwnd;
  fn GetParent(window:Hwnd)->Hwnd;
+ fn GetWindow(window:Hwnd,command:u32)->Hwnd;
+ fn GetClassNameW(window:Hwnd,name:*mut u16,size:i32)->i32;
  fn GetWindowRect(window:Hwnd,rect:*mut Rect)->i32;
  fn SetWindowPos(window:Hwnd,after:Hwnd,x:i32,y:i32,w:i32,h:i32,flags:u32)->i32;
  fn EnableWindow(window:Hwnd,enabled:i32)->i32;
@@ -47,6 +49,14 @@ const TRANSPARENT:isize=0x20;const NOACTIVATE:isize=0x08000000;const TOOLWINDOW:
 fn wide(s:&str)->Vec<u16>{s.encode_utf16().chain(Some(0)).collect()}
 unsafe extern "system" fn host_procedure(h:Hwnd,message:u32,wparam:usize,lparam:isize)->isize{
  if message==0x0084{return -1;} // HTTRANSPARENT: desktop owns all pointer input.
+ if message==0x0002{ // Explorer can destroy its children before our watchdog runs.
+  let player=GetWindowLongPtrW(h,-21);
+  if player!=0&&IsWindow(player)!=0&&GetParent(player)==h{
+   ShowWindow(player,0);SetParent(player,0);
+   SetWindowLongPtrW(player,-16,(GetWindowLongPtrW(player,-16)&!CHILD)|POPUP);
+   EnableWindow(player,1);
+  }
+ }
  DefWindowProcW(h,message,wparam,lparam)
 }
 fn register_host()->Result<(),String>{
@@ -63,26 +73,64 @@ fn hwnd(w:&WebviewWindow)->Result<Hwnd,String>{w.hwnd().map(|h|h.0 as Hwnd).map_
 #[derive(Clone)]struct Screen{name:String,x:i32,y:i32,width:u32,height:u32,scale:f64}
 fn screens(app:&AppHandle)->Vec<Screen>{app.available_monitors().unwrap_or_default().iter().map(|m|Screen{name:m.name().cloned().unwrap_or_else(||"Монитор".into()),x:m.position().x,y:m.position().y,width:m.size().width,height:m.size().height,scale:m.scale_factor()}).collect()}
 fn screen_json(s:&Screen)->Value{json!({"name":s.name,"x":s.x,"y":s.y,"width":s.width,"height":s.height,"scale":s.scale})}
-#[derive(Default)]struct Session{mode:String,selected:String,host:Hwnd,shell:Hwnd,shell_pid:u32,rect:Rect,style:isize,ex:isize,error:String,recoveries:u32,quiet:bool,geometry:String}
+#[derive(Default)]struct Session{mode:String,selected:String,host:Hwnd,shell:Hwnd,icons:Hwnd,icon_root:Hwnd,raised:bool,shell_pid:u32,rect:Rect,style:isize,ex:isize,error:String,recoveries:u32,quiet:bool,geometry:String}
 pub struct Wallpaper(Mutex<Session>);
 fn configuration(app:&AppHandle)->Option<std::path::PathBuf>{app.path().app_config_dir().ok().map(|p|p.join("wallpaper-settings.json"))}
-fn save(app:&AppHandle,s:&Session){if let Some(p)=configuration(app){if let Some(dir)=p.parent(){let _=std::fs::create_dir_all(dir);}let _=std::fs::write(p,json!({"selected_monitor":s.selected,"autostart":false}).to_string());}}
-unsafe extern "system" fn find_classic(top:Hwnd,param:isize)->i32{
- if child(top,"SHELLDLL_DefView")!=0{let next=FindWindowExW(0,top,wide("WorkerW").as_ptr(),std::ptr::null());if next!=0{*(param as *mut Hwnd)=next;return 0;}}1
+fn journal(app:&AppHandle)->Option<std::path::PathBuf>{configuration(app).map(|p|p.with_file_name("wallpaper-diagnostics.jsonl"))}
+unsafe extern "system" fn shell_description(h:Hwnd,param:isize)->i32{
+ let rows=&mut*(param as *mut Vec<Value>);let class=class_of(h);
+ if class=="Progman"||class=="WorkerW"{
+  let mut r=Rect::default();GetWindowRect(h,&mut r);
+  rows.push(json!({"hwnd":h,"class":class,"pid":process_of(h),"visible":IsWindowVisible(h)!=0,"icons":child(h,"SHELLDLL_DefView"),"child_worker":child(h,"WorkerW"),"style":GetWindowLongPtrW(h,-16),"ex_style":GetWindowLongPtrW(h,-20),"rect":[r.left,r.top,r.right,r.bottom]}));
+ }1
 }
-fn shell_layer()->Result<(Hwnd,Hwnd,bool),String>{
+fn record(app:&AppHandle,event:&str,state:Value){
+ use std::io::Write;
+ let Some(p)=journal(app)else{return;};if let Some(dir)=p.parent(){let _=std::fs::create_dir_all(dir);}
+ if std::fs::metadata(&p).map(|m|m.len()>262144).unwrap_or(false){let _=std::fs::rename(&p,p.with_extension("previous.jsonl"));}
+ let mut shell:Vec<Value>=Vec::new();unsafe{EnumWindows(shell_description,&mut shell as *mut Vec<Value> as isize);}
+ let row=json!({"event":event,"state":state,"shell":shell,"time":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()});
+ if let Ok(mut f)=std::fs::OpenOptions::new().create(true).append(true).open(p){let _=writeln!(f,"{row}");}
+}
+fn save(app:&AppHandle,s:&Session){if let Some(p)=configuration(app){if let Some(dir)=p.parent(){let _=std::fs::create_dir_all(dir);}let _=std::fs::write(p,json!({"selected_monitor":s.selected,"autostart":false}).to_string());}}
+#[derive(Default,Clone,Copy)]struct Layer{parent:Hwnd,icons:Hwnd,icon_root:Hwnd,raised:bool,pid:u32}
+fn process_of(h:Hwnd)->u32{let mut pid=0;unsafe{GetWindowThreadProcessId(h,&mut pid);}pid}
+fn class_of(h:Hwnd)->String{let mut name=[0u16;256];let n=unsafe{GetClassNameW(h,name.as_mut_ptr(),256)};String::from_utf16_lossy(&name[..n.max(0) as usize])}
+fn below(lower:Hwnd,upper:Hwnd)->bool{
+ if lower==0||upper==0||lower==upper{return false;}
+ let mut h=unsafe{GetWindow(lower,3)}; // GW_HWNDPREV: toward the top of this sibling stack.
+ for _ in 0..4096{if h==upper{return true;}if h==0{break;}h=unsafe{GetWindow(h,3)};}
+ false
+}
+unsafe extern "system" fn find_classic(top:Hwnd,param:isize)->i32{
+ let layer=&mut*(param as *mut Layer);let def=child(top,"SHELLDLL_DefView");
+ if def==0||process_of(top)!=layer.pid||IsWindowVisible(def)==0{return 1;}
+ let mut next=FindWindowExW(0,top,wide("WorkerW").as_ptr(),std::ptr::null());
+ while next!=0{
+  let mut r=Rect::default();GetWindowRect(next,&mut r);
+  if process_of(next)==layer.pid&&child(next,"SHELLDLL_DefView")==0&&IsWindowVisible(next)!=0&&r.right>r.left&&r.bottom>r.top&&below(next,top){
+   layer.parent=next;layer.icons=def;layer.icon_root=top;return 0;
+  }
+  next=FindWindowExW(0,next,wide("WorkerW").as_ptr(),std::ptr::null());
+ }1
+}
+fn shell_layer()->Result<Layer,String>{
  let prog=find("Progman");if prog==0{return Err("Проводник Windows недоступен".into());}
  unsafe{
-  // Inspect after each shell message: different Explorer generations handle
-  // these forms differently, so a later request must not undo a valid layer.
-  for(l,r)in[(0xDu64,0isize),(0xD,1),(0,0)]{
+  // Complete the raise request; 13/0 is only a preparation message and can
+  // leave a stale WorkerW that is not a visible wallpaper surface on Win10.
+  for(l,r)in[(0xDu64,1isize),(0,0)]{
    let mut result=0;
    let sent=SendMessageTimeoutW(prog,0x052C,l as usize,r,2,700,&mut result);
    eprintln!("Wallpaper shell request {l}/{r}: sent={sent}, result={result}, error={}",std::io::Error::last_os_error());
-   let mut worker=0;EnumWindows(find_classic,&mut worker as *mut Hwnd as isize);
-   if worker!=0{return Ok((worker,0,false));}
-   let def=child(prog,"SHELLDLL_DefView");let raised=child(prog,"WorkerW");
-   if def!=0&&raised!=0{return Ok((prog,def,true));}
+   // New raised desktops must be selected before classic sibling WorkerWs.
+   if GetWindowLongPtrW(prog,-20)&0x00200000!=0{
+    let def=child(prog,"SHELLDLL_DefView");let worker=child(prog,"WorkerW");
+    if def!=0&&worker!=0&&IsWindowVisible(def)!=0&&below(worker,def){return Ok(Layer{parent:prog,icons:def,icon_root:prog,raised:true,pid:process_of(prog)});}
+   }else{
+    let mut layer=Layer{pid:process_of(prog),..Default::default()};EnumWindows(find_classic,&mut layer as *mut Layer as isize);
+    if layer.parent!=0{return Ok(layer);}
+   }
   }
   // A valid parent HWND alone does not prove a visible wallpaper layer.
   // Unsupported/failed shell integration must keep an accessible window.
@@ -90,24 +138,30 @@ fn shell_layer()->Result<(Hwnd,Hwnd,bool),String>{
  Err("Windows не предоставила слой обоев; возвращаю обычное окно".into())
 }
 fn rect_visible(r:Rect,all:&[Screen])->bool{all.iter().any(|m|r.right>m.x+64&&r.left<m.x+m.width as i32-64&&r.bottom>m.y+64&&r.top<m.y+m.height as i32-64)}
-fn ordinary(app:&AppHandle,w:&WebviewWindow,s:&mut Session)->Result<(),String>{
+fn ordinary(app:&AppHandle,w:&WebviewWindow,s:&mut Session,focus:bool)->Result<(),String>{
  let h=hwnd(w)?;
  unsafe{EnableWindow(h,1);SetParent(h,0);SetWindowLongPtrW(h,-16,s.style);SetWindowLongPtrW(h,-20,s.ex);if s.host!=0&&IsWindow(s.host)!=0{DestroyWindow(s.host);}s.host=0;}
  // Window setters in winit are queued and reapply cached top-level styles.
  // Keep native parenting/style changes in one Win32 transaction instead.
- unsafe{ShowWindow(h,9);}
+ unsafe{ShowWindow(h,if focus{9}else{4});}
  let all=screens(app);let mut r=s.rect;
  if !rect_visible(r,&all){if let Some(m)=all.first(){r=Rect{left:m.x+20,top:m.y+20,right:m.x+20+(m.width.saturating_sub(40).min(1120))as i32,bottom:m.y+20+(m.height.saturating_sub(80).min(780))as i32};}}
- if r.right>r.left&&r.bottom>r.top{unsafe{SetWindowPos(h,0,r.left,r.top,r.right-r.left,r.bottom-r.top,0x20|0x40);}}
- s.mode="normal".into();s.shell=0;s.shell_pid=0;unsafe{SetWindowPos(h,-2,0,0,0,0,0x1|0x2|0x20|0x40);ShowWindow(h,5);SetForegroundWindow(h);SetFocus(h);}Ok(())
+ if r.right>r.left&&r.bottom>r.top{unsafe{SetWindowPos(h,0,r.left,r.top,r.right-r.left,r.bottom-r.top,0x10|0x20|0x40);}}
+ s.mode="normal".into();s.shell=0;s.icons=0;s.icon_root=0;s.shell_pid=0;unsafe{SetWindowPos(h,-2,0,0,0,0,0x10|0x1|0x2|0x20|0x40);if focus{ShowWindow(h,5);SetForegroundWindow(h);SetFocus(h);}}Ok(())
 }
+fn attached(h:Hwnd,s:&Session)->bool{unsafe{
+ s.host!=0&&IsWindow(s.host)!=0&&IsWindow(s.shell)!=0&&IsWindowVisible(s.icons)!=0&&
+ GetParent(h)==s.host&&GetParent(s.host)==s.shell&&GetWindowLongPtrW(h,-16)&CHILD!=0&&
+ GetWindowLongPtrW(s.host,-16)&CHILD!=0&&IsWindowVisible(h)!=0&&IsWindowVisible(s.host)!=0&&
+ if s.raised{below(s.host,s.icons)}else{below(s.shell,s.icon_root)}
+}}
 fn notify(app:&AppHandle,s:&Session){let _=app.emit_to("main","wallpaper:state",json!({"mode":s.mode,"selected":s.selected,"error":s.error,"quiet":s.quiet,"recoveries":s.recoveries}));}
 fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,String>{
  if !["normal","active","background"].contains(&requested){return Err("Неизвестный режим".into());}
  let w=main_window(app)?;let h=hwnd(&w)?;let state=app.state::<Wallpaper>();let mut s=state.0.lock().map_err(|_|"Состояние занято")?;
  if s.mode=="normal"{unsafe{GetWindowRect(h,&mut s.rect);}s.style=unsafe{GetWindowLongPtrW(h,-16)};s.ex=unsafe{GetWindowLongPtrW(h,-20)};}
  if let Some(name)=monitor{s.selected=name;}
- s.error.clear();ordinary(app,&w,&mut s)?;
+ s.error.clear();ordinary(app,&w,&mut s,requested!="background")?;
  if requested!="normal"{
   let all=screens(app);let selected=all.iter().find(|m|m.name==s.selected).or_else(||all.first()).ok_or("Нет доступного монитора")?.clone();s.selected=selected.name.clone();
   if requested=="active"{
@@ -115,38 +169,44 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
    s.mode="active".into();unsafe{ShowWindow(h,5);SetForegroundWindow(h);SetFocus(h);}
   }else{
    match shell_layer(){
-    Ok((parent,def,raised))=>unsafe{
+    Ok(layer)=>unsafe{
+     let Layer{parent,icons:def,icon_root,raised,..}=layer;
+     // Never reparent the foreground player into Explorer. Activating that
+     // child can raise its whole WorkerW over the icon window on Windows 10.
+     if GetForegroundWindow()==h{SetForegroundWindow(icon_root);}ShowWindow(h,0);
      let mut point=Point{x:selected.x,y:selected.y};MapWindowPoints(0,parent,&mut point,1);
      // Create our host in our own process/DPI context first. Creating a child
      // directly in a foreign Explorer HWND is rejected on some Windows builds.
      SetLastError(0);
      let host=CreateWindowExW((TRANSPARENT|NOACTIVATE|TOOLWINDOW|if raised{0x80000}else{0})as u32,wide("DekaWallpaperHost").as_ptr(),wide("Deka Wallpaper Host").as_ptr(),(POPUP|0x04000000|0x02000000)as u32,0,0,selected.width as i32,selected.height as i32,0,0,GetModuleHandleW(std::ptr::null()),std::ptr::null_mut());
-     if host==0{s.error=format!("Не удалось создать слой; обычное окно: {}",std::io::Error::last_os_error());ordinary(app,&w,&mut s)?;}else{
+     if host==0{s.error=format!("Не удалось создать слой; обычное окно: {}",std::io::Error::last_os_error());ordinary(app,&w,&mut s,true)?;}else{
       s.host=host;
       SetWindowLongPtrW(h,-16,(s.style&!POPUP&!0x00C40000)|CHILD);SetWindowLongPtrW(h,-20,(s.ex&!APPWINDOW)|TOOLWINDOW|NOACTIVATE|TRANSPARENT);
       SetParent(h,host);
+      SetWindowLongPtrW(host,-21,h);
       SetWindowLongPtrW(host,-16,CHILD|0x04000000|0x02000000);
       SetParent(host,parent);
-      if GetParent(h)!=host||GetParent(host)!=parent{s.error=format!("Не удалось привязать к рабочему столу; обычное окно: {}",std::io::Error::last_os_error());ordinary(app,&w,&mut s)?;}else{
+      if GetParent(h)!=host||GetParent(host)!=parent{s.error=format!("Не удалось привязать к рабочему столу; обычное окно: {}",std::io::Error::last_os_error());ordinary(app,&w,&mut s,true)?;}else{
        if raised{SetLayeredWindowAttributes(host,0,255,2);}
        SetWindowPos(host,if raised{def}else{0},point.x,point.y,selected.width as i32,selected.height as i32,0x10|0x20|0x40);
        SetWindowPos(h,0,0,0,selected.width as i32,selected.height as i32,0x10|0x20|0x40);
        EnableWindow(host,0);EnableWindow(h,0);
-       s.mode="background".into();s.shell=parent;GetWindowThreadProcessId(parent,&mut s.shell_pid);
+       s.mode="background".into();s.shell=parent;s.icons=def;s.icon_root=icon_root;s.raised=raised;GetWindowThreadProcessId(parent,&mut s.shell_pid);
+       if !attached(h,&s){s.error="Не подтверждено размещение под ярлыками; возвращено обычное окно".into();ordinary(app,&w,&mut s,true)?;}
       }
      }
     },
-    Err(error)=>{s.error=error;ordinary(app,&w,&mut s)?;}
+    Err(error)=>{s.error=error;ordinary(app,&w,&mut s,true)?;}
    }
   }
  }
- s.quiet=s.mode=="background";save(app,&s);notify(app,&s);drop(s);snapshot(app)
+ s.quiet=s.mode=="background";save(app,&s);notify(app,&s);drop(s);let result=snapshot(app)?;record(app,requested,result.clone());Ok(result)
 }
 fn snapshot(app:&AppHandle)->Result<Value,String>{
  let w=main_window(app)?;let h=hwnd(&w)?;let state=app.state::<Wallpaper>();let s=state.0.lock().map_err(|_|"Состояние занято")?;
  let all=screens(app);let mut r=Rect::default();unsafe{GetWindowRect(h,&mut r);}
  let tray=app.tray_by_id("deka-wallpaper").is_some();let tray_rect=app.tray_by_id("deka-wallpaper").and_then(|t|t.rect().ok().flatten()).map(|r|format!("{r:?}"));
- Ok(json!({"mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_rect":tray_rect,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
+ Ok(json!({"version":"0.1.1-rc.1","mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_rect":tray_rect,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
 }
 pub fn action(app:&AppHandle,id:&str){
  if id=="exit"{let _=place(app,"normal",None);app.exit(0);return;}
@@ -176,11 +236,11 @@ pub fn setup(app:&AppHandle)->Result<(),Box<dyn std::error::Error>>{
    let st=handle.state::<Wallpaper>();let mut s=st.0.lock().unwrap();let mut recover=false;
    if s.mode!="normal"{
     if !all.iter().any(|m|m.name==s.selected){s.error="Монитор отключён; возвращено обычное окно".into();recover=true;}
-    else if s.mode=="background"&&(unsafe{IsWindow(s.shell)}==0||unsafe{IsWindow(s.host)}==0){s.error="Проводник перезапущен; управление восстановлено в окне".into();recover=true;}
+    else if s.mode=="background"&&main_window(&handle).and_then(|w|hwnd(&w)).map(|h|!attached(h,&s)).unwrap_or(true){s.error="Слой обоев изменился; управление восстановлено в окне".into();recover=true;}
     else if s.geometry!=geometry&&!s.geometry.is_empty(){let mode=s.mode.clone();let name=s.selected.clone();s.geometry=geometry.clone();drop(s);let _=place(&handle,&mode,Some(name));return;}
    }
    s.geometry=geometry;
-   if recover{if let Ok(w)=main_window(&handle){let _=ordinary(&handle,&w,&mut s);s.recoveries+=1;notify(&handle,&s);}}
+   if recover{if let Ok(w)=main_window(&handle){let _=ordinary(&handle,&w,&mut s,true);s.recoveries+=1;notify(&handle,&s);}}
    else if let Ok(w)=main_window(&handle){if let Ok(h)=hwnd(&w){let mut front=Rect::default();let mut ours=Rect::default();let fg=unsafe{GetForegroundWindow()};unsafe{GetWindowRect(fg,&mut front);GetWindowRect(h,&mut ours);}
     let covered=fg!=h&&front.left<=ours.left&&front.top<=ours.top&&front.right>=ours.right&&front.bottom>=ours.bottom;
     let quiet=s.mode=="background"||unsafe{IsIconic(h)}!=0||unsafe{IsWindowVisible(h)}==0||covered;
@@ -188,6 +248,15 @@ pub fn setup(app:&AppHandle)->Result<(),Box<dyn std::error::Error>>{
    }}
   });last_shell=find("Shell_TrayWnd");
  }});Ok(())
+}
+#[tauri::command]
+pub async fn wallpaper_report(app:AppHandle,window:WebviewWindow)->Result<String,String>{
+ if window.label()!="main"{return Err("Недоступно".into());}
+ let source=journal(&app).ok_or("Папка отчёта недоступна")?;
+ let data=std::fs::read_to_string(source).map_err(|e|e.to_string())?;
+ let target=app.path().download_dir().map_err(|e|e.to_string())?.join("Deka-Wallpaper-diagnostics.txt");
+ std::fs::write(&target,format!("Deka Wallpaper 0.1.1-rc.1 — размещение окна и слои Explorer; без списка музыки.\n{data}")).map_err(|e|e.to_string())?;
+ Ok(target.to_string_lossy().into_owned())
 }
 #[tauri::command]
 pub async fn wallpaper_state(app:AppHandle,window:WebviewWindow)->Result<Value,String>{if window.label()!="main"{return Err("Недоступно".into());}let(tx,rx)=std::sync::mpsc::channel();let h=app.clone();app.run_on_main_thread(move||{let _=tx.send(snapshot(&h));}).map_err(|e|e.to_string())?;rx.recv_timeout(Duration::from_secs(8)).map_err(|e|e.to_string())?}

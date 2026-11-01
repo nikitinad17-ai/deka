@@ -1,6 +1,6 @@
 [package]
 name = "deka-wallpaper"
-version = "0.1.0"
+version = "0.1.1"
 description = "Дека — ретро-плеер с поддержкой VK Музыки"
 edition = "2021"
 
