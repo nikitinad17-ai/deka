@@ -43,7 +43,7 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
   duration=time.monotonic()-start;after={q.pid:sum(q.cpu_times()[:2])for q in[process]+process.children(recursive=True)if q.is_running()};cpu=sum(after[k]-before.get(k,after[k])for k in after)/duration*100
   resources.append(dict(mode=mode,seconds=duration,cpu_one_core_percent=cpu,aggregate_rss_bytes=sum(rss)/len(rss),processes=len(after),gpu=None))
  for mode in ['active','background','normal','background','active','normal']:
-  before=page.evaluate("[currentAudio('A').currentTime,currentAudio('B').currentTime]");state=native(mode);page.wait_for_timeout(250)
+  before=page.evaluate("[currentAudio('A').currentTime,currentAudio('B').currentTime]");state=native(mode);page.wait_for_timeout(250);print('MODE STATE',json.dumps(state,ensure_ascii=False),flush=True)
   check(mode+' preserves one engine, both tracks and all manual audio settings',state['mode']==mode and page.evaluate("__dj===__sameEngine&&__measure.context===__sameContext&&['A','B'].every((s,i)=>currentAudio(s)===__sourceRefs[i]&&!__dj.state[s].paused)&&__saved===JSON.stringify(['A','B'].map(s=>{const x=__dj.state[s];return {key:x.track.key,rate:x.rate,eq:x.eq,gain:x.gain,cue:x.cue,keyLock:x.keyLock};}))"))
   if mode=='background':
    parent=get_parent(h);grand=get_parent(parent);check('Real background parent is a child layer of WorkerW or Progman, with native input disabled',parent==state['host']and grand==state['shell']and classname(grand)in['WorkerW','Progman']and not enabled(h)and get_ex(h,-20)&0x08000020==0x08000020,parent_class=classname(grand))
