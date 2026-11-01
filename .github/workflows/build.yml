@@ -2,7 +2,7 @@ name: Build and test
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/v0.10.0-sets, feature/desktop-dj-0.11.0, feature/desktop-vinyl-0.12.0, feature/android-vinyl-0.13.0, feature/continuous-mix-0.14.0, feature/desktop-automix-0.15.0, feature/desktop-transition-fx-0.16.0, feature/desktop-bpm-0.17.0]
+    branches: [main, feature/v0.10.0-sets, feature/desktop-dj-0.11.0, feature/desktop-vinyl-0.12.0, feature/android-vinyl-0.13.0, feature/continuous-mix-0.14.0, feature/desktop-automix-0.15.0, feature/desktop-transition-fx-0.16.0, feature/desktop-bpm-0.17.0, feature/desktop-reverse-0.18.0]
   pull_request:
     branches: [main]
 permissions:
@@ -57,7 +57,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r tests/requirements.txt
       - name: Verify actual Windows WebView2 audio and Auto Mix
-        timeout-minutes: 6
+        timeout-minutes: 8
         run: python scripts/native-desktop-ci.py Deka.exe
       - uses: actions/upload-artifact@v4
         if: always()

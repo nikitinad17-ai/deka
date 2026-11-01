@@ -5,18 +5,18 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 def run(page,check,reset):
+    page.evaluate('__djopts.reverseMix=false')
     reset()
     check('Braking a paused or empty deck never starts it',page.evaluate("!__dj.brake('A',.5)&&__dj.state.A.paused&&!__dj.state.A.braking"))
     for side in ['A','B']:
         other='B'if side=='A'else'A'
-        for seconds in [.5,1,2]:
+        for seconds in [1.5,2.5,3.5]:
             reset();page.evaluate(f"__dj.seek('{side}',5);__dj.cue('{side}');__dj.play('A');__dj.play('B')");page.wait_for_function('!__dj.state.A.paused&&!__dj.state.B.paused');page.wait_for_timeout(250)
-            page.select_option('#djBrakeTarget',side)
             before=page.evaluate(f"({{time:currentAudio('{side}').currentTime,other:currentAudio('{other}').currentTime,cross:__dj.diagnostics().cross,rate:__dj.state.{other}.rate,eq:__dj.state.{other}.eq,key:__dj.state.{side}.keyLock}})")
-            page.click(f'[data-brake="{seconds:g}"]');page.wait_for_function(f'__dj.state.{side}.braking!==null');page.wait_for_function(f'__dj.state.{side}.braking===null&&__dj.state.{side}.paused',timeout=5000)
+            page.click(f'[data-brake="{seconds:g}"][data-side="{side}"]');page.wait_for_function(f'__dj.state.{side}.braking!==null');page.wait_for_function(f'__dj.state.{side}.braking===null&&__dj.state.{side}.paused',timeout=5000)
             after=page.evaluate(f"({{last:__dj.state.{side}.lastBrake,time:currentAudio('{side}').currentTime,other:currentAudio('{other}').currentTime,cross:__dj.diagnostics().cross,rate:__dj.state.{other}.rate,eq:__dj.state.{other}.eq,key:__dj.state.{side}.keyLock,cue:__dj.state.{side}.cue,active:__dj.state.{side}.cueActive}})")
             check(side+' '+str(seconds)+'s brake reaches pause, preserves CUE/Key Lock and leaves other deck alone',after['last']['elapsed']==seconds and abs(after['time']-after['last']['time'])<.04 and after['active']and after['cue']==5 and after['key']==before['key']and after['other']>before['other']+seconds*.8 and after['rate']==before['rate']and after['eq']==before['eq']and abs(after['cross']-before['cross'])<1e-8,elapsed=after['last']['elapsed'],position=after['time'])
-            page.wait_for_timeout(150);check(side+' '+str(seconds)+'s stop stays paused until Play',page.evaluate(f'__dj.state.{side}.paused&&__dj.state.{side}.manualStopped')and page.locator('#djBrakeTarget').input_value()==side)
+            page.wait_for_timeout(150);check(side+' '+str(seconds)+'s stop stays paused until Play',page.evaluate(f'__dj.state.{side}.paused&&__dj.state.{side}.manualStopped'))
             page.click('#djPlay'+side);page.wait_for_function(f'!__dj.state.{side}.paused')
             check(side+' resumes from the reached position at normal selected speed',page.evaluate(f"currentAudio('{side}').currentTime>={after['time']-.05}&&Math.abs(currentAudio('{side}').playbackRate-1)<.0001&&!__dj.state.{side}.manualStopped"))
 
@@ -69,4 +69,4 @@ def run(page,check,reset):
         w.setnchannels(2);w.setsampwidth(2);w.setframerate(24000)
         for clip in comparison['audio']:w.writeframes(base64.b64decode(clip))
     (out/'echo-reverb-comparison.json').write_text(json.dumps({k:v for k,v in comparison.items()if k!='audio'},indent=2),encoding='utf-8')
-    reset();page.evaluate('__djopts.fadeSeconds=17;__dj.setAutoMix(true)');check('All preparation timers and rate ramps are gone after repeated actions',page.evaluate('!__dj.diagnostics().phaseTimer&&!__dj.diagnostics().preparing&&__dj.diagnostics().rateRamps===0&&__dj.diagnostics().localPlayers===2'))
+    reset();page.evaluate('__djopts.reverseMix=true;__djopts.fadeSeconds=17;__dj.setAutoMix(true)');check('All preparation timers and rate ramps are gone after repeated actions',page.evaluate('!__dj.diagnostics().phaseTimer&&!__dj.diagnostics().preparing&&__dj.diagnostics().rateRamps===0&&__dj.diagnostics().localPlayers===2'))

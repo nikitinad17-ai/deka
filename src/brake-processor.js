@@ -3,7 +3,7 @@
   'use strict';
   class BrakeTransport {
     constructor(rate){
-      this.sampleRate=rate;this.capacity=Math.ceil(rate*4);this.channels=[new Float32Array(this.capacity),new Float32Array(this.capacity)];
+      this.sampleRate=rate;this.capacity=Math.ceil(rate*8);this.channels=[new Float32Array(this.capacity),new Float32Array(this.capacity)];
       this.write=0;this.read=0;this.capture=0;this.active=false;this.stopped=false;this.disposed=false;this.speed=1;this.messages=[];
     }
     command(d){
@@ -19,10 +19,10 @@
     render(input,out){
       if(this.disposed){out.forEach(c=>c.fill(0));return false;}
       const count=out[0].length;
-      // Repeated presses can only decrease speed. Two seconds of future PCM suffice,
+      // Repeated presses can only decrease speed. Four seconds of future PCM suffice,
       // even if the stop is replaced many times; freeze capture before overwriting it.
       for(let i=0;i<count;i++){
-        if(!this.active||this.write-this.capture<this.sampleRate*2.2){
+        if(!this.active||this.write-this.capture<this.sampleRate*4.2){
           for(let ch=0;ch<2;ch++)this.channels[ch][this.write%this.capacity]=(input[ch]||input[0])?.[i]||0;
           this.write++;
         }

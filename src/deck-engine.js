@@ -20,10 +20,10 @@
     opts = opts || {};
     var ctx, output, compressor, safety, masterMeter, cross = 0, master = 0.8, vkSide = 'A', awake = null, destroyed = false;
     var state = {}, elements = {}, nodes = {}, vinyl = {}, preparing = {}, aborts = {};
-    var mix = null, starting = null, autoSerial = 0, autoCross = null, manualOverlap=false, manualUntil=0, failed = new Set(),phaseTimer=null,rateRamps={},brakeSerial=0;
+    var mix = null, reverseMix = null, lastReverse = null, starting = null, autoSerial = 0, autoCross = null, manualOverlap=false, manualUntil=0, failed = new Set(),phaseTimer=null,rateRamps={},brakeSerial=0;
     function resetMixTone(preserve){ ['A','B'].forEach(function(side){var s=state[side];if(s){if(preserve){if(s.autoRate!==null)s.rate=elements[side]?elements[side].playbackRate:s.autoRate;s.eq=s.eq.map(function(v,j){return clamp(v+s.autoEQ[j],-12,12);});}s.autoEQ=[0,0,0];s.autoRate=null;rate(side);}}); apply(); }
     function cancelAuto() {
-      autoSerial++; mix = null;if(phaseTimer!==null){win.clearTimeout(phaseTimer);phaseTimer=null;}rateRamps={};resetMixTone(!!opts.beatMix);
+      autoSerial++; mix = null;if(reverseMix)state[reverseMix.to].autoGain=reverseMix.inGainTarget;reverseMix=null;if(phaseTimer!==null){win.clearTimeout(phaseTimer);phaseTimer=null;}rateRamps={};resetMixTone(!!opts.beatMix);
       var pending = starting; starting = null;
       if(pending&&pending.cancelWait)pending.cancelWait();
       if (pending && !pending.alreadyPlaying) {
@@ -31,6 +31,7 @@
         if (elements[pending.to]) elements[pending.to].pause();
         else if (vkSide===pending.to) vk({type:'pause'});
         s.paused=true; if(s.track)s.status='paused';
+        if(pending.reverse)s.autoGain=pending.restoreGain;
       }
     }
     function crossTo(value) { cross = clamp(value, -1, 1); apply(); }
@@ -175,7 +176,7 @@
       if (!list.length) { tell('Список пуст'); return; }
       pause(side, true); release(side); s.list = list.slice(); s.index = Math.floor(clamp(index, 0, list.length - 1));
       s.track = s.list[s.index]; s.time = 0; s.duration = s.track.duration || 0; s.cue = 0;s.cueActive=false;s.cueStage=0;s.syncBPM=null;s.manualStopped=false; s.rate = 1; s.nudge = 0; s.bpm = null; s.taps = []; s.error = ''; s.status = 'loading';
-      s.autoLoaded = !!automatic;
+      s.autoLoaded = !!automatic;s.lastReverse=null;
       s.autoGain=1;s.autoEQ=[0,0,0];s.autoRate=null;s.analysis=null;s.analysisStatus='idle';s.rateTouched=false;s.actualRate=null;s.endedGeneration=-1;s.completed=false;
       s.autoBlocked = false;
       if (!automatic && !state[side === 'A' ? 'B' : 'A'].track) state[side === 'A' ? 'B' : 'A'].autoBlocked=false;
@@ -338,16 +339,71 @@
       if(data.type==='ended'){
         s.lastBrake={id:data.id,duration:data.duration,elapsed:data.elapsed,time:s.time,audioStart:b.audioStart,audioEnd:data.audioTime,completed:true};
         el.pause();el.currentTime=s.time;el.loop=!!opts.repeatTrack;s.braking=null;s.paused=true;s.pending=false;s.status='paused';s.completed=false;rate(side);apply();
+        if(reverseMix&&reverseMix.from===side){
+          var r=reverseMix,incoming=state[r.to];reverseFade(r,1);
+          lastReverse=s.lastReverse={id:data.id,from:side,to:r.to,duration:r.duration,elapsed:data.elapsed,cue:r.cue,completed:true};
+          incoming.rate=elements[r.to].playbackRate-incoming.nudge;incoming.autoRate=null;incoming.autoEQ=[0,0,0];
+          s.autoEQ=[0,0,0];s.manualStopped=false;s.autoBlocked=false;s.completed=true;s.status='ended';reverseMix=null;manualOverlap=false;
+          rate(r.to);apply();
+        }
       }
       changed();
     }
-    function brake(side,seconds){
-      var s=state[side],el=elements[side],n=nodes[side];
-      if(!s||!el||!s.track||s.track.kind!=='file'||s.held||(!s.braking&&el.paused)||![.5,1,2].includes(+seconds)||!n.brake||n.brake.status!=='ready')return false;
-      cancelAuto();autoCross=null;var previous=s.braking;
+    function startBrake(side,seconds){
+      var s=state[side],el=elements[side],n=nodes[side],previous=s.braking;
       var b={id:++brakeSerial,track:s.track,origin:previous?previous.origin:el.currentTime,baseRate:previous?previous.baseRate:el.playbackRate,speed:previous?previous.speed:1,elapsed:0,duration:+seconds};
       s.braking=b;s.manualStopped=true;s.autoBlocked=true;s.completed=false;s.generation++;s.pending=false;el.loop=false;
       n.brake.start(b.id,b.duration);changed();return true;
+    }
+    function effectiveEQ(side){return state[side].eq.map(function(v,j){return v+state[side].autoEQ[j];});}
+    function reverseFade(r,progress){
+      ['A','B'].forEach(function(side){var s=state[side],from=side===r.from?r.outEQ:r.inEQ,to=side===r.from?[-12,-12,-12]:r.targetEQ;
+        s.autoEQ=from.map(function(v,j){return r.eqManual[side][j]?0:v+(to[j]-v)*progress-s.eq[j];});});
+      crossTo(r.startCross+((r.to==='A'?-1:1)-r.startCross)*progress);
+      state[r.to].autoGain=r.inGainFrom+(r.inGainTarget-r.inGainFrom)*progress;apply();
+    }
+    function tickReverse(){
+      var r=reverseMix,a=state[r.from],b=state[r.to];
+      if(a.track!==r.track||b.track!==r.toTrack||b.paused||!a.braking){cancelAuto();return;}
+      if(a.braking.audioStart!==undefined)r.start=a.braking.audioStart;
+      reverseFade(r,clamp((ctx.currentTime-r.start)/r.duration,0,1));changed();
+    }
+    function brake(side,seconds){
+      var s=state[side],el=elements[side],n=nodes[side],to=side==='A'?'B':'A',other=state[to],target=elements[to];seconds=+seconds;
+      if(!s||!el||!s.track||s.track.kind!=='file'||s.held||(!s.braking&&el.paused)||![.5,1,1.5,2,2.5,3.5].includes(seconds)||!n.brake||n.brake.status!=='ready')return false;
+      if(!opts.reverseMix||!opts.autoMix){cancelAuto();autoCross=null;return startBrake(side,seconds);}
+      if(starting&&starting.reverse&&starting.from===side){starting.seconds=seconds;return true;}
+      if(!other.track||other.track.kind!=='file'||!target||target.readyState<2||other.status==='error'||other.held||other.braking||other.pending){
+        tell('Для перехода «Реверс» загрузите готовый локальный трек в деку '+to+'. Текущий трек продолжает играть.');return false;
+      }
+      if(reverseMix&&reverseMix.from===side&&s.braking){
+        var previous=reverseMix;previous.outEQ=effectiveEQ(side);previous.inEQ=effectiveEQ(to);previous.inGainFrom=other.autoGain;previous.startCross=cross;previous.start=ctx.currentTime;previous.duration=seconds;
+        return startBrake(side,seconds);
+      }
+      if(s.braking){tell('Дождитесь остановки деки '+side+' или продолжите её кнопкой «Играть».');return false;}
+      cancelAuto();autoCross=null;
+      var playing=!target.paused,token=autoSerial,track=s.track,toTrack=other.track,fromGeneration=s.generation;
+      var pending={from:side,to:to,alreadyPlaying:playing,reverse:true,seconds:seconds,restoreGain:other.autoGain};starting=pending;
+      var inEQ=effectiveEQ(to),targetEQ=other.eq.slice(),plan=opts.analysis?opts.analysis.plan(sourceMeta(side),sourceMeta(to),el.playbackRate):null;
+      var inGainTarget=playing?other.autoGain:plan?clamp(plan.gain*s.autoGain,.35,1.5):1;
+      if(!playing){
+        other.autoRate=plan&&plan.matched?plan.rate:target.playbackRate;if(plan&&plan.matched)other.syncBPM=plan.sourceBPM;
+        other.manualStopped=false;other.autoBlocked=false;rate(to);
+        var cue=other.cueActive?other.cue:0;target.currentTime=cue;other.time=cue;
+        inEQ=targetEQ.map(function(v,j){return v+[-6,-3,-3][j];});other.autoEQ=inEQ.map(function(v,j){return v-other.eq[j];});
+        other.autoGain=0;
+        apply();
+      }
+      var promise=playing?Promise.resolve(true):play(to,true),toGeneration=other.generation;
+      Promise.resolve(promise).then(function(ok){
+        if(starting!==pending||token!==autoSerial||s.track!==track||other.track!==toTrack||s.generation!==fromGeneration||other.generation!==toGeneration)return;
+        if(!ok||other.paused){starting=null;other.autoGain=pending.restoreGain;resetMixTone();tell('Не удалось подготовить деку '+to+'. Исходный трек продолжает играть.');return;}
+        if(s.paused){starting=null;other.autoGain=inGainTarget;other.autoEQ=[0,0,0];if(s.completed||el.ended)crossTo(to==='A'?-1:1);return;}
+        starting=null;
+        reverseMix={from:side,to:to,track:track,toTrack:toTrack,duration:pending.seconds,start:ctx.currentTime,startCross:cross,outEQ:effectiveEQ(side),inEQ:inEQ,targetEQ:targetEQ,inGainFrom:playing?other.autoGain:0,inGainTarget:inGainTarget,cue:playing?null:cue,eqManual:{A:[false,false,false],B:[false,false,false]}};
+        startBrake(side,pending.seconds);
+      });
+      changed();return true;
     }
     function sourceMeta(side){
       var s=state[side],a=s.analysis||{},bpm=s.syncBPM||s.bpm||a.bpm;
@@ -444,6 +500,7 @@
     // The transition starts after the new media has really entered playback.
     function autoTick() {
       tickRates();
+      if(reverseMix){tickReverse();return;}
       if (destroyed || !opts.continuous || !opts.djMode || opts.repeatTrack ||
           state.A.held || state.B.held) return;
       if(opts.beatMix){autoBeatTick();return;}
@@ -541,8 +598,8 @@
       setTimeout(function () { if (!destroyed && generation === s.generation && s.track===track && s.endedGeneration!==generation) { s.endedGeneration=generation;s.paused=true; s.pending=false; s.status='ended'; finish(side); } }, 50);
     }
     return { state: state, setDJMode: function (on) { cancelAuto(); opts.djMode=!!on; if(!on)cross=-1; apply(); }, load: load, play: play, pause: pause, toggle: toggle, seek: seek, step: step,
-      setShuffle: function (on) { opts.shuffle=!!on; invalidateNext(); changed(); },
-      setRepeat: function (on) { cancelAuto(); opts.repeatTrack=!!on; ['A','B'].forEach(function(s){if(elements[s])elements[s].loop=!!on&&!state[s].braking;}); changed(); },
+      setShuffle: function (on) { on=!!on;if(opts.shuffle===on)return;opts.shuffle=on;if(!mix&&!reverseMix&&!starting)invalidateNext();changed(); },
+      setRepeat: function (on) { on=!!on;if(opts.repeatTrack===on)return;cancelAuto();opts.repeatTrack=on; ['A','B'].forEach(function(s){if(elements[s])elements[s].loop=on&&!state[s].braking;}); changed(); },
       setAutoMix: function (on) { cancelAuto(); opts.autoMix=!!on; changed(); },
       noteVK: noteVK, endedVK: endedVK,
       scratchBegin: scratchBegin, scratchMove: scratchMove, scratchEnd: scratchEnd,brake:brake,
@@ -569,10 +626,10 @@
       setCross: function (x, keepAuto) { cancelAuto();autoCross=null;if(keepAuto)manualUntil=win.performance.now()+1500;else if(opts.djMode)opts.autoMix=false;crossTo(x);changed(); },
       setMaster: function (x) { master = clamp(x, 0, 1); apply(); },
       setGain: function (side, x) { state[side].gain = clamp(x, 0, 1); apply(); },
-      setEQ: function (side, band, value) { if (band >= 0 && band < 3) {if(mix)mix.eqManual[side][band]=true;state[side].autoEQ[band]=0;state[side].eq[band] = clamp(value, -12, 12);} apply(); },
+      setEQ: function (side, band, value) { if (band >= 0 && band < 3) {if(mix)mix.eqManual[side][band]=true;if(reverseMix)reverseMix.eqManual[side][band]=true;state[side].autoEQ[band]=0;state[side].eq[band] = clamp(value, -12, 12);} apply(); },
       setEffect: function(side,name,on,amount){var s=state[side],n=nodes[side];if(!s.effects[name]||!s.track||s.track.kind!=='file'||!n||!n.fx)return false;s.effects[name]={on:!!on,amount:clamp(amount,0,1)};var ok=n.fx.set(name,on,amount);if(!ok)tell(name+': обработка недоступна в этом WebView');changed();return ok;},
       destroy: function () { win.clearInterval(autoTimer); pause('A'); pause('B'); destroyed = true; release('A'); release('B'); if (ctx && !opts.context) ctx.close(); },
-      diagnostics: function () { return { cross: cross, weights: weights(cross), master: master, vkSide: vkSide, localPlayers: Object.keys(elements).length, djMode:!!opts.djMode, shuffle:!!opts.shuffle, repeatTrack:!!opts.repeatTrack, autoMix:!!opts.autoMix, mixing:!!mix,preparing:!!starting,phaseTimer:phaseTimer!==null,rateRamps:Object.keys(rateRamps).length,transition:mix?{from:mix.from,to:mix.to,duration:mix.duration,elapsed:ctx.currentTime-mix.start,mode:mix.beat?'beat':mix.sweep?'sweep':'balance',matched:!!(mix.plan&&mix.plan.matched),reason:mix.plan&&mix.plan.reason,targetBPM:mix.plan&&mix.plan.targetBPM}:null,effects:Object.fromEntries(['A','B'].map(function(side){return [side,nodes[side]&&nodes[side].fx?nodes[side].fx.diagnostics():null];})) }; }
+      diagnostics: function () { return { cross: cross, weights: weights(cross), master: master, vkSide: vkSide, localPlayers: Object.keys(elements).length, djMode:!!opts.djMode, shuffle:!!opts.shuffle, repeatTrack:!!opts.repeatTrack, autoMix:!!opts.autoMix, mixing:!!mix,lastReverse:lastReverse,reverse:reverseMix?{from:reverseMix.from,to:reverseMix.to,duration:reverseMix.duration,elapsed:ctx.currentTime-reverseMix.start}:null,preparing:!!starting,phaseTimer:phaseTimer!==null,rateRamps:Object.keys(rateRamps).length,transition:mix?{from:mix.from,to:mix.to,duration:mix.duration,elapsed:ctx.currentTime-mix.start,mode:mix.beat?'beat':mix.sweep?'sweep':'balance',matched:!!(mix.plan&&mix.plan.matched),reason:mix.plan&&mix.plan.reason,targetBPM:mix.plan&&mix.plan.targetBPM}:null,effects:Object.fromEntries(['A','B'].map(function(side){return [side,nodes[side]&&nodes[side].fx?nodes[side].fx.diagnostics():null];})) }; }
     };
     function invalidateNext() { cancelAuto(); ['A','B'].forEach(function (side) { if (state[side].autoLoaded && state[side].paused) { pause(side,true); release(side); state[side].track=null; state[side].status='empty'; } }); }
   }
