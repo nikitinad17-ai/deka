@@ -7,7 +7,7 @@ const rel = path.join(root, "src-tauri", "target", "release");
 const win = process.platform === "win32";
 
 const src = path.join(rel, win ? "deka.exe" : "deka");
-const dst = path.join(root, win ? "Deka.exe" : "Deka");
+const dst = path.join(root, win ? "Deka-DarMusic.exe" : "Deka-DarMusic");
 try {
   fs.copyFileSync(src, dst);
 } catch (e) {
@@ -18,6 +18,6 @@ try {
 const nsis = path.join(rel, "bundle", "nsis");
 if (fs.existsSync(nsis)) {
   const setup = fs.readdirSync(nsis).filter((f) => f.endsWith("-setup.exe")).sort().pop();
-  if (setup) fs.copyFileSync(path.join(nsis, setup), path.join(root, "Deka-setup.exe"));
+  if (setup) fs.copyFileSync(path.join(nsis, setup), path.join(root, "Deka-DarMusic-setup.exe"));
 }
 console.log("\nГотово: " + dst);
