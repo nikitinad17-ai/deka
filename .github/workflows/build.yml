@@ -2,7 +2,7 @@ name: Build and test
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/v0.10.0-sets, feature/desktop-dj-0.11.0, feature/desktop-vinyl-0.12.0, feature/android-vinyl-0.13.0, feature/continuous-mix-0.14.0, feature/desktop-automix-0.15.0, feature/desktop-transition-fx-0.16.0, feature/desktop-bpm-0.17.0, feature/desktop-reverse-0.18.0]
+    branches: [main, feature/v0.10.0-sets, feature/desktop-dj-0.11.0, feature/desktop-vinyl-0.12.0, feature/android-vinyl-0.13.0, feature/continuous-mix-0.14.0, feature/desktop-automix-0.15.0, feature/desktop-transition-fx-0.16.0, feature/desktop-bpm-0.17.0, feature/desktop-reverse-0.18.0, feature/android-dj-0.18.0]
   pull_request:
     branches: [main]
 permissions:
@@ -31,6 +31,9 @@ jobs:
       - run: python tests/desktop_dj.py
       - run: python tests/desktop_vinyl.py
       - run: python tests/android_dj.py
+      - name: Android 0.18 acceptance
+        if: github.ref == 'refs/heads/feature/android-dj-0.18.0'
+        run: python tests/android018.py
       - run: python tests/continuous.py
       - run: python tests/automix.py
       - run: python tests/mp3_transport.py
@@ -40,6 +43,7 @@ jobs:
           name: browser-regression-results
           path: test-output/
   windows:
+    if: github.ref != 'refs/heads/feature/android-dj-0.18.0'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,7 +76,6 @@ jobs:
             Deka-setup.exe
   android:
     if: ${{ !startsWith(github.ref, 'refs/heads/feature/desktop-') }}
-    needs: quality
     runs-on: ubuntu-24.04
     outputs:
       kind: ${{ steps.signing.outputs.kind }}
@@ -103,20 +106,21 @@ jobs:
             export ANDROID_KEY_ALIAS="$KEY_ALIAS"
             export ANDROID_KEYSTORE_PASSWORD="$KEY_PASSWORD"
             echo "kind=signed" >> "$GITHUB_OUTPUT"
-            echo "APK_NAME=Deka.apk" >> "$GITHUB_ENV"
-            echo "APK_PACKAGE=ru.volna.player" >> "$GITHUB_ENV"
+            echo "APK_NAME=Deka-DJ-0.18.0.apk" >> "$GITHUB_ENV"
+            echo "APK_PACKAGE=ru.volna.player.djpreview018" >> "$GITHUB_ENV"
           else
             # A separate app, never an in-place update signed with an exposed key.
             export ANDROID_KEY_ALIAS=preview
             export ANDROID_KEYSTORE_PASSWORD="$(openssl rand -hex 32)"
             echo "::add-mask::$ANDROID_KEYSTORE_PASSWORD"
             keytool -genkeypair -noprompt -storetype PKCS12 -keystore "$ANDROID_KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" -keyalg RSA -keysize 3072 -validity 3650 -dname "CN=Deka Preview" -storepass:env ANDROID_KEYSTORE_PASSWORD -keypass:env ANDROID_KEYSTORE_PASSWORD
-            node -e "const fs=require('fs'),p='src-tauri/tauri.conf.json',c=JSON.parse(fs.readFileSync(p));c.identifier='ru.volna.player.preview';c.productName='DeKa preview 2.0';fs.writeFileSync(p,JSON.stringify(c,null,2));"
+            node -e "const fs=require('fs'),p='src-tauri/tauri.conf.json',c=JSON.parse(fs.readFileSync(p));c.identifier='ru.volna.player.djpreview018';c.productName='Deka DJ 0.18 Preview';fs.writeFileSync(p,JSON.stringify(c,null,2));"
             echo "kind=preview" >> "$GITHUB_OUTPUT"
-            echo "APK_NAME=DeKa-preview-2.0.apk" >> "$GITHUB_ENV"
-            echo "APK_PACKAGE=ru.volna.player.preview" >> "$GITHUB_ENV"
+            echo "APK_NAME=Deka-DJ-0.18.0-Preview.apk" >> "$GITHUB_ENV"
+            echo "APK_PACKAGE=ru.volna.player.djpreview018" >> "$GITHUB_ENV"
             echo "::warning::Preview is a separate installation. No update compatibility with 0.8 is claimed."
           fi
+          node -e "const fs=require('fs'),p='src-tauri/tauri.conf.json',c=JSON.parse(fs.readFileSync(p));c.identifier='ru.volna.player.djpreview018';c.productName='Deka DJ 0.18 Preview';fs.writeFileSync(p,JSON.stringify(c,null,2));"
           test -s "$ANDROID_KEYSTORE_PATH"
           echo "ANDROID_KEYSTORE_PATH=$ANDROID_KEYSTORE_PATH" >> "$GITHUB_ENV"
           echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
@@ -161,11 +165,14 @@ jobs:
           import sys, zipfile
           with zipfile.ZipFile(sys.argv[1]) as z:
               native = [n for n in z.namelist() if n.startswith('lib/arm64-v8a/') and n.endswith('.so')]
-              found = any(all(token in z.read(n) for token in [b'DEKA_ANDROID_VINYL_013', b'DekaVinylModuleSource', b'keyLock']) for n in native)
+              found = any(all(token in z.read(n) for token in [b'DEKA_ANDROID_VINYL_013', b'DekaVinylModuleSource', b'keyLock', b'DEKA_ANDROID_DJ_018', b'DekaBrakeModuleSource', b'DekaRollModuleSource', b'neutralMid', b'reverseMix']) for n in native)
               assert found, 'APK does not contain the new Android Vinyl bundle'
               assert any(b'onShowFileChooser' in z.read(n) for n in z.namelist() if n.endswith('.dex')), 'System file chooser handler missing'
           print('Android Vinyl bundle and native file chooser found in APK')
           PYVERIFY
+          cp "$RUNNER_TEMP/deka-badging.txt" test-output/android-badging.txt
+          "$signer" verify --verbose --print-certs "$APK_NAME" > test-output/android-signature.txt
+          sha256sum "$APK_NAME" > test-output/android-sha256.txt
           head -n 1 "$RUNNER_TEMP/deka-badging.txt"
           grep -m1 "^application-label:" "$RUNNER_TEMP/deka-badging.txt"
           grep -q "package: name='$APK_PACKAGE'" "$RUNNER_TEMP/deka-badging.txt"
@@ -174,6 +181,14 @@ jobs:
         with:
           name: deka-android
           path: ${{ env.APK_NAME }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-native-verification
+          path: |
+            test-output/android-badging.txt
+            test-output/android-signature.txt
+            test-output/android-sha256.txt
       - name: Remove ephemeral signing material
         if: always()
         run: |
@@ -222,3 +237,36 @@ jobs:
             Тесты используют синтетическую VK-разметку; реальная сессия VK и физический сон телефона здесь не проверены.
           files: out/*
           fail_on_unmatched_files: true
+  android018-release:
+    if: github.ref == 'refs/heads/feature/android-dj-0.18.0' && github.event_name == 'push'
+    needs: [quality, android]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          path: ci-downloads
+      - run: python scripts/package-android018.py
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-v0.18.0-preview
+          target_commitish: ${{ github.sha }}
+          name: Дека DJ Android 0.18.0 Preview
+          prerelease: true
+          make_latest: false
+          body_path: android018-out/RELEASE-NOTES.md
+          files: |
+            android018-out/*.apk
+            android018-out/Deka-DJ-Android-0.18.0.zip
+            android018-out/SHA256SUMS.txt
+            android018-out/TEST-REPORT.txt
+          fail_on_unmatched_files: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android018-release
+          path: android018-out/

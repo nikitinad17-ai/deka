@@ -52,17 +52,30 @@
       if(name==='Phaser')s.depths.forEach((n,i)=>target(n.gain,(80+amount*250)*(i+1)));
       if(name==='Roll'&&s.processor)s.processor.port.postMessage({type:'config',on:s.on,amount:s.amount,bpm});
     }
-    if(!modules.has(ctx))modules.set(ctx,ctx.audioWorklet?ctx.audioWorklet.addModule(new URL('fx-processor.js',document.baseURI).href):Promise.reject(Error('AudioWorklet недоступен')));
-    const ready=modules.get(ctx).then(()=>{
+    const mobile=!!window.DekaRollModuleSource;
+    if(!modules.has(ctx))modules.set(ctx,(async()=>{
+      if(!ctx.audioWorklet)return false;
+      const url=mobile?URL.createObjectURL(new Blob([window.DekaRollModuleSource],{type:'application/javascript'})):new URL('fx-processor.js',document.baseURI).href;
+      try{await ctx.audioWorklet.addModule(url);return true;}catch(error){if(!mobile)throw error;return false;}finally{if(mobile)URL.revokeObjectURL(url);}
+    })());
+    const ready=modules.get(ctx).then(worklet=>{
       if(disposed)return;
-      const processor=new AudioWorkletNode(ctx,'deka-roll',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});all.push(processor);roll.processor=processor;
-      processor.port.onmessage=({data})=>{if(data.type==='capture'){roll.captureFrames=data.frames;roll.captureRMS=data.rms;}};
-      roll.source.connect(processor).connect(roll.wet);roll.status='ready';update('Roll');
+      let processor;
+      if(worklet){processor=new AudioWorkletNode(ctx,'deka-roll',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});
+        processor.port.onmessage=({data})=>{if(data.type==='capture'){roll.captureFrames=data.frames;roll.captureRMS=data.rms;}};
+      }else{
+        if(!mobile||!ctx.createScriptProcessor)throw Error('Roll недоступен');
+        const transport=new window.DekaRollTransport(ctx.sampleRate);processor=ctx.createScriptProcessor(512,2,2);
+        transport.onCapture=data=>{roll.captureFrames=data.frames;roll.captureRMS=data.rms;};
+        processor.onaudioprocess=event=>transport.render([0,1].map(i=>event.inputBuffer.getChannelData(i)),[0,1].map(i=>event.outputBuffer.getChannelData(i)));
+        processor.port={postMessage:data=>transport.command(data),close:()=>{processor.onaudioprocess=null;}};roll.backend='compatibility';
+      }
+      all.push(processor);roll.processor=processor;roll.source.connect(processor).connect(roll.wet);roll.status='ready';update('Roll');
     }).catch(error=>{roll.status='error';roll.error=error.message;update('Roll');});
     return {input,ready,
       set(name,on,amount){const s=stages[name];if(!s)return false;s.on=!!on;s.amount=Math.max(0,Math.min(1,+amount||0));update(name);return s.status!=='error';},
       setBPM(value){const next=Math.round(Math.max(30,Math.min(300,+value||120)));if(next===bpm)return;bpm=next;update('Echo');update('Roll');},
-      diagnostics(){return Object.fromEntries(names.map(n=>[n,{on:stages[n].on,amount:stages[n].amount,status:stages[n].status,error:stages[n].error||'',captureFrames:stages[n].captureFrames||0,captureRMS:stages[n].captureRMS||0}]));},
+      diagnostics(){return Object.fromEntries(names.map(n=>[n,{on:stages[n].on,amount:stages[n].amount,status:stages[n].status,backend:stages[n].backend||'web-audio',error:stages[n].error||'',captureFrames:stages[n].captureFrames||0,captureRMS:stages[n].captureRMS||0}]));},
       dispose(){if(disposed)return;disposed=true;if(roll.processor){roll.processor.port.postMessage({type:'dispose'});roll.processor.port.close();}oscillators.forEach(n=>n.stop());all.forEach(n=>n.disconnect());}
     };
   }

@@ -15,6 +15,18 @@ const DECK_ENGINE: &str = include_str!("../../src/deck-engine.js");
 const VIRTUAL_LIST: &str = include_str!("../../src/virtual-list.js");
 #[cfg(mobile)]
 const MOBILE_OVERLAY: &str = include_str!("../../src/mobile-overlay.js");
+#[cfg(mobile)]
+const MIX_ANALYSIS: &str = include_str!("../../src/mix-analysis.js");
+#[cfg(mobile)]
+const MIX_ENVELOPE: &str = include_str!("../../src/mix-envelope.js");
+#[cfg(mobile)]
+const FX_PROCESSOR: &str = include_str!("../../src/fx-processor.js");
+#[cfg(mobile)]
+const DECK_EFFECTS: &str = include_str!("../../src/deck-effects.js");
+#[cfg(mobile)]
+const BRAKE_PROCESSOR: &str = include_str!("../../src/brake-processor.js");
+#[cfg(mobile)]
+const DECK_BRAKE: &str = include_str!("../../src/deck-brake.js");
 const VK_URL: &str = "https://vk.ru/audio";
 #[cfg(windows)]
 const BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion,IntensiveWakeUpThrottling --autoplay-policy=no-user-gesture-required --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows";
@@ -192,7 +204,7 @@ pub fn run() {
             #[cfg(mobile)]
             {
                 // One script guarantees ordering. Native audio play is captured BEFORE the VK hook.
-                let script = [LIBRARY_CORE, VINYL_PROCESSOR, VINYL_ENGINE, DECK_ENGINE, SET_CORE, VK_BRIDGE, LIBRARY_RUNTIME, VIRTUAL_LIST, MOBILE_OVERLAY].join("\n;\n");
+                let script = [LIBRARY_CORE, VINYL_PROCESSOR, VINYL_ENGINE, MIX_ANALYSIS, MIX_ENVELOPE, FX_PROCESSOR, DECK_EFFECTS, BRAKE_PROCESSOR, DECK_BRAKE, DECK_ENGINE, SET_CORE, VK_BRIDGE, LIBRARY_RUNTIME, VIRTUAL_LIST, MOBILE_OVERLAY].join("\n;\n");
                 let handle = app.handle().clone();
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::External(VK_URL.parse().unwrap()))
                     .initialization_script(script)
