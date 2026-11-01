@@ -134,6 +134,11 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  # Restart only Explorer in this disposable GitHub Actions desktop, never a user workstation.
  before_engine=page.evaluate('currentAudio("B").currentTime');subprocess.run(['taskkill.exe','/PID',str(shell_pid.value),'/F'],check=True,capture_output=True);page.wait_for_timeout(1300);subprocess.Popen(['explorer.exe']) if os.environ.get('DEKA_EXISTING_SHELL') else Path(os.environ['DEKA_CI_SHELL_REQUEST']).write_text('restart',encoding='utf-8')
  page.wait_for_function('()=>DekaWallpaper.mode==="normal"',timeout=15000);page.wait_for_timeout(1800);state=native()
+ print('POST-RESTART SHELL',find('Progman',None),find('Shell_TrayWnd',None),flush=True)
+ enum_windows(enumerate_callback,0)
+ print('POST-RESTART EXPLORER',[(q.pid,q.username(),q.cmdline())for q in psutil.process_iter()if q.name().lower()=='explorer.exe'],flush=True)
+ ImageGrab.grab(all_screens=True).save(OUT/'wallpaper-after-explorer.png')
+ check('Explorer restart fixture provides a real desktop and taskbar',bool(find('Progman',None)) and bool(find('Shell_TrayWnd',None)))
  for _ in range(40):
   state=native()
   if state['tray_rect']:break
