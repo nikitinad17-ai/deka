@@ -66,11 +66,12 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
     page.click('#djKeyLockB');page.wait_for_timeout(1100); pitched=page.evaluate('measure(712.8)')
     check('Key Lock off gives measured +8% vinyl pitch',pitched['amp']>.08,**pitched)
     page.click('#djKeyLockB');page.locator('[data-reset=B]').click()
-    # Desktop discs are now indicators/drop targets; gestures must never pause music.
+    # Restored mouse hold/scratch is intentional; release must keep both transports healthy.
     disc=page.locator('#djDiscA');box=disc.bounding_box();cx=box['x']+box['width']/2;cy=box['y']+box['height']/2
-    before=page.evaluate('__dj.state.A.time');page.mouse.move(cx,cy);page.mouse.down();page.mouse.move(cx+30,cy+25);page.wait_for_timeout(500);page.mouse.up()
-    check('Mouse gestures on a Desktop disc do not interrupt A or B',page.evaluate(f'!__dj.state.A.paused&&!__dj.state.B.paused&&!__dj.state.A.held&&__dj.state.A.time>{before}+.2'))
-    check('Desktop scratch transport is disabled',page.evaluate("__dj.scratchBegin('A')")==False)
+    page.mouse.move(cx,cy);page.mouse.down();page.wait_for_function("__dj.state.A.held&&__dj.state.A.scratchStatus==='ready'");page.mouse.move(cx+30,cy+25);page.wait_for_timeout(200)
+    check('Mouse hold activates A scratch while B keeps playing',page.evaluate('__dj.state.A.held&&__dj.state.A.paused&&!__dj.state.B.paused'))
+    page.mouse.up();page.wait_for_function('!__dj.state.A.held&&!__dj.state.A.paused')
+    check('Desktop mouse release restores both media transports',page.evaluate('!__dj.state.A.paused&&!__dj.state.B.paused'))
     # A folder can yield multiple readEntries batches; recurse and ignore non-audio.
     folder_count=page.evaluate("""async()=>{
       const f=new File(['invalid wav bytes'],'Nested.wav',{type:'audio/wav',lastModified:321});

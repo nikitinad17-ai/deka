@@ -13,6 +13,8 @@ atexit.register(save_report)
 HOOK='''
 window.__audios=[];const NA=window.Audio;window.Audio=function(...args){const a=new NA(...args);__audios.push(a);return a;};window.Audio.prototype=NA.prototype;
 Object.defineProperty(window,'DekaDecks',{configurable:true,set(api){Object.defineProperty(window,'DekaDecks',{value:api});const create=api.create;api.create=opts=>{
+ // Retain explicit coverage of the previous BPM-balance mode; desktop_session.py tests the new 17s mode.
+ opts.sweepMix=false;opts.fadeSeconds=12;
  const context=new AudioContext({sampleRate:48000}),analyser=context.createAnalyser();analyser.fftSize=32768;analyser.connect(context.destination);
  opts.context=context;opts.destination=analyser;window.__measure={context,analyser};return window.__dj=create(opts);
 };}});
