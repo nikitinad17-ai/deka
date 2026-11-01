@@ -7,7 +7,7 @@
  const bar=document.createElement('aside');bar.className='wallpaper-toolbar';bar.setAttribute('aria-label','Режим рабочего стола');
  bar.innerHTML='<strong>DEKA · Wallpaper <small>0.1.0 · эксперимент</small></strong><select id="wallMonitor" aria-label="Монитор"></select><button id="wallActive">Активно</button><button id="wallBackground">Фон</button><button id="wallNormal">Обычное окно · Esc</button><output id="wallState">Обычное окно</output>';
  document.body.prepend(bar);const $=id=>document.getElementById(id);
- function render(s){api.state={...api.state,...s};api.mode=s.mode||api.mode;api.quiet=!!s.quiet;document.documentElement.dataset.wallpaperMode=api.mode;document.documentElement.classList.toggle('wallpaper-quiet',api.quiet);
+ function render(s){const previous=api.mode;api.state={...api.state,...s};api.mode=s.mode||api.mode;api.quiet=!!s.quiet;if(api.mode!==previous&&api.mode!=='normal')window.scrollTo(0,0);document.documentElement.dataset.wallpaperMode=api.mode;document.documentElement.classList.toggle('wallpaper-quiet',api.quiet);
   document.querySelector('.wrap').inert=api.mode==='background';bar.inert=api.mode==='background';
   if(s.monitors){$('wallMonitor').replaceChildren(...s.monitors.map((m,i)=>{const o=document.createElement('option');o.value=m.name;o.textContent=`${i+1} · ${m.width}×${m.height} · ${Math.round(m.scale*100)}%`;return o;}));}
   if(s.selected)$('wallMonitor').value=s.selected;

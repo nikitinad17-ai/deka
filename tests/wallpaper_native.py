@@ -46,6 +46,14 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
    enum_children(top,each,0);print('REAL SHELL TREE',classname(top),top,children,flush=True)
   return True
  enumerate_callback=callback_type(describe);enum_windows(enumerate_callback,0)
+ # The hosted runner's terminal is a normal foreground application. It must
+ # be minimized before checking desktop pixels; Wallpaper must stay below it.
+ minimize=bind('ShowWindowAsync',W.BOOL,[W.HWND,C.c_int]);is_visible=bind('IsWindowVisible',W.BOOL,[W.HWND])
+ @callback_type
+ def minimize_runner_terminal(h,_):
+  if classname(h) in ['CASCADIA_HOSTING_WINDOW_CLASS','ConsoleWindowClass'] and is_visible(h):minimize(h,6)
+  return True
+ enum_windows(minimize_runner_terminal,0);page.wait_for_timeout(300)
  state=native();initial_settings=state['settings_file'];h=state['hwnd'];identity=json.loads((OUT/'native-integrity.json').read_text());process=psutil.Process(identity['pid'])
  check('Separate Wallpaper identity, ordinary window, tray, no autostart',state['mode']=='normal'and state['tray']and 'ru.volna.deka.wallpaper'in initial_settings and not state['autostart'],settings=initial_settings,monitors=state['monitors'],tray_rect=state['tray_rect'])
  for i,hz in enumerate([440,660,440,660]):
