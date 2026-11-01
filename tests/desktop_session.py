@@ -1,4 +1,4 @@
-"""Desktop 0.16: real MP3, mouse scratch, six DSP effects and full 17s fades.
+"""Desktop 0.17: real MP3, mouse scratch, six DSP effects and full 17s fades.
 --native connects to the exact compiled Tauri/WebView2 app; no IPC substitute.
 """
 import atexit,functools,http.server,json,math,os,sys,tempfile,threading,time
@@ -16,7 +16,8 @@ HOOK='''
 window.__audios=[];const NA=Audio;window.Audio=function(...a){const e=new NA(...a);__audios.push(e);return e;};Audio.prototype=NA.prototype;
 Object.defineProperty(window,'DekaDecks',{configurable:true,set(api){Object.defineProperty(window,'DekaDecks',{value:api});const create=api.create;api.create=opts=>{
  const context=new AudioContext({sampleRate:48000}),analyser=context.createAnalyser();analyser.fftSize=32768;analyser.connect(context.destination);
- opts.context=context;opts.destination=analyser;window.__measure={context,analyser};return window.__dj=create(opts);
+ const makeSource=context.createMediaElementSource.bind(context);window.__sources=[];context.createMediaElementSource=el=>{const node=makeSource(el);__sources.push({el,node});return node;};
+ opts.context=context;opts.destination=analyser;window.__djopts=opts;window.__measure={context,analyser};return window.__dj=create(opts);
 };}});
 window.currentAudio=side=>__audios.find(a=>a.src===__dj.state[side].track?.url);
 window.outputStats=()=>{const x=new Float32Array(__measure.analyser.fftSize);__measure.analyser.getFloatTimeDomainData(x);return {rms:Math.sqrt(x.reduce((s,v)=>s+v*v,0)/x.length),peak:x.reduce((s,v)=>Math.max(s,Math.abs(v)),0)};};
@@ -42,7 +43,7 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
     errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
     page.click('#djToggle');page.set_input_files('#file',[{'name':f.name,'mimeType':'audio/mpeg','buffer':f.read_bytes()}for f in files])
     def load(side,i):page.get_by_role('button',name=f'В {side}: Track-{i:02}',exact=True).click()
-    load('A',0);load('B',1);page.wait_for_function('__dj.state.A.duration>40&&__dj.state.B.duration>40&&__dj.state.A.fxStatus==="ready"&&__dj.state.B.fxStatus==="ready"')
+    load('A',0);load('B',1);page.wait_for_function('__dj.state.A.duration>40&&__dj.state.B.duration>40&&__dj.state.A.fxStatus==="ready"&&__dj.state.B.fxStatus==="ready"&&__dj.state.A.brakeStatus==="ready"&&__dj.state.B.brakeStatus==="ready"')
     check('Two real MP3 decoders and both Roll worklets initialize')
     check('CUE, compact Key Lock, BPM/TAP remain; Nudge and large channel levels are removed',page.locator('[data-cue]').count()==2 and page.locator('[data-keylock]').count()==2 and page.locator('[data-bpm]').count()==2 and page.locator('[data-tap]').count()==2 and page.locator('[data-nudge]').count()==0 and page.locator('[data-gain]').count()==0)
     check('Six independent effects per deck, arranged in three columns',page.locator('.dj-fx-cell').count()==12 and page.locator('.dj-fx').first.evaluate("e=>getComputedStyle(e).gridTemplateColumns.split(' ').length===3"))
@@ -56,6 +57,7 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
     if not fits:page.screenshot(path=str(OUT/'desktop-layout-failure.png'),full_page=True)
     check('Both complete deck panels fit the normal desktop viewport',fits,layouts=layouts)
     if not native:page.set_viewport_size({'width':1120,'height':780})
+    check('Three brake durations and explicit A/B target are on the right',page.locator('[data-brake]').count()==3 and page.locator('#djBrakeTarget').count()==1 and page.evaluate("document.querySelector('.dj-brake').getBoundingClientRect().left>=document.querySelector('.dj-deck[data-side=B]').getBoundingClientRect().right"))
     page.click('#djPlayA');page.wait_for_timeout(350)
     page.evaluate('window.__realResume=__measure.context.resume.bind(__measure.context);__measure.context.resume=()=>new Promise(r=>setTimeout(()=>__realResume().then(r),350))')
     page.click('#djPlayB');page.wait_for_timeout(1000);page.evaluate('__measure.context.resume=__realResume')
@@ -109,15 +111,16 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
     for i in range(1,3 if native else 7):
         old='A'if i%2 else'B';new='B'if i%2 else'A'
         page.wait_for_function(f"__dj.state.{new}.track?.title==='Track-{i:02}'&&__dj.state.{new}.duration>40")
-        page.evaluate(f"__dj.seek('{old}',__dj.state.{old}.duration-11.36);window.__fade=[];window.__fadeTimer=setInterval(()=>{{const s=fadeSample();if(s)__fade.push(s);}},60)")
+        page.wait_for_function('__dj.state.A.analysisStatus==="ready"&&__dj.state.B.analysisStatus==="ready"');expected=page.evaluate(f"({{out:currentAudio('{old}').playbackRate,plan:DekaMixAnalysis.plan(__dj.state.{old}.analysis,__dj.state.{new}.analysis,currentAudio('{old}').playbackRate)}})")
+        page.evaluate(f"__dj.seek('{old}',__dj.state.{old}.duration-currentAudio('{old}').playbackRate*17.85);window.__fade=[];window.__fadeTimer=setInterval(()=>{{const s=fadeSample();if(s)__fade.push(s);}},60)")
         page.wait_for_function(f"__dj.diagnostics().mixing&&__dj.diagnostics().transition.from==='{old}'",timeout=4000)
         page.wait_for_function(f"__dj.state.{old}.lastTransition?.completed&&!__dj.diagnostics().mixing&&!__dj.state.{new}.paused",timeout=20000)
         page.evaluate('clearInterval(__fadeTimer)');data=page.evaluate(f"({{samples:__fade,result:__dj.state.{old}.lastTransition,inRate:currentAudio('{new}').playbackRate,inEQ:__dj.state.{new}.eq.map((v,j)=>v+__dj.state.{new}.autoEQ[j]),title:__dj.state.{new}.track.title}})")
         samples=data['samples'];first=samples[0];last=samples[-1];result=data['result'];min_rms=min(s['rms']for s in samples)
         check(f'{old}→{new} MP3 fade {i} lasts 17s and keeps the exact successor',abs(result['elapsed']-17)<.2 and result['duration']==17 and data['title']==f'Track-{i:02}',elapsed=result['elapsed'],samples=len(samples))
-        check(f'{old}→{new} fade {i}: measured media rates follow the shared clock',first['incoming']<.93 and last['incoming']>.99 and .32<last['out']<.35 and all(abs(s['out']-(1-2*s['elapsed']/17/3))<.006 and abs(s['incoming']-(.92+.08*s['elapsed']/17))<.006 for s in samples),start=first['incoming'],out_end=last['out'],in_end=last['incoming'])
-        check(f'{old}→{new} fade {i}: all three EQ bands move smoothly with tempo',first['inEQ'][0]<-11.8 and last['outEQ'][0]<-11.6 and all(max(abs(v+12*s['elapsed']/17)for v in s['outEQ'])<.1 and max(abs(v-(-12+12*s['elapsed']/17))for v in s['inEQ'])<.1 for s in samples))
-        check(f'{old}→{new} fade {i}: real output never drops out and incoming settles',min_rms>.002 and abs(data['inRate']-1)<.0001 and all(abs(v)<.001 for v in data['inEQ']),minimum_rms=min_rms,peak=max(s['peak']for s in samples))
+        check(f'{old}→{new} fade {i}: actual media rates hold common BPM for the entire overlap',result['matched'] and all(abs(s['out']-expected['out'])<.00001 and abs(s['incoming']-expected['plan']['rate'])<.00001 for s in samples),out=last['out'],incoming=last['incoming'],targetBPM=result['targetBPM'])
+        check(f'{old}→{new} fade {i}: all three EQ bands move smoothly with tempo',first['inEQ'][0]<-5.8 and last['outEQ'][0]<-11.6 and all(max(abs(v+12*s['elapsed']/17)for v in s['outEQ'])<.1 and max(abs(v-start*(1-s['elapsed']/17))for v,start in zip(s['inEQ'],[-6,-3,-3]))<.1 for s in samples))
+        check(f'{old}→{new} fade {i}: real output never drops out and incoming settles',min_rms>.002 and abs(data['inRate']-expected['plan']['rate'])<.0001 and all(abs(v)<.001 for v in data['inEQ']),minimum_rms=min_rms,peak=max(s['peak']for s in samples))
     page.click('#djCenter');check('Center leaves Auto Mix armed',page.locator('#djAutoMix').get_attribute('aria-pressed')=='true')
     page.click('#djPauseAll');page.wait_for_timeout(1000) # Flush the 32768-frame (~683ms) measurement window.
     paused=page.evaluate('({a:__dj.state.A.paused,b:__dj.state.B.paused,held:__dj.state.A.held||__dj.state.B.held,...outputStats()})')

@@ -10,5 +10,9 @@
     return {outRate:outRate*(1-2*p/3),inRate:(inRate===undefined?.92:inRate)+(1-(inRate===undefined?.92:inRate))*p,
       outEQ:outEQ.map(function(v){return v+(-12-v)*p;}),inEQ:inEQ.map(function(v){return v*(1-p);}),progress:p};
   }
-  return {seconds:17,at:at};
+  function beat(progress,outEQ,inEQ){
+    var p=Math.max(0,Math.min(1,progress));
+    return {outEQ:outEQ.map(function(v){return v+(-12-v)*p;}),inEQ:inEQ.map(function(v){return v*(1-p);}),progress:p};
+  }
+  return {seconds:17,at:at,beat:beat};
 });

@@ -46,18 +46,25 @@
     return {bpm:null,confidence:0,beatOffset:0,rms:rms,peak:peak,bands:bands};
   }
   function plan(a,b,outRate){
-    var rate=1,matched=false,target=a&&a.bpm?a.bpm*outRate:null;
+    var rate=1,matched=false,target=a&&a.bpm?a.bpm*outRate:null,sourceBPM=b&&b.bpm,wanted=null,reason='no-bpm';
     if(target&&b&&b.bpm&&a.confidence>.32&&b.confidence>.32){
       var candidates=[b.bpm/2,b.bpm,b.bpm*2],best=candidates.reduce(function(x,y){return Math.abs(Math.log(target/y))<Math.abs(Math.log(target/x))?y:x;});
       var wanted=target/best;
       rate=clamp(wanted,.92,1.08);matched=wanted>=.92&&wanted<=1.08;
+      sourceBPM=best;reason=matched?'matched':'range';
     }
     var gain=a&&b&&b.rms>.0005?clamp(a.rms/b.rms,.35,1.5):1;
     var eq=[0,0,0];
     if(a&&b&&a.rms>.0005&&b.rms>.0005)eq=eq.map(function(_,i){
       return clamp(10*Math.log10(Math.max(1e-10,a.bands[i]/(a.rms*a.rms))/Math.max(1e-10,b.bands[i]/(b.rms*b.rms))),-3,3);
     });
-    return {rate:rate,matched:matched,gain:gain,eq:eq,targetBPM:target};
+    return {rate:rate,matched:matched,gain:gain,eq:eq,targetBPM:target,sourceBPM:sourceBPM,wantedRate:wanted,reason:reason};
+  }
+  function launchDelay(aTime,a,bTime,b,outRate,inRate){
+    if(!a||!b||!a.bpm||!b.bpm||(a.phaseConfidence===undefined?a.confidence:a.phaseConfidence)<.65||(b.phaseConfidence===undefined?b.confidence:b.phaseConfidence)<.65||!Number.isFinite(a.beatOffset)||!Number.isFinite(b.beatOffset))return null;
+    var period=60/a.bpm/outRate,first=((b.beatOffset-bTime)%(60/b.bpm)+60/b.bpm)%(60/b.bpm)/inRate;
+    var phase=((aTime-a.beatOffset)/outRate%period+period)%period;
+    return ((period-phase-first)%period+period)%period;
   }
   function create(){
     var cache=new Map(),tail=Promise.resolve();
@@ -78,7 +85,7 @@
       while(cache.size>6)cache.delete(cache.keys().next().value);
       return result;
     }
-    return {analyze:analyze,plan:plan,clear:function(){cache.clear();}};
+    return {analyze:analyze,plan:plan,launchDelay:launchDelay,clear:function(){cache.clear();}};
   }
-  return {analyzePCM:analyzePCM,plan:plan,create:create};
+  return {analyzePCM:analyzePCM,plan:plan,launchDelay:launchDelay,create:create};
 });
