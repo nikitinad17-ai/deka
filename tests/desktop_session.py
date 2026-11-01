@@ -57,7 +57,7 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
     if not fits:page.screenshot(path=str(OUT/'desktop-layout-failure.png'),full_page=True)
     check('Both complete deck panels fit the normal desktop viewport',fits,layouts=layouts)
     if not native:page.set_viewport_size({'width':1120,'height':780})
-    check('Three brake durations and explicit A/B target are on the right',page.locator('[data-brake]').count()==3 and page.locator('#djBrakeTarget').count()==1 and page.evaluate("document.querySelector('.dj-brake').getBoundingClientRect().left>=document.querySelector('.dj-deck[data-side=B]').getBoundingClientRect().right"))
+    check('Six independent Reverse buttons mirror A left and B right',page.locator('[data-brake]').count()==6 and page.locator('#djBrakeTarget').count()==0 and page.evaluate("document.querySelector('.dj-brake[data-side=A]').getBoundingClientRect().right<=document.querySelector('.dj-deck[data-side=A]').getBoundingClientRect().left&&document.querySelector('.dj-brake[data-side=B]').getBoundingClientRect().left>=document.querySelector('.dj-deck[data-side=B]').getBoundingClientRect().right"))
     page.click('#djPlayA');page.wait_for_timeout(350)
     page.evaluate('window.__realResume=__measure.context.resume.bind(__measure.context);__measure.context.resume=()=>new Promise(r=>setTimeout(()=>__realResume().then(r),350))')
     page.click('#djPlayB');page.wait_for_timeout(1000);page.evaluate('__measure.context.resume=__realResume')
@@ -123,6 +123,8 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
         check(f'{old}→{new} fade {i}: real output never drops out and incoming settles',min_rms>.002 and abs(data['inRate']-expected['plan']['rate'])<.0001 and all(abs(v)<.001 for v in data['inEQ']),minimum_rms=min_rms,peak=max(s['peak']for s in samples))
     from desktop_bpm_cases import run as bpm_cases
     bpm_cases(page,check,native)
+    from reverse_cases import run as reverse_cases
+    reverse_cases(page,check,native)
     page.click('#djCenter');check('Center leaves Auto Mix armed',page.locator('#djAutoMix').get_attribute('aria-pressed')=='true')
     page.click('#djPauseAll');page.wait_for_timeout(1000) # Flush the 32768-frame (~683ms) measurement window.
     paused=page.evaluate('({a:__dj.state.A.paused,b:__dj.state.B.paused,held:__dj.state.A.held||__dj.state.B.held,...outputStats()})')
