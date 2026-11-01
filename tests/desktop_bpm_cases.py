@@ -148,7 +148,7 @@ def run(page,check,native=False):
 if __name__=='__main__':
     import ast,functools,http.server,os,threading
     from playwright.sync_api import sync_playwright
-    hook=next(ast.literal_eval(n.value)for n in ast.parse((ROOT/'tests/desktop_session.py').read_text()).body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='HOOK'for t in n.targets))
+    hook=next(ast.literal_eval(n.value)for n in ast.parse((ROOT/'tests/desktop_session.py').read_text(encoding='utf-8')).body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='HOOK'for t in n.targets))
     class Quiet(http.server.SimpleHTTPRequestHandler):
         def log_message(self,*a):pass
     server=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(Quiet,directory=str(ROOT/'src')));threading.Thread(target=server.serve_forever,daemon=True).start();checks=[]
@@ -158,4 +158,4 @@ if __name__=='__main__':
         with sync_playwright()as p:
             b=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH'),args=['--no-sandbox','--autoplay-policy=no-user-gesture-required']);c=b.new_context(viewport={'width':1120,'height':780});c.add_init_script(hook);c.route('https://**',lambda r:r.abort());page=c.new_page();page.on('pageerror',lambda e:print('PAGE ERROR',str(e),flush=True));page.goto(f'http://127.0.0.1:{server.server_port}/index.html');page.click('#djToggle');run(page,check);b.close()
     finally:
-        (ROOT/'test-output/bpm-development-report.json').write_text(json.dumps({'tests':checks},ensure_ascii=False,indent=2));server.shutdown()
+        (ROOT/'test-output/bpm-development-report.json').write_text(json.dumps({'tests':checks},ensure_ascii=False,indent=2),encoding='utf-8');server.shutdown()

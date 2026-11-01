@@ -48,7 +48,7 @@ def run(page,check,reset):
         check(side+' brake during Auto Mix preserves the other deck and exact crossfader',after['playing']and abs(after['cross']-before['cross'])<1e-8 and abs(after['rate']-before['rate'])<1e-8 and max(abs(a-b)for a,b in zip(after['eq'],before['eq']))<1e-8 and page.evaluate(f'__dj.state.{side}.manualStopped&&!__dj.diagnostics().mixing&&!__dj.diagnostics().phaseTimer'),**after)
 
     # A one-second tone burst followed by silence gives measurable repeats/tails.
-    old=(ROOT/'tests/fixtures/deck-effects-0.16.js').read_text()
+    old=(ROOT/'tests/fixtures/deck-effects-0.16.js').read_text(encoding='utf-8')
     comparison=page.evaluate('''async oldSource=>{
       const current=DekaEffects;(0,eval)(oldSource);const previous=DekaEffects;window.DekaEffects=current;
       async function render(api,name,amount){const sr=24000,c=new OfflineAudioContext(2,sr*4.5,sr),fx=api.create(c,c.destination),buffer=c.createBuffer(1,sr*.24,sr),x=buffer.getChannelData(0);
@@ -68,5 +68,5 @@ def run(page,check,reset):
     with wave.open(str(out/'Deka-0.17.0-Echo-Reverb.wav'),'wb')as w:
         w.setnchannels(2);w.setsampwidth(2);w.setframerate(24000)
         for clip in comparison['audio']:w.writeframes(base64.b64decode(clip))
-    (out/'echo-reverb-comparison.json').write_text(json.dumps({k:v for k,v in comparison.items()if k!='audio'},indent=2))
+    (out/'echo-reverb-comparison.json').write_text(json.dumps({k:v for k,v in comparison.items()if k!='audio'},indent=2),encoding='utf-8')
     reset();page.evaluate('__djopts.fadeSeconds=17;__dj.setAutoMix(true)');check('All preparation timers and rate ramps are gone after repeated actions',page.evaluate('!__dj.diagnostics().phaseTimer&&!__dj.diagnostics().preparing&&__dj.diagnostics().rateRamps===0&&__dj.diagnostics().localPlayers===2'))
