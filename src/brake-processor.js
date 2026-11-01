@@ -1,5 +1,5 @@
 /* Bounded live PCM tape stop. The native decoder keeps feeding future samples. */
-(function(root){
+(function installBrake(root){
   'use strict';
   class BrakeTransport {
     constructor(rate){
@@ -50,5 +50,5 @@
     }
     registerProcessor('deka-brake',BrakeProcessor);
   }else if(typeof module==='object'&&module.exports)module.exports=BrakeTransport;
-  else root.DekaBrakeTransport=BrakeTransport;
+  else {root.DekaBrakeTransport=BrakeTransport;root.DekaBrakeModuleSource="("+installBrake.toString()+")(globalThis);";}
 })(globalThis);

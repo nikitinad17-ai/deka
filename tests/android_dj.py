@@ -7,13 +7,13 @@ results=[]
 def check(name, ok=True, **details):
     assert ok,(name,details)
     results.append(dict(test=name,passed=True,**details));print('PASS',name,details or '',flush=True)
-bundle='\n;\n'.join((ROOT/'src'/name).read_text()for name in ['library-engine.js','vinyl-processor.js','vinyl-engine.js','deck-engine.js','set-core.js','vk-bridge.js','library-runtime.js','virtual-list.js','mobile-overlay.js'])
+bundle='\n;\n'.join((ROOT/'src'/name).read_text()for name in ['library-engine.js', 'vinyl-processor.js', 'vinyl-engine.js', 'mix-analysis.js', 'mix-envelope.js', 'fx-processor.js', 'deck-effects.js', 'brake-processor.js', 'deck-brake.js', 'deck-engine.js', 'set-core.js', 'vk-bridge.js', 'library-runtime.js', 'virtual-list.js', 'mobile-overlay.js'])
 fixture=(ROOT/'tests/fixtures/vk-music.html').read_text()
 INIT='''
 window.__awake=[]; window.DekaAndroid={setBackChip:()=>{},hasSession:()=>true,keepAwake:on=>__awake.push(on),backgroundAllowed:()=>true};
 Object.defineProperty(window,'DekaDecks',{configurable:true,set(api){Object.defineProperty(window,'DekaDecks',{value:api});const create=api.create;api.create=opts=>{
  const context=new AudioContext({sampleRate:48000}), analyser=context.createAnalyser();analyser.fftSize=32768;analyser.connect(context.destination);
- opts.context=context;opts.destination=analyser;window.__measure={context,analyser};return window.__dj=create(opts);
+ opts.context=context;opts.destination=analyser;window.__measure={context,analyser};window.__djopts=opts;return window.__dj=create(opts);
 };}});
 window.measure=(hz=440)=>{const {context,analyser}=__measure,x=new Float32Array(analyser.fftSize);analyser.getFloatTimeDomainData(x);let re=0,im=0,sum=0;
  for(let i=0;i<x.length;i++){const w=.5-.5*Math.cos(2*Math.PI*i/(x.length-1)),a=2*Math.PI*hz*i/context.sampleRate; re+=x[i]*w*Math.cos(a);im+=x[i]*w*Math.sin(a);sum+=w;}
@@ -44,12 +44,12 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
     check('DJ selection loads independent files without autoplay',page.evaluate("__dj.state.A.paused&&__dj.state.B.paused&&__dj.state.A.track.title==='Tone440'&&__dj.state.B.track.title==='Tone660'"))
     ov('#playA').tap();ov('#playB').tap();page.wait_for_timeout(1100)
     check('Both local sources are actually audible',page.evaluate('measure(440).amp>.05&&measure(660).amp>.05'))
-    ov('#mixToggleB').tap();ov('#rateB').fill('8');page.wait_for_timeout(1100)
+    ov('#tabB1').tap();ov('#rateB').fill('8');page.wait_for_timeout(1100)
     check('Touch tempo +8% preserves 660 Hz with Key Lock',page.evaluate('__dj.state.B.rate===1.08&&measure(660).amp>.05'))
     ov('#bpmB').fill('125');check('Android effective BPM includes tempo', '135.0' in ov('#effectiveBPMB').inner_text())
     ov('#keyLockB').tap();page.wait_for_timeout(1000)
     check('Key Lock off gives real 712.8 Hz at +8%',page.evaluate('measure(712.8).amp>.05'))
-    ov('#keyLockB').tap();ov('[data-reset=B]').tap();ov('#mixToggleB').tap()
+    ov('#keyLockB').tap();ov('[data-reset=B]').tap();ov('#tabB0').tap()
     page.evaluate("__dj.seek('A',15);__dj.seek('B',15)")
     session=c.new_cdp_session(page)
     box=ov('#discA').bounding_box();cx=box['x']+box['width']/2;cy=box['y']+box['height']/2;radius=box['width']*.34
@@ -72,14 +72,15 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
     session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]});page.wait_for_function('()=>!__dj.state.A.paused&&!__dj.state.A.held')
     check('Releasing a finger resumes A and preserves B',page.evaluate('!__dj.state.B.paused'))
     page.evaluate("__dj.setCross(0)")
-    # Two simultaneous pointers: hold A and bend B without a whole-screen swipe.
-    ov('#mixToggleB').tap();nbox=ov('[data-nudge=B][data-value="0.04"]').bounding_box();nx=nbox['x']+nbox['width']/2;ny=nbox['y']+nbox['height']/2
+    # Two real pointers independently hold the two larger platters.
+    bbox=ov('#discB').bounding_box();bx=bbox['x']+bbox['width']*.8;by=bbox['y']+bbox['height']/2
     session.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':[finger(cx+radius,cy)]})
-    session.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':[finger(cx+radius,cy),finger(nx,ny,2)]});page.wait_for_timeout(120)
-    check('Multitouch: A held and B nudge independent',page.evaluate('__dj.state.A.held&&__dj.state.B.nudge===.04'))
+    session.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':[finger(cx+radius,cy),finger(bx,by,2)]})
+    page.wait_for_function('()=>__dj.state.A.held&&__dj.state.B.held')
+    check('Multitouch independently holds both Android platters',page.evaluate('__dj.state.A.held&&__dj.state.B.held'))
     session.send('Input.dispatchTouchEvent',{'type':'touchCancel','touchPoints':[]});page.wait_for_timeout(150)
-    check('Touch cancel clears hold/nudge without accidental navigation',page.evaluate('!__dj.state.A.held&&__dj.state.A.paused&&__dj.state.B.nudge===0') and ov('#dj').is_visible())
-    ov('#mixToggleB').tap();ov('#playA').tap()
+    check('Touch cancel clears both holds without navigation',page.evaluate('!__dj.state.A.held&&!__dj.state.B.held&&__dj.state.A.paused&&__dj.state.B.paused') and ov('#dj').is_visible())
+    ov('#playA').tap();ov('#playB').tap()
     page.set_viewport_size({'width':390,'height':844});page.wait_for_timeout(200)
     check('Rotation retains both sources, positions and playback',page.evaluate("!__dj.state.A.paused&&!__dj.state.B.paused&&__dj.state.A.track.title==='Tone440'"))
     ov('#djBtn').tap()
