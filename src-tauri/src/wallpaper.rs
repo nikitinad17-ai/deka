@@ -145,11 +145,11 @@ fn ordinary(app:&AppHandle,w:&WebviewWindow,s:&mut Session,focus:bool)->Result<(
  EnableWindow(h,1);SetParent(h,0);SetWindowLongPtrW(h,-16,s.style);SetWindowLongPtrW(h,-20,s.ex);if s.host!=0&&IsWindow(s.host)!=0{DestroyWindow(s.host);}s.host=0;s.display=0;}
  // Window setters in winit are queued and reapply cached top-level styles.
  // Keep native parenting/style changes in one Win32 transaction instead.
- unsafe{ShowWindow(h,if focus{9}else{4});}
+ unsafe{ShowWindow(h,if focus{9}else{0});}
  let all=screens(app);let mut r=s.rect;
  if !rect_visible(r,&all){if let Some(m)=all.first(){r=Rect{left:m.x+20,top:m.y+20,right:m.x+20+(m.width.saturating_sub(40).min(1120))as i32,bottom:m.y+20+(m.height.saturating_sub(80).min(780))as i32};}}
- if r.right>r.left&&r.bottom>r.top{unsafe{SetWindowPos(h,0,r.left,r.top,r.right-r.left,r.bottom-r.top,0x10|0x20|0x40);}}
- s.mode="normal".into();s.shell=0;s.icons=0;s.icon_root=0;s.shell_pid=0;unsafe{SetWindowPos(h,-2,0,0,0,0,0x10|0x1|0x2|0x20|0x40);if focus{ShowWindow(h,5);SetForegroundWindow(h);SetFocus(h);}}Ok(())
+ if r.right>r.left&&r.bottom>r.top{unsafe{SetWindowPos(h,0,r.left,r.top,r.right-r.left,r.bottom-r.top,0x10|0x20|if focus{0x40}else{0});}}
+ s.mode="normal".into();s.shell=0;s.icons=0;s.icon_root=0;s.shell_pid=0;unsafe{SetWindowPos(h,-2,0,0,0,0,0x10|0x1|0x2|0x20|if focus{0x40}else{0});if focus{ShowWindow(h,5);SetForegroundWindow(h);SetFocus(h);}}Ok(())
 }
 fn attached(h:Hwnd,s:&Session)->bool{unsafe{
  s.host!=0&&IsWindow(s.host)!=0&&IsWindow(s.shell)!=0&&IsWindowVisible(s.icons)!=0&&
@@ -178,8 +178,9 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
      // child can raise its whole WorkerW over the icon window on Windows 10.
      if GetForegroundWindow()==h{SetForegroundWindow(icon_root);}ShowWindow(h,0);
      // Size the hidden, top-level player for an exact 1:1 passive DOM mirror.
-     SetWindowLongPtrW(h,-16,(s.style&!CHILD&!0x00C40000)|POPUP);
+     SetWindowLongPtrW(h,-16,(s.style&!CHILD&!0x00C40000&!0x10000000)|POPUP);
      SetWindowPos(h,-2,selected.x,selected.y,selected.width as i32,selected.height as i32,0x10|0x20);
+     ShowWindow(h,0); // Resizing must not reintroduce the cached WS_VISIBLE bit.
      let h=display_h;
      let mut point=Point{x:selected.x,y:selected.y};MapWindowPoints(0,parent,&mut point,1);
      // Create our host in our own process/DPI context first. Creating a child
@@ -198,7 +199,7 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
        SetWindowPos(h,0,0,0,selected.width as i32,selected.height as i32,0x10|0x20|0x40);
        EnableWindow(host,0);EnableWindow(h,0);
        s.mode="background".into();s.shell=parent;s.icons=def;s.icon_root=icon_root;s.raised=raised;GetWindowThreadProcessId(parent,&mut s.shell_pid);
-       if !attached(h,&s){s.error="Не подтверждено размещение под ярлыками; возвращено обычное окно".into();ordinary(app,&w,&mut s,true)?;}
+       if !attached(h,&s)||IsWindowVisible(hwnd(&w)?)!=0{s.error="Не подтверждено размещение под ярлыками; возвращено обычное окно".into();ordinary(app,&w,&mut s,true)?;}
       }
      }
     },
@@ -213,7 +214,7 @@ fn snapshot(app:&AppHandle)->Result<Value,String>{
  let engine_h=h;let h=if s.mode=="background"{s.display}else{engine_h};
  let all=screens(app);let mut r=Rect::default();unsafe{GetWindowRect(h,&mut r);}
  let tray=app.tray_by_id("deka-wallpaper").is_some();let tray_rect=app.tray_by_id("deka-wallpaper").and_then(|t|t.rect().ok().flatten()).map(|r|format!("{r:?}"));
- Ok(json!({"version":"0.1.1-rc.1","mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"engine_hwnd":engine_h,"engine_parent":unsafe{GetParent(engine_h)},"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_rect":tray_rect,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
+ Ok(json!({"version":"0.1.1-rc.1","mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"engine_hwnd":engine_h,"engine_parent":unsafe{GetParent(engine_h)},"engine_visible":unsafe{IsWindowVisible(engine_h)!=0},"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_rect":tray_rect,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
 }
 pub fn action(app:&AppHandle,id:&str){
  if id=="exit"{let _=place(app,"normal",None);app.exit(0);return;}
@@ -244,7 +245,7 @@ pub fn setup(app:&AppHandle)->Result<(),Box<dyn std::error::Error>>{
    let st=handle.state::<Wallpaper>();let mut s=st.0.lock().unwrap();let mut recover=false;
    if s.mode!="normal"{
     if !all.iter().any(|m|m.name==s.selected){s.error="Монитор отключён; возвращено обычное окно".into();recover=true;}
-    else if s.mode=="background"&&!attached(s.display,&s){s.error="Слой обоев изменился; управление восстановлено в окне".into();recover=true;}
+    else if s.mode=="background"&&(!attached(s.display,&s)||main_window(&handle).and_then(|w|hwnd(&w)).map(|h|unsafe{IsWindowVisible(h)!=0}).unwrap_or(true)){s.error="Слой обоев изменился; управление восстановлено в окне".into();recover=true;}
     else if s.geometry!=geometry&&!s.geometry.is_empty(){let mode=s.mode.clone();let name=s.selected.clone();s.geometry=geometry.clone();drop(s);let _=place(&handle,&mode,Some(name));return;}
    }
    s.geometry=geometry;

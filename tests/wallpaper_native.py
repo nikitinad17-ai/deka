@@ -69,7 +69,7 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  # A temporary render canary proves that the actual desktop displays our
  # WebView below the real icons, not just that its HWND has a shell parent.
  page.evaluate("""()=>{const p=document.createElement('div');p.id='shellRenderProbe';p.style.cssText='position:fixed;left:85%;top:80%;width:32px;height:32px;z-index:2147483647;background:rgb(217,31,193);pointer-events:none';document.body.append(p);}""")
- resources=[]
+ resources=[];desktop_shown=False
  def sample_resource(mode):
   before={q.pid:sum(q.cpu_times()[:2])for q in[process]+process.children(recursive=True)if q.is_running()};start=time.monotonic();rss=[]
   for _ in range(15):
@@ -79,6 +79,10 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  for mode in ['active','background','normal','background','active','normal']:
   before=page.evaluate("[currentAudio('A').currentTime,currentAudio('B').currentTime]");state=native(mode);page.wait_for_timeout(250);print('MODE STATE',json.dumps(state,ensure_ascii=False),flush=True)
   check(mode+' preserves one engine, both tracks and all manual audio settings',state['mode']==mode and page.evaluate("__dj===__sameEngine&&__measure.context===__sameContext&&['A','B'].every((s,i)=>currentAudio(s)===__sourceRefs[i]&&!__dj.state[s].paused)&&__saved===JSON.stringify(['A','B'].map(s=>{const x=__dj.state[s];return {key:x.track.key,rate:x.rate,eq:x.eq,gain:x.gain,cue:x.cue,keyLock:x.keyLock};}))"))
+  if mode=='background' and not desktop_shown:
+   key=bind('keybd_event',None,[W.BYTE,W.BYTE,W.DWORD,C.c_size_t])
+   key(0x5B,0,0,0);key(0x44,0,0,0);key(0x44,0,2,0);key(0x5B,0,2,0);page.wait_for_timeout(500);desktop_shown=True
+   check('Win+D keeps the background display attached and the audio player hidden',native()['mode']=='background' and not native()['engine_visible'])
   if mode in ['active','background']:
    probe=page.locator('#shellRenderProbe').bounding_box();viewport=page.evaluate('({w:innerWidth,h:innerHeight})')
    sx=state['rect']['x']+round((probe['x']+16)*state['rect']['width']/viewport['w']);sy=state['rect']['y']+round((probe['y']+16)*state['rect']['height']/viewport['h'])
@@ -93,7 +97,7 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
   if mode=='background':
    background_h=state['hwnd'];parent=get_parent(background_h);grand=get_parent(parent);check('Real background parent is a child layer of WorkerW or Progman, with native input disabled',parent==state['host']and grand==state['shell']and classname(grand)in['WorkerW','Progman']and not enabled(background_h)and get_ex(background_h,-20)&0x08000020==0x08000020,parent_class=classname(grand))
    check('Native placement remains below the visible icon layer',state.get('placement_verified') is True)
-   check('Audio player stays outside Explorer; wallpaper surface contains no audio engine',state['engine_hwnd']==h and state['engine_parent']==0 and state['hwnd']!=h)
+   check('Audio player stays outside Explorer; wallpaper surface contains no audio engine',state['engine_hwnd']==h and state['engine_parent']==0 and not state['engine_visible'] and state['hwnd']!=h)
    passive=next(q for q in context.pages if 'wallpaper-display.html' in q.url)
    check('Passive display has no audio elements or DJ engine',passive.evaluate('typeof __dj===\"undefined\"&&!document.querySelector(\"audio,video\")'))
    if os.environ.get('DEKA_EXISTING_SHELL'):
