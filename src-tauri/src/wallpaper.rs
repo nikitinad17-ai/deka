@@ -14,7 +14,7 @@ type Hwnd=isize;
  class_extra:i32,window_extra:i32,instance:Hwnd,icon:Hwnd,cursor:Hwnd,background:Hwnd,
  menu:*const u16,name:*const u16
 }
-#[link(name="kernel32")] extern "system"{fn GetModuleHandleW(name:*const u16)->Hwnd;}
+#[link(name="kernel32")] extern "system"{fn GetModuleHandleW(name:*const u16)->Hwnd;fn SetLastError(error:u32);}
 #[link(name="user32")] extern "system" {
  fn RegisterClassW(class:*const HostClass)->u16;
  fn DefWindowProcW(window:Hwnd,message:u32,wparam:usize,lparam:isize)->isize;
@@ -116,12 +116,22 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
    match shell_layer(){
     Ok((parent,def,raised))=>unsafe{
      let mut point=Point{x:selected.x,y:selected.y};MapWindowPoints(0,parent,&mut point,1);
-     let host=CreateWindowExW((TRANSPARENT|NOACTIVATE|if raised{0x80000}else{0})as u32,wide("DekaWallpaperHost").as_ptr(),wide("Deka Wallpaper Host").as_ptr(),(CHILD|0x10000000|0x04000000|0x02000000)as u32,point.x,point.y,selected.width as i32,selected.height as i32,parent,0,GetModuleHandleW(std::ptr::null()),std::ptr::null_mut());
+     // Create our host in our own process/DPI context first. Creating a child
+     // directly in a foreign Explorer HWND is rejected on some Windows builds.
+     SetLastError(0);
+     let host=CreateWindowExW((TRANSPARENT|NOACTIVATE|TOOLWINDOW|if raised{0x80000}else{0})as u32,wide("DekaWallpaperHost").as_ptr(),wide("Deka Wallpaper Host").as_ptr(),(POPUP|0x04000000|0x02000000)as u32,0,0,selected.width as i32,selected.height as i32,0,0,GetModuleHandleW(std::ptr::null()),std::ptr::null_mut());
      if host==0{s.error=format!("Не удалось создать слой; обычное окно: {}",std::io::Error::last_os_error());ordinary(app,&w,&mut s)?;}else{
-      s.host=host;EnableWindow(host,0);if raised{SetLayeredWindowAttributes(host,0,255,2);SetWindowPos(host,def,point.x,point.y,selected.width as i32,selected.height as i32,0x10|0x40);}
-      SetWindowLongPtrW(h,-16,(s.style&!POPUP&!0x00C40000)|CHILD);SetWindowLongPtrW(h,-20,(s.ex&!APPWINDOW)|TOOLWINDOW|NOACTIVATE|TRANSPARENT);SetParent(h,host);
-      if GetParent(h)!=host{s.error=format!("Не удалось привязать к рабочему столу; обычное окно: {}",std::io::Error::last_os_error());ordinary(app,&w,&mut s)?;}else{
-       SetWindowPos(h,0,0,0,selected.width as i32,selected.height as i32,0x10|0x20|0x40);EnableWindow(h,0);let _=w.set_ignore_cursor_events(true);let _=w.set_skip_taskbar(true);s.mode="background".into();s.shell=parent;GetWindowThreadProcessId(parent,&mut s.shell_pid);
+      s.host=host;
+      SetWindowLongPtrW(h,-16,(s.style&!POPUP&!0x00C40000)|CHILD);SetWindowLongPtrW(h,-20,(s.ex&!APPWINDOW)|TOOLWINDOW|NOACTIVATE|TRANSPARENT);
+      SetParent(h,host);
+      SetWindowLongPtrW(host,-16,CHILD|0x04000000|0x02000000);
+      SetParent(host,parent);
+      if GetParent(h)!=host||GetParent(host)!=parent{s.error=format!("Не удалось привязать к рабочему столу; обычное окно: {}",std::io::Error::last_os_error());ordinary(app,&w,&mut s)?;}else{
+       if raised{SetLayeredWindowAttributes(host,0,255,2);}
+       SetWindowPos(host,if raised{def}else{0},point.x,point.y,selected.width as i32,selected.height as i32,0x10|0x20|0x40);
+       SetWindowPos(h,0,0,0,selected.width as i32,selected.height as i32,0x10|0x20|0x40);
+       EnableWindow(host,0);EnableWindow(h,0);let _=w.set_ignore_cursor_events(true);let _=w.set_skip_taskbar(true);
+       s.mode="background".into();s.shell=parent;GetWindowThreadProcessId(parent,&mut s.shell_pid);
       }
      }
     },
