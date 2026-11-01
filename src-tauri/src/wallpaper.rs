@@ -84,11 +84,8 @@ fn shell_layer()->Result<(Hwnd,Hwnd,bool),String>{
    let def=child(prog,"SHELLDLL_DefView");let raised=child(prog,"WorkerW");
    if def!=0&&raised!=0{return Ok((prog,def,true));}
   }
-  // Classic shells may keep DefView directly under Progman without creating
-  // an empty WorkerW. Our layered host is placed behind the actual icon view,
-  // never over it. Native acceptance verifies rendered screen pixels and input.
-  let def=child(prog,"SHELLDLL_DefView");
-  if def!=0{return Ok((prog,def,true));}
+  // A valid parent HWND alone does not prove a visible wallpaper layer.
+  // Unsupported/failed shell integration must keep an accessible window.
  }
  Err("Windows не предоставила слой обоев; возвращаю обычное окно".into())
 }
