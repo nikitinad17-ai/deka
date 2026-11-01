@@ -3,6 +3,7 @@ import ast,ctypes as C,json,os,subprocess,tempfile,time
 from ctypes import wintypes as W
 from pathlib import Path
 import psutil
+from PIL import ImageGrab
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1];OUT=ROOT/'test-output';OUT.mkdir(exist_ok=True);results=[]
 assert os.name=='nt'and os.environ.get('GITHUB_ACTIONS')=='true'
@@ -19,10 +20,11 @@ from_point=bind('WindowFromPoint',W.HWND,[POINT])
 screen_dc=bind('GetDC',W.HDC,[W.HWND]);release_dc=bind('ReleaseDC',C.c_int,[W.HWND,W.HDC])
 gdi=C.WinDLL('gdi32',use_last_error=True);pixel=gdi.GetPixel;pixel.restype=W.DWORD;pixel.argtypes=[W.HDC,C.c_int,C.c_int]
 def screen_pixel(x,y):
- dc=screen_dc(None)
- try:
-  color=pixel(dc,x,y);return [color&255,(color>>8)&255,(color>>16)&255]
- finally:release_dc(None,dc)
+ # Capture the composed desktop (including layered/DirectComposition windows),
+ # rather than sampling the GDI desktop DC, which can omit WebView2 content.
+ metric=bind('GetSystemMetrics',C.c_int,[C.c_int])
+ frame=ImageGrab.grab(all_screens=True)
+ return list(frame.getpixel((x-metric(76),y-metric(77)))[:3])
 def classname(h):
  b=C.create_unicode_buffer(256);get_class(h,b,256);return b.value
 with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
@@ -69,10 +71,18 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  for mode in ['active','background','normal','background','active','normal']:
   before=page.evaluate("[currentAudio('A').currentTime,currentAudio('B').currentTime]");state=native(mode);page.wait_for_timeout(250);print('MODE STATE',json.dumps(state,ensure_ascii=False),flush=True)
   check(mode+' preserves one engine, both tracks and all manual audio settings',state['mode']==mode and page.evaluate("__dj===__sameEngine&&__measure.context===__sameContext&&['A','B'].every((s,i)=>currentAudio(s)===__sourceRefs[i]&&!__dj.state[s].paused)&&__saved===JSON.stringify(['A','B'].map(s=>{const x=__dj.state[s];return {key:x.track.key,rate:x.rate,eq:x.eq,gain:x.gain,cue:x.cue,keyLock:x.keyLock};}))"))
-  if mode=='background':
+  if mode in ['active','background']:
    probe=page.locator('#shellRenderProbe').bounding_box();viewport=page.evaluate('({w:innerWidth,h:innerHeight})')
    sx=state['rect']['x']+round((probe['x']+16)*state['rect']['width']/viewport['w']);sy=state['rect']['y']+round((probe['y']+16)*state['rect']['height']/viewport['h'])
-   actual=screen_pixel(sx,sy);check('Actual desktop pixels show the Wallpaper beneath the icon layer',all(abs(a-b)<=8 for a,b in zip(actual,[217,31,193])),screen_pixel=actual,position=[sx,sy])
+   actual=[]
+   for attempt in range(20):
+    actual=screen_pixel(sx,sy)
+    if all(abs(a-b)<=8 for a,b in zip(actual,[217,31,193])):break
+    page.wait_for_timeout(100)
+   ImageGrab.grab(all_screens=True).save(OUT/('wallpaper-screen-'+mode+'.png'))
+   page.screenshot(path=str(OUT/('wallpaper-webview-'+mode+'.png')))
+   check('Actual composed desktop shows Wallpaper in '+mode,all(abs(a-b)<=8 for a,b in zip(actual,[217,31,193])),screen_pixel=actual,position=[sx,sy])
+  if mode=='background':
    parent=get_parent(h);grand=get_parent(parent);check('Real background parent is a child layer of WorkerW or Progman, with native input disabled',parent==state['host']and grand==state['shell']and classname(grand)in['WorkerW','Progman']and not enabled(h)and get_ex(h,-20)&0x08000020==0x08000020,parent_class=classname(grand))
    before_cross=page.evaluate('__dj.diagnostics().cross');page.evaluate("document.getElementById('djPauseAll').click();document.getElementById('djCross').value=-100;document.getElementById('djCross').dispatchEvent(new Event('input',{bubbles:true}));window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));")
    check('Background blocks click, slider and keyboard transport input',page.evaluate(f'!__dj.state.A.paused&&!__dj.state.B.paused&&__dj.diagnostics().cross==={before_cross}&&DekaWallpaper.mode==="background"'))

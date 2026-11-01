@@ -134,7 +134,7 @@ with open(folder/'native-stdout.txt','wb') as stdout,open(folder/'native-stderr.
         # NULL environment and LOGON_WITH_PROFILE load the real user's profile.
         # The bootstrap passes the diagnostic flags only to its Deka child.
         command=C.create_unicode_buffer(subprocess.list2cmdline([sys.executable,str(bootstrap)]))
-        startup=STARTUPINFO();startup.cb=C.sizeof(startup)
+        startup=STARTUPINFO();startup.cb=C.sizeof(startup);startup.lpDesktop='winsta0\\default'
         check(create_process(account,'.',password,1,sys.executable,command,0x08000000,
                              None,str(folder),C.byref(startup),C.byref(process)),'Launch standard-user bootstrap')
         launched=True;bootstrap_info=token_info(process.hProcess);sid=bootstrap_info['sid']
