@@ -177,7 +177,7 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  check('Recreated background surface is visible on the actual desktop',all(abs(a-b)<=8 for a,b in zip(actual,[217,31,193])),screen_pixel=actual)
  native('normal')
  saved=page.evaluate("__TAURI__.core.invoke('wallpaper_report')")
- check('Save report writes native placement diagnostics',Path(saved).exists() and 'shell' in Path(saved).read_text(encoding='utf-8'))
+ check('Save report writes native placement diagnostics',Path(saved).exists() and all(word in Path(saved).read_text(encoding='utf-8') for word in ['shell','display-to-desktop','last_error','watchdog-recovery']))
  check('Windows provides monitor selection; mixed-DPI/unplug geometry is also unit-tested',len(state['monitors'])>=1,physical_monitor_count=len(state['monitors']),physical_two_monitors_tested=False,physical_dpi_change_tested=False)
  # A second launch must hand back to the existing instance, never make another player.
  copied=Path(os.environ['DEKA_EXE']) if os.environ.get('DEKA_EXE') else next(Path(os.environ['PUBLIC']).glob('DekaCI*/Deka.exe'));second=subprocess.Popen([str(copied)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);second.wait(timeout=12);page.wait_for_timeout(300)

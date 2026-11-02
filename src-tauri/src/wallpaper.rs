@@ -312,7 +312,11 @@ pub fn setup(app:&AppHandle)->Result<(),Box<dyn std::error::Error>>{
     else if s.geometry!=geometry&&!s.geometry.is_empty(){let mode=s.mode.clone();let name=s.selected.clone();s.geometry=geometry.clone();drop(s);let _=place(&handle,&mode,Some(name));return;}
    }
    s.geometry=geometry;
-   if recover{if let Ok(w)=main_window(&handle){let _=ordinary(&handle,&w,&mut s,true);s.recoveries+=1;notify(&handle,&s);}}
+   if recover{if let Ok(w)=main_window(&handle){
+    let failed=json!({"step":"watchdog-recovery","display":window_details(s.display),"host":window_details(s.host),"shell":window_details(s.shell),"engine":window_details(hwnd(&w).unwrap_or(0))});s.attachment.push(failed);
+    let _=ordinary(&handle,&w,&mut s,true);s.recoveries+=1;notify(&handle,&s);
+    drop(s);if let Ok(state)=snapshot(&handle){record(&handle,"watchdog-recovery",state);}return;
+   }}
    else if let Ok(w)=main_window(&handle){if let Ok(h)=hwnd(&w){let mut front=Rect::default();let mut ours=Rect::default();let fg=unsafe{GetForegroundWindow()};unsafe{GetWindowRect(fg,&mut front);GetWindowRect(h,&mut ours);}
     let covered=fg!=h&&front.left<=ours.left&&front.top<=ours.top&&front.right>=ours.right&&front.bottom>=ours.bottom;
     let quiet=s.mode=="background"||unsafe{IsIconic(h)}!=0||unsafe{IsWindowVisible(h)}==0||covered;
