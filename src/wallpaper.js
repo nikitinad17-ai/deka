@@ -20,7 +20,7 @@
  setInterval(()=>mirror().catch(()=>{}),1000);
  listen('wallpaper:mirror-request',()=>mirror().catch(()=>{}));
  const bar=document.createElement('aside');bar.className='wallpaper-toolbar';bar.setAttribute('aria-label','Режим рабочего стола');
- bar.innerHTML='<strong>DEKA · Wallpaper <small>0.1.1 · RC1</small></strong><select id="wallMonitor" aria-label="Монитор"></select><button id="wallActive">Активно</button><button id="wallBackground">Фон</button><button id="wallNormal">Обычное окно · Esc</button><button id="wallReport">Сохранить отчёт</button><output id="wallState">Обычное окно</output>';
+ bar.innerHTML='<strong>DEKA · Wallpaper <small>0.1.2 · RC1</small></strong><select id="wallMonitor" aria-label="Монитор"></select><button id="wallActive">Активно</button><button id="wallBackground">Фон</button><button id="wallNormal">Обычное окно · Esc</button><button id="wallReport">Сохранить отчёт</button><output id="wallState">Обычное окно</output>';
  document.body.prepend(bar);const $=id=>document.getElementById(id);
  function render(s){const previous=api.mode;api.state={...api.state,...s};api.mode=s.mode||api.mode;api.quiet=!!s.quiet;if(api.mode!==previous&&api.mode!=='normal')window.scrollTo(0,0);document.documentElement.dataset.wallpaperMode=api.mode;document.documentElement.classList.toggle('wallpaper-quiet',api.quiet);
   document.querySelector('.wrap').inert=api.mode==='background';bar.inert=api.mode==='background';

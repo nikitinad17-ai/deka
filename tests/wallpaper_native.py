@@ -95,7 +95,11 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
    page.screenshot(path=str(OUT/('wallpaper-webview-'+mode+'.png')))
    check('Actual composed desktop shows Wallpaper in '+mode,all(abs(a-b)<=8 for a,b in zip(actual,[217,31,193])),screen_pixel=actual,position=[sx,sy])
   if mode=='background':
-   background_h=state['hwnd'];parent=get_parent(background_h);grand=get_parent(parent);check('Real background parent is a child layer of WorkerW or Progman, with native input disabled',parent==state['host']and grand==state['shell']and classname(grand)in['WorkerW','Progman']and not enabled(background_h)and get_ex(background_h,-20)&0x08000020==0x08000020,parent_class=classname(grand))
+   background_h=state['hwnd'];parent=get_parent(background_h)
+   surface=state['host'] or background_h
+   actual_parent=bind('GetAncestor',W.HWND,[W.HWND,W.UINT])(surface,1)
+   check('Real background parent is a child layer of WorkerW or Progman, with native input disabled',actual_parent==state['shell'] and classname(actual_parent)in['WorkerW','Progman'] and not enabled(background_h)and get_ex(background_h,-20)&0x08000020==0x08000020,parent_class=classname(actual_parent))
+   check('Classic desktop uses direct attachment and records its exact native result',state['raised'] or (state['host']==0 and len(state['attachment'])==1 and state['attachment'][0]['step']=='display-to-desktop' and state['attachment'][0]['actual_parent']==state['shell']))
    check('Native placement remains below the visible icon layer',state.get('placement_verified') is True)
    check('Audio player stays outside Explorer; wallpaper surface contains no audio engine',state['engine_hwnd']==h and state['engine_parent']==0 and not state['engine_visible'] and state['hwnd']!=h)
    passive=next(q for q in context.pages if 'wallpaper-display.html' in q.url)
