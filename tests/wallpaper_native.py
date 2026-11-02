@@ -1,4 +1,4 @@
-"""Real Windows shell + exact Wallpaper EXE, under native-wallpaper-ci standard account."""
+"""Real Windows shell + exact Wallpaper EXE; actual token recorded in environment."""
 import ast,ctypes as C,json,os,subprocess,tempfile,time
 from ctypes import wintypes as W
 from pathlib import Path
@@ -54,7 +54,7 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
   if classname(h) in ['CASCADIA_HOSTING_WINDOW_CLASS','ConsoleWindowClass'] and is_visible(h):minimize(h,6)
   return True
  enum_windows(minimize_runner_terminal,0);page.wait_for_timeout(300)
- state=native();initial_settings=state['settings_file'];h=state['hwnd'];identity=json.loads((OUT/'native-integrity.json').read_text());process=psutil.Process(identity['pid'])
+ state=native();initial_settings=state['settings_file'];h=state['hwnd'];identity=json.loads((OUT/'native-integrity.json').read_text());process=psutil.Process(identity['pid']);environment=identity.get('environment',{})
  check('Separate Wallpaper identity, ordinary window, tray, no autostart',state['mode']=='normal'and state['tray']and 'ru.volna.deka.wallpaper'in initial_settings and not state['autostart'],settings=initial_settings,monitors=state['monitors'],tray_rect=state['tray_rect'])
  for i,hz in enumerate([440,660,440,660]):
   path=Path(td)/f'Wallpaper-{i}.mp3';path.write_bytes((ROOT/'tests/fixtures'/f'dj-{hz}.mp3').read_bytes())
@@ -69,7 +69,7 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  # A temporary render canary proves that the actual desktop displays our
  # WebView below the real icons, not just that its HWND has a shell parent.
  page.evaluate("""()=>{const p=document.createElement('div');p.id='shellRenderProbe';p.style.cssText='position:fixed;left:85%;top:80%;width:32px;height:32px;z-index:2147483647;background:rgb(217,31,193);pointer-events:none';document.body.append(p);}""")
- resources=[]
+ resources=[];desktop_shown=False
  def sample_resource(mode):
   before={q.pid:sum(q.cpu_times()[:2])for q in[process]+process.children(recursive=True)if q.is_running()};start=time.monotonic();rss=[]
   for _ in range(15):
@@ -79,6 +79,10 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  for mode in ['active','background','normal','background','active','normal']:
   before=page.evaluate("[currentAudio('A').currentTime,currentAudio('B').currentTime]");state=native(mode);page.wait_for_timeout(250);print('MODE STATE',json.dumps(state,ensure_ascii=False),flush=True)
   check(mode+' preserves one engine, both tracks and all manual audio settings',state['mode']==mode and page.evaluate("__dj===__sameEngine&&__measure.context===__sameContext&&['A','B'].every((s,i)=>currentAudio(s)===__sourceRefs[i]&&!__dj.state[s].paused)&&__saved===JSON.stringify(['A','B'].map(s=>{const x=__dj.state[s];return {key:x.track.key,rate:x.rate,eq:x.eq,gain:x.gain,cue:x.cue,keyLock:x.keyLock};}))"))
+  if mode=='background' and not desktop_shown:
+   key=bind('keybd_event',None,[W.BYTE,W.BYTE,W.DWORD,C.c_size_t])
+   key(0x5B,0,0,0);key(0x44,0,0,0);key(0x44,0,2,0);key(0x5B,0,2,0);page.wait_for_timeout(500);desktop_shown=True
+   check('Win+D keeps the background display attached and the audio player hidden',native()['mode']=='background' and not native()['engine_visible'])
   if mode in ['active','background']:
    probe=page.locator('#shellRenderProbe').bounding_box();viewport=page.evaluate('({w:innerWidth,h:innerHeight})')
    sx=state['rect']['x']+round((probe['x']+16)*state['rect']['width']/viewport['w']);sy=state['rect']['y']+round((probe['y']+16)*state['rect']['height']/viewport['h'])
@@ -91,10 +95,33 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
    page.screenshot(path=str(OUT/('wallpaper-webview-'+mode+'.png')))
    check('Actual composed desktop shows Wallpaper in '+mode,all(abs(a-b)<=8 for a,b in zip(actual,[217,31,193])),screen_pixel=actual,position=[sx,sy])
   if mode=='background':
-   parent=get_parent(h);grand=get_parent(parent);check('Real background parent is a child layer of WorkerW or Progman, with native input disabled',parent==state['host']and grand==state['shell']and classname(grand)in['WorkerW','Progman']and not enabled(h)and get_ex(h,-20)&0x08000020==0x08000020,parent_class=classname(grand))
+   background_h=state['hwnd'];parent=get_parent(background_h)
+   surface=state['host'] or background_h
+   actual_parent=bind('GetAncestor',W.HWND,[W.HWND,W.UINT])(surface,1)
+   check('Real background parent is a child layer of WorkerW or Progman, with native input disabled',actual_parent==state['shell'] and classname(actual_parent)in['WorkerW','Progman'] and not enabled(background_h)and get_ex(background_h,-20)&0x08000020==0x08000020,parent_class=classname(actual_parent))
+   check('Classic desktop uses direct attachment and records its exact native result',state['raised'] or (state['host']==0 and len(state['attachment'])==1 and state['attachment'][0]['step']=='display-to-desktop' and state['attachment'][0]['actual_parent']==state['shell']))
+   check('Native placement remains below the visible icon layer',state.get('placement_verified') is True)
+   check('Audio player stays outside Explorer; wallpaper surface contains no audio engine',state['engine_hwnd']==h and state['engine_parent']==0 and not state['engine_visible'] and state['hwnd']!=h)
+   passive=next(q for q in context.pages if 'wallpaper-display.html' in q.url)
+   check('Passive display has no audio elements or DJ engine',passive.evaluate('typeof __dj===\"undefined\"&&!document.querySelector(\"audio,video\")'))
+   if os.environ.get('DEKA_EXISTING_SHELL'):
+    frame=ImageGrab.grab(all_screens=True).convert('RGB');pixels=frame.load();points=[]
+    for y in range(0,frame.height,2):
+     for x in range(0,frame.width,2):
+      color=pixels[x,y]
+      if color[0]<55 and color[1]>240 and 65<color[2]<100:points.append((x,y))
+    check('Real desktop shortcut icon remains visible over Wallpaper',len(points)>=40,green_pixels=len(points))
+    if not (OUT/'desktop-shortcut-opened.txt').exists():
+     x,y=points[len(points)//2];cursor=bind('SetCursorPos',W.BOOL,[C.c_int,C.c_int]);cursor(x,y)
+     click=bind('mouse_event',None,[W.DWORD,W.DWORD,W.DWORD,W.DWORD,C.c_size_t])
+     for _ in range(2):click(2,0,0,0,0);click(4,0,0,0,0);page.wait_for_timeout(90)
+     for _ in range(30):
+      if (OUT/'desktop-shortcut-opened.txt').exists():break
+      page.wait_for_timeout(100)
+     check('Real desktop shortcut opens through background Wallpaper', (OUT/'desktop-shortcut-opened.txt').exists())
    before_cross=page.evaluate('__dj.diagnostics().cross');page.evaluate("document.getElementById('djPauseAll').click();document.getElementById('djCross').value=-100;document.getElementById('djCross').dispatchEvent(new Event('input',{bubbles:true}));window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));")
    check('Background blocks click, slider and keyboard transport input',page.evaluate(f'!__dj.state.A.paused&&!__dj.state.B.paused&&__dj.diagnostics().cross==={before_cross}&&DekaWallpaper.mode==="background"'))
-   hit=from_point(POINT(state['rect']['x']+100,state['rect']['y']+100));check('Native desktop hit testing reaches outside the wallpaper WebView',hit!=h and hit!=state['host'],hit_class=classname(hit))
+   hit=from_point(POINT(state['rect']['x']+100,state['rect']['y']+100));check('Native desktop hit testing reaches outside the wallpaper WebView',classname(hit) in ['SysListView32','SHELLDLL_DefView'],hit_class=classname(hit))
   elif mode=='active':
    monitor=next((m for m in state['monitors']if m['name']==state['selected']),state['monitors'][0]);check('Active fills selected monitor in physical pixels without topmost',all(abs(state['rect'][k]-monitor[k])<=2 for k in ['x','y','width','height'])and not(get_ex(h,-20)&8),rect=state['rect'],monitor=monitor)
   else:check('Normal restores a top-level enabled window and original desktop',not get_parent(h)and enabled(h))
@@ -109,16 +136,55 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  page.wait_for_function('()=>__dj.state.A.track?.title==="Wallpaper-2"');check('Queue prepares its next file in background mode',page.evaluate('__dj.state.A.paused&&__dj.state.A.track.title==="Wallpaper-2"'))
  native('normal');page.screenshot(path=str(OUT/'wallpaper-native.png'));state=native('background');shell=find('Shell_TrayWnd',None);shell_pid=W.DWORD();pid_of(shell,C.byref(shell_pid));assert shell_pid.value
  # Restart only Explorer in this disposable GitHub Actions desktop, never a user workstation.
- before_engine=page.evaluate('currentAudio("B").currentTime');subprocess.run(['taskkill.exe','/PID',str(shell_pid.value),'/F'],check=True,capture_output=True);page.wait_for_timeout(1300);Path(os.environ['DEKA_CI_SHELL_REQUEST']).write_text('restart',encoding='utf-8')
+ before_engine=page.evaluate('currentAudio("B").currentTime');subprocess.run(['taskkill.exe','/PID',str(shell_pid.value),'/F'],check=True,capture_output=True);page.wait_for_timeout(1300);subprocess.Popen(['explorer.exe']) if os.environ.get('DEKA_EXISTING_SHELL') else Path(os.environ['DEKA_CI_SHELL_REQUEST']).write_text('restart',encoding='utf-8')
  page.wait_for_function('()=>DekaWallpaper.mode==="normal"',timeout=15000);page.wait_for_timeout(1800);state=native()
- check('Actual Explorer restart restores an accessible window, tray and the same running audio engine',state['recoveries']>=1 and state['tray']and enabled(h)and not get_parent(h)and page.evaluate(f'__dj===__sameEngine&&!__dj.state.B.paused&&currentAudio("B").currentTime>{before_engine}'),recoveries=state['recoveries'],tray_rect=state['tray_rect'])
+ print('POST-RESTART SHELL',find('Progman',None),find('Shell_TrayWnd',None),flush=True)
+ enum_windows(enumerate_callback,0)
+ print('POST-RESTART EXPLORER',[(q.pid,q.username(),q.cmdline())for q in psutil.process_iter()if q.name().lower()=='explorer.exe'],flush=True)
+ ImageGrab.grab(all_screens=True).save(OUT/'wallpaper-after-explorer.png')
+ check('Explorer restart fixture provides a real desktop and taskbar',bool(find('Progman',None)) and bool(find('Shell_TrayWnd',None)))
+ for _ in range(40):
+  state=native()
+  if state.get('tray_registered'):break
+  page.wait_for_timeout(250)
+ print('TRAY REGISTRATION',state.get('tray_registered'),state.get('tray_attempts'),state['tray_rect'],flush=True)
+ if not state['tray_rect']:
+  # Explorer may move a successfully restored icon into the hidden-icons popup.
+  # Open the real chevron with a mouse click before requiring its coordinates.
+  candidates=[]
+  @callback_type
+  def tray_child(q,_):
+   title=C.create_unicode_buffer(256);U.GetWindowTextW(q,title,256)
+   if classname(q)=='Button' and is_visible(q):candidates.append(q)
+   print('TRAY CHILD',q,classname(q),title.value,flush=True);return True
+  enum_children(find('Shell_TrayWnd',None),tray_child,0)
+  for q in candidates:
+   r=W.RECT();get_rect=bind('GetWindowRect',W.BOOL,[W.HWND,C.POINTER(W.RECT)]);get_rect(q,C.byref(r))
+   cursor=bind('SetCursorPos',W.BOOL,[C.c_int,C.c_int]);cursor((r.left+r.right)//2,(r.top+r.bottom)//2)
+   click=bind('mouse_event',None,[W.DWORD,W.DWORD,W.DWORD,W.DWORD,C.c_size_t]);click(2,0,0,0,0);click(4,0,0,0,0)
+   page.wait_for_timeout(500);state=native()
+   if state['tray_rect']:break
+ ImageGrab.grab(all_screens=True).save(OUT/'wallpaper-restored-tray.png')
+ check('Actual Explorer restart restores an accessible window, tray and the same running audio engine',state['recoveries']>=1 and state['tray'] and state['tray_rect'] is not None and enabled(h)and not get_parent(h)and page.evaluate(f'__dj===__sameEngine&&!__dj.state.B.paused&&currentAudio("B").currentTime>{before_engine}'),recoveries=state['recoveries'],tray_rect=state['tray_rect'],registered=state.get('tray_registered'))
+ state=native('background');page.wait_for_timeout(1200)
+ check('Background display can be recreated after Explorer restart without replacing audio',state['mode']=='background' and state['engine_hwnd']==h and state['engine_parent']==0 and page.evaluate('__dj===__sameEngine&&!__dj.state.B.paused'))
+ actual=[]
+ for _ in range(20):
+  actual=screen_pixel(sx,sy)
+  if all(abs(a-b)<=8 for a,b in zip(actual,[217,31,193])):break
+  page.wait_for_timeout(100)
+ ImageGrab.grab(all_screens=True).save(OUT/'wallpaper-screen-recovered.png')
+ check('Recreated background surface is visible on the actual desktop',all(abs(a-b)<=8 for a,b in zip(actual,[217,31,193])),screen_pixel=actual)
+ native('normal')
+ saved=page.evaluate("__TAURI__.core.invoke('wallpaper_report')")
+ check('Save report writes native placement diagnostics',Path(saved).exists() and all(word in Path(saved).read_text(encoding='utf-8') for word in ['shell','display-to-desktop','last_error','watchdog-recovery']))
  check('Windows provides monitor selection; mixed-DPI/unplug geometry is also unit-tested',len(state['monitors'])>=1,physical_monitor_count=len(state['monitors']),physical_two_monitors_tested=False,physical_dpi_change_tested=False)
  # A second launch must hand back to the existing instance, never make another player.
- copied=next(Path(os.environ['PUBLIC']).glob('DekaCI*/Deka.exe'));second=subprocess.Popen([str(copied)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);second.wait(timeout=12);page.wait_for_timeout(300)
+ copied=Path(os.environ['DEKA_EXE']) if os.environ.get('DEKA_EXE') else next(Path(os.environ['PUBLIC']).glob('DekaCI*/Deka.exe'));second=subprocess.Popen([str(copied)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);second.wait(timeout=12);page.wait_for_timeout(300)
  check('A second EXE exits and focuses the existing experiment',second.returncode==0 and page.evaluate('__dj===__sameEngine&&!__dj.state.B.paused'))
  page.evaluate("__dj.pause('A');__dj.pause('B');clearInterval(__shellTimer)");samples=page.evaluate('__shellSamples');check('Mode-switching and Explorer test produced no runtime exceptions',not errors,errors=errors)
  (OUT/'wallpaper-resource-report.json').write_text(json.dumps({'conditions':'Same two local MP3s, key lock on, A +4%, fixed independent EQ/gain/cross; 3 seconds per mode, process tree sum, CPU 100%=one core, aggregate RSS may include shared pages. GPU counters unavailable. Short CI comparison is not a desktop-PC performance guarantee.','samples':resources},indent=2))
- (OUT/'wallpaper-native-report.json').write_text(json.dumps({'tests':results,'resources':resources,'source':'Actual built Windows EXE under an ordinary standard user, real WorkerW/Progman and Explorer restart. Physical multi-monitor/DPI/hotplug unavailable; native unit tests cover geometry. Tray menu constructed; tray mouse interaction still requires manual desktop validation.'},ensure_ascii=False,indent=2))
+ (OUT/'wallpaper-native-report.json').write_text(json.dumps({'tests':results,'resources':resources,'environment':environment,'source':'Actual built Windows EXE in the recorded CI shell. Physical Windows 10, multi-monitor, DPI/hotplug and tray mouse clicks require manual validation.'},ensure_ascii=False,indent=2))
  # Exit is a native command; background host is detached before process termination.
  try:page.evaluate("__TAURI__.core.invoke('wallpaper_exit')")
  except Exception:pass
@@ -126,4 +192,4 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
   if not process.is_running():break
   time.sleep(.1)
  check('Exit stops the process and restores the desktop',not process.is_running())
- (OUT/'wallpaper-native-report.json').write_text(json.dumps({'tests':results,'resources':resources,'method':'Actual EXE, standard Windows user, real shell placement/input blocking, Explorer restart and process exit. Physical two-monitor/DPI/hotplug and tray mouse clicks remain manual.'},ensure_ascii=False,indent=2))
+ (OUT/'wallpaper-native-report.json').write_text(json.dumps({'tests':results,'resources':resources,'environment':environment,'method':'Actual EXE in the recorded CI shell, real shell placement/input blocking, Explorer restart and process exit. Physical Windows 10, two-monitor/DPI/hotplug and tray clicks remain manual.'},ensure_ascii=False,indent=2))

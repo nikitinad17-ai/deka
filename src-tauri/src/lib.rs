@@ -182,7 +182,7 @@ pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(windows)]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app,_,_| wallpaper::action(app,"open")))
-        .invoke_handler(tauri::generate_handler![vk_show, vk_cmd, vk_reload, vk_login, save_export, show_export, wallpaper::wallpaper_state, wallpaper::wallpaper_set, wallpaper::wallpaper_exit]);
+        .invoke_handler(tauri::generate_handler![vk_show, vk_cmd, vk_reload, vk_login, save_export, show_export, wallpaper::wallpaper_state, wallpaper::wallpaper_set, wallpaper::wallpaper_exit, wallpaper::wallpaper_report, wallpaper::wallpaper_mirror, wallpaper::wallpaper_display_ready]);
     #[cfg(not(windows))]
     let builder = builder.invoke_handler(tauri::generate_handler![vk_show, vk_cmd, vk_reload, vk_login, save_export, show_export]);
     builder
