@@ -111,6 +111,46 @@ fn attach_window(s:&mut Session,name:&str,h:Hwnd,parent:Hwnd)->Result<(),String>
  if GetWindowLongPtrW(h,-16)&CHILD==0{return Err(format!("{name}: Windows не сохранила дочерний стиль окна"));}
  Ok(())
 }}
+// Create a child in Explorer at birth. On some classic Win10 desktops a
+// cross-process SetParent on an existing top-level WebView returns zero with
+// no error and leaves GA_PARENT unchanged. Only attach the WebView locally.
+fn attach_classic_display(s: &mut Session, display: Hwnd, worker: Hwnd) -> Result<(), String> {
+    unsafe {
+        let instance = GetModuleHandleW(std::ptr::null());
+        let class = wide("DekaWallpaperHost");
+        let title = wide("Deka Wallpaper Host");
+        let previous_dpi = SetThreadDpiAwarenessContext(GetWindowDpiAwarenessContext(display));
+        SetLastError(0);
+        let host = CreateWindowExW(
+            (TRANSPARENT | NOACTIVATE | TOOLWINDOW) as u32,
+            class.as_ptr(), title.as_ptr(), (CHILD | 0x04000000 | 0x02000000) as u32,
+            0, 0, 1, 1, worker, 0, instance, std::ptr::null_mut(),
+        );
+        let error = GetLastError();
+        if previous_dpi != 0 { SetThreadDpiAwarenessContext(previous_dpi); }
+        let parent = if host != 0 { native_parent(host) } else { 0 };
+        s.attachment.push(json!({
+            "step": "create-in-worker", "target": worker, "host": host,
+            "actual_parent": parent, "last_error": error
+        }));
+        if host != 0 && parent == worker {
+            s.host = host;
+            if attach_window(s, "display-to-local-host", display, host).is_ok() {
+                return Ok(());
+            }
+        }
+        // Retain RC1's proven direct route on shells that reject a native
+        // host. Do not destroy a host while the display is its child.
+        if host != 0 {
+            if native_parent(display) == host {
+                return Err("Не удалось подготовить дочернее окно отображения".into());
+            }
+            DestroyWindow(host);
+            s.host = 0;
+        }
+        attach_window(s, "display-to-desktop-fallback", display, worker)
+    }
+}
 fn process_of(h:Hwnd)->u32{let mut pid=0;unsafe{GetWindowThreadProcessId(h,&mut pid);}pid}
 fn class_of(h:Hwnd)->String{let mut name=[0u16;256];let n=unsafe{GetClassNameW(h,name.as_mut_ptr(),256)};String::from_utf16_lossy(&name[..n.max(0) as usize])}
 fn below(lower:Hwnd,upper:Hwnd)->bool{
@@ -225,9 +265,7 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
      SetWindowLongPtrW(h,-16,(style&!POPUP&!0x00C40000&!0x10000000)|CHILD|0x04000000);
      SetWindowLongPtrW(h,-20,(GetWindowLongPtrW(h,-20)&!APPWINDOW)|TOOLWINDOW|NOACTIVATE|TRANSPARENT);
      let result=if !raised{
-      // Classic Windows 10: one cross-process attachment, no in-process
-      // intermediate parent with a potentially different DPI awareness.
-      attach_window(&mut s,"display-to-desktop",h,parent)
+      attach_classic_display(&mut s,h,parent)
      }else{
       // Raised desktops need a layered compositing host. Create it with the
       // display's DPI awareness, restoring the UI thread context immediately.
@@ -268,7 +306,7 @@ fn snapshot(app:&AppHandle)->Result<Value,String>{
  let engine_h=h;let h=if s.mode=="background"{s.display}else{engine_h};
  let all=screens(app);let mut r=Rect::default();unsafe{GetWindowRect(h,&mut r);}
  let tray=app.tray_by_id("deka-wallpaper").is_some();let tray_rect=app.tray_by_id("deka-wallpaper").and_then(|t|t.rect().ok().flatten()).map(|r|format!("{r:?}"));
- Ok(json!({"version":"0.1.2-rc.1","mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"engine_hwnd":engine_h,"engine_parent":unsafe{GetParent(engine_h)},"engine_visible":unsafe{IsWindowVisible(engine_h)!=0},"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_registered":tray_registered(app),"tray_rect":tray_rect,"attachment":s.attachment,"engine_native":window_details(engine_h),"display_native":window_details(h),"tray_shell":s.tray_shell,"tray_attempts":s.tray_attempts,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
+ Ok(json!({"version":"0.1.2-rc.2","mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"engine_hwnd":engine_h,"engine_parent":unsafe{GetParent(engine_h)},"engine_visible":unsafe{IsWindowVisible(engine_h)!=0},"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_registered":tray_registered(app),"tray_rect":tray_rect,"attachment":s.attachment,"engine_native":window_details(engine_h),"display_native":window_details(h),"tray_shell":s.tray_shell,"tray_attempts":s.tray_attempts,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
 }
 pub fn action(app:&AppHandle,id:&str){
  if id=="exit"{let _=place(app,"normal",None);app.exit(0);return;}
@@ -341,7 +379,7 @@ pub async fn wallpaper_report(app:AppHandle,window:WebviewWindow)->Result<String
  let source=journal(&app).ok_or("Папка отчёта недоступна")?;
  let data=std::fs::read_to_string(source).map_err(|e|e.to_string())?;
  let target=app.path().download_dir().map_err(|e|e.to_string())?.join("Deka-Wallpaper-diagnostics.txt");
- std::fs::write(&target,format!("Deka Wallpaper 0.1.2-rc.1 — размещение окна и слои Explorer; без списка музыки.\n{data}")).map_err(|e|e.to_string())?;
+ std::fs::write(&target,format!("Deka Wallpaper 0.1.2-rc.2 — размещение окна и слои Explorer; без списка музыки.\n{data}")).map_err(|e|e.to_string())?;
  Ok(target.to_string_lossy().into_owned())
 }
 #[tauri::command]
