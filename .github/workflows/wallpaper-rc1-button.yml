@@ -1,0 +1,38 @@
+name: Wallpaper RC1 button check
+on:
+  push:
+    branches: [diagnostics/wallpaper-rc1-button]
+permissions:
+  contents: read
+jobs:
+  published-exe:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/requirements.txt psutil pillow
+      - name: Download and verify published RC1
+        shell: pwsh
+        run: |
+          $source = 'https://github.com/nikitinad17-ai/deka/releases/download/wallpaper-v0.1.2-rc.1/Deka-Wallpaper.exe'
+          Invoke-WebRequest -Uri $source -OutFile Deka-Wallpaper.exe
+          $digest = (Get-FileHash Deka-Wallpaper.exe -Algorithm SHA256).Hash
+          if ($digest -ne '74fe3bf9071323d184c00ac3d295b9c8fa079ff1839d1cabb7c0e7e6c5d5897a') { throw 'Unexpected RC1 binary' }
+      - name: Click Background in the published app and verify the real desktop
+        run: python scripts/native-wallpaper-shell-ci.py Deka-Wallpaper.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wallpaper-rc1-button-evidence
+          path: |
+            test-output/*.json
+            test-output/*.txt
+            test-output/*.png

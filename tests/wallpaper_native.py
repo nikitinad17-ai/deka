@@ -28,7 +28,28 @@ def screen_pixel(x,y):
 def classname(h):
  b=C.create_unicode_buffer(256);get_class(h,b,256);return b.value
 with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
- browser=p.chromium.connect_over_cdp(os.environ['DEKA_CDP']);context=browser.contexts[0];context.route('https://**',lambda q:q.abort());page=next(q for q in context.pages if 'tauri.localhost'in q.url);page.add_init_script(HOOK);page.reload();errors=[];page.on('pageerror',lambda e:errors.append(str(e)));page.wait_for_function('()=>!!window.DekaWallpaper?.state')
+ browser=p.chromium.connect_over_cdp(os.environ['DEKA_CDP']);context=browser.contexts[0];context.route('https://**',lambda q:q.abort());page=next(q for q in context.pages if 'tauri.localhost'in q.url);
+ # Exercise the shipped toolbar on a fresh profile, before the suite reloads the page or installs hooks.
+ # The native API is used only for observation and to bring back the hidden window.
+ page.wait_for_selector('#wallBackground', state='visible', timeout=20000)
+ for entry_mode in ('normal', 'active'):
+  if entry_mode == 'active':
+   page.locator('#wallActive').click()
+   page.wait_for_function("window.DekaWallpaper?.mode === 'active'")
+  page.locator('#wallBackground').click(timeout=10000)
+  deadline = time.monotonic() + 15
+  while True:
+   state = page.evaluate("window.__TAURI__.core.invoke('wallpaper_state')")
+   if state['mode'] == 'background' or state['error'] or time.monotonic() >= deadline:
+    break
+   time.sleep(.25)
+  facts = {'mode': state['mode'], 'error': state['error'], 'attachment': state['attachment'],
+           'label': page.locator('#wallState').text_content(), 'engine_visible': state['engine_visible']}
+  check('Toolbar click enters background from '+entry_mode,
+        state['mode']=='background' and state['placement_verified'] and not state['engine_visible'], **facts)
+  page.evaluate("window.__TAURI__.core.invoke('wallpaper_set', {mode:'normal',monitor:null})")
+  page.wait_for_selector('#wallBackground', state='visible')
+ page.add_init_script(HOOK);page.reload();errors=[];page.on('pageerror',lambda e:errors.append(str(e)));page.wait_for_function('()=>!!window.DekaWallpaper?.state')
  def native(mode=None,monitor=None):
   if mode is None:return page.evaluate("__TAURI__.core.invoke('wallpaper_state')")
   return page.evaluate("([mode,monitor])=>__TAURI__.core.invoke('wallpaper_set',{mode,monitor})",[mode,monitor])
