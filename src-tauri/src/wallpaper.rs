@@ -71,7 +71,7 @@ fn hwnd(w:&WebviewWindow)->Result<Hwnd,String>{w.hwnd().map(|h|h.0 as Hwnd).map_
 #[derive(Clone)]struct Screen{name:String,x:i32,y:i32,width:u32,height:u32,scale:f64}
 fn screens(app:&AppHandle)->Vec<Screen>{app.available_monitors().unwrap_or_default().iter().map(|m|Screen{name:m.name().cloned().unwrap_or_else(||"Монитор".into()),x:m.position().x,y:m.position().y,width:m.size().width,height:m.size().height,scale:m.scale_factor()}).collect()}
 fn screen_json(s:&Screen)->Value{json!({"name":s.name,"x":s.x,"y":s.y,"width":s.width,"height":s.height,"scale":s.scale})}
-#[derive(Default)]struct Session{mode:String,selected:String,host:Hwnd,display:Hwnd,shell:Hwnd,icons:Hwnd,icon_root:Hwnd,raised:bool,shell_pid:u32,rect:Rect,style:isize,ex:isize,error:String,recoveries:u32,quiet:bool,geometry:String,tray_attempts:u8,tray_shell:Hwnd,attachment:Vec<Value>}
+#[derive(Default)]struct Session{mode:String,hotkey_registered:bool,selected:String,host:Hwnd,display:Hwnd,shell:Hwnd,icons:Hwnd,icon_root:Hwnd,raised:bool,shell_pid:u32,rect:Rect,style:isize,ex:isize,error:String,recoveries:u32,quiet:bool,geometry:String,tray_attempts:u8,tray_shell:Hwnd,attachment:Vec<Value>}
 pub struct Wallpaper(Mutex<Session>);
 fn configuration(app:&AppHandle)->Option<std::path::PathBuf>{app.path().app_config_dir().ok().map(|p|p.join("wallpaper-settings.json"))}
 fn journal(app:&AppHandle)->Option<std::path::PathBuf>{configuration(app).map(|p|p.with_file_name("wallpaper-diagnostics.jsonl"))}
@@ -242,8 +242,8 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
  if requested!="normal"{
   let all=screens(app);let selected=all.iter().find(|m|m.name==s.selected).or_else(||all.first()).ok_or("Нет доступного монитора")?.clone();s.selected=selected.name.clone();
   if requested=="active"{
-   unsafe{SetWindowLongPtrW(h,-16,(s.style&!CHILD&!0x00C40000)|POPUP);SetWindowPos(h,-2,selected.x,selected.y,selected.width as i32,selected.height as i32,0x20|0x40);}
-   s.mode="active".into();unsafe{ShowWindow(h,5);SetForegroundWindow(h);SetFocus(h);}
+   unsafe{SetWindowLongPtrW(h,-16,(s.style&!CHILD&!0x00C40000)|POPUP);SetWindowPos(h,0,selected.x,selected.y,selected.width as i32,selected.height as i32,0x20|0x40);}
+   s.mode="active".into();unsafe{ShowWindow(h,5);SetForegroundWindow(h);}
   }else{
    let display=display_window(app).ok_or("Экран обоев ещё не готов")?;let display_h=hwnd(&display)?;
    match shell_layer(){
@@ -294,7 +294,11 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
    }
   }
  }
- s.quiet=s.mode=="background";save(app,&s);notify(app,&s);drop(s);let result=snapshot(app)?;record(app,requested,result.clone());Ok(result)
+ s.quiet=s.mode=="background";save(app,&s);notify(app,&s);let interactive = s.mode != "background";drop(s);
+ if interactive {
+     if let Some(view) = app.get_webview("main") { let _ = view.set_focus(); }
+ }
+ let result=snapshot(app)?;record(app,requested,result.clone());Ok(result)
 }
 fn tray_registered(app:&AppHandle)->bool{
  // NIM_MODIFY succeeds for an existing icon even when Explorer puts it in
@@ -306,7 +310,7 @@ fn snapshot(app:&AppHandle)->Result<Value,String>{
  let engine_h=h;let h=if s.mode=="background"{s.display}else{engine_h};
  let all=screens(app);let mut r=Rect::default();unsafe{GetWindowRect(h,&mut r);}
  let tray=app.tray_by_id("deka-wallpaper").is_some();let tray_rect=app.tray_by_id("deka-wallpaper").and_then(|t|t.rect().ok().flatten()).map(|r|format!("{r:?}"));
- Ok(json!({"version":"0.1.2-rc.2","mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"engine_hwnd":engine_h,"engine_parent":unsafe{GetParent(engine_h)},"engine_visible":unsafe{IsWindowVisible(engine_h)!=0},"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_registered":tray_registered(app),"tray_rect":tray_rect,"attachment":s.attachment,"engine_native":window_details(engine_h),"display_native":window_details(h),"tray_shell":s.tray_shell,"tray_attempts":s.tray_attempts,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
+ Ok(json!({"version":"0.1.2-rc.3","hotkey_registered":s.hotkey_registered,"foreground":unsafe{GetForegroundWindow()},"mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"engine_hwnd":engine_h,"engine_parent":unsafe{GetParent(engine_h)},"engine_visible":unsafe{IsWindowVisible(engine_h)!=0},"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_registered":tray_registered(app),"tray_rect":tray_rect,"attachment":s.attachment,"engine_native":window_details(engine_h),"display_native":window_details(h),"tray_shell":s.tray_shell,"tray_attempts":s.tray_attempts,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
 }
 pub fn action(app:&AppHandle,id:&str){
  if id=="exit"{let _=place(app,"normal",None);app.exit(0);return;}
@@ -324,11 +328,35 @@ fn install_tray(app:&AppHandle)->tauri::Result<()>{
  let mut builder=TrayIconBuilder::with_id("deka-wallpaper").menu(&menu).tooltip("Deka Desktop Wallpaper · режимы и выход").show_menu_on_left_click(true);
  if let Some(icon)=app.default_window_icon(){builder=builder.icon(icon.clone());}builder.build(app)?;Ok(())
 }
+fn install_mode_shortcut(app: &AppHandle) -> tauri::Result<bool> {
+    use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+    let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::F9);
+    app.plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
+    let registered = app.global_shortcut().on_shortcut(shortcut, |app, _, event| {
+        if event.state() == ShortcutState::Pressed {
+            let handle = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let active = handle.state::<Wallpaper>().0.lock().unwrap().mode == "active";
+                action(&handle, if active { "background" } else { "active" });
+            });
+        }
+    });
+    if let Err(error) = &registered {
+        eprintln!("Wallpaper shortcut Ctrl+Alt+F9 unavailable: {error}");
+    }
+    Ok(registered.is_ok())
+}
+
 pub fn setup(app:&AppHandle)->Result<(),Box<dyn std::error::Error>>{
  register_host()?;
  let w=main_window(app)?;let h=hwnd(&w)?;let mut rect=Rect::default();unsafe{GetWindowRect(h,&mut rect);}
  let selected=configuration(app).and_then(|p|std::fs::read_to_string(p).ok()).and_then(|s|serde_json::from_str::<Value>(&s).ok()).and_then(|v|v["selected_monitor"].as_str().map(str::to_owned)).unwrap_or_default();
  app.manage(Wallpaper(Mutex::new(Session{mode:"normal".into(),selected,rect,style:unsafe{GetWindowLongPtrW(h,-16)},ex:unsafe{GetWindowLongPtrW(h,-20)},..Default::default()})));
+ let hotkey_registered = install_mode_shortcut(app).unwrap_or_else(|error| {
+     eprintln!("Wallpaper shortcut setup failed: {error}");
+     false
+ });
+ app.state::<Wallpaper>().0.lock().unwrap().hotkey_registered = hotkey_registered;
  app.on_menu_event(|app,event|action(app,event.id.as_ref()));
  install_tray(app)?;
  let app=app.clone();std::thread::spawn(move||{loop{
@@ -379,7 +407,7 @@ pub async fn wallpaper_report(app:AppHandle,window:WebviewWindow)->Result<String
  let source=journal(&app).ok_or("Папка отчёта недоступна")?;
  let data=std::fs::read_to_string(source).map_err(|e|e.to_string())?;
  let target=app.path().download_dir().map_err(|e|e.to_string())?.join("Deka-Wallpaper-diagnostics.txt");
- std::fs::write(&target,format!("Deka Wallpaper 0.1.2-rc.2 — размещение окна и слои Explorer; без списка музыки.\n{data}")).map_err(|e|e.to_string())?;
+ std::fs::write(&target,format!("Deka Wallpaper 0.1.2-rc.3 — размещение окна и слои Explorer; без списка музыки.\n{data}")).map_err(|e|e.to_string())?;
  Ok(target.to_string_lossy().into_owned())
 }
 #[tauri::command]

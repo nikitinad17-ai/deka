@@ -12,6 +12,8 @@
    const sources=document.body.querySelectorAll('canvas'),copies=clone.querySelectorAll('canvas');
    sources.forEach((canvas,i)=>{try{copies[i].setAttribute('data-deka-pixels',canvas.toDataURL());}catch{copies[i].removeAttribute('data-deka-pixels');}});
    document.body.querySelectorAll('input,select').forEach((src,i)=>{const dst=clone.querySelectorAll('input,select')[i];if(!dst)return;if(src.tagName==='SELECT')Array.from(dst.options).forEach((o,j)=>o.toggleAttribute('selected',j===src.selectedIndex));else{dst.setAttribute('value',src.value);if(src.checked)dst.setAttribute('checked','');else dst.removeAttribute('checked');}});
+   const toolbar = clone.querySelector('.wallpaper-toolbar');
+   if (toolbar) toolbar.textContent = backgroundHint();
    clone.querySelectorAll('script,audio,video,iframe,object,embed').forEach(e=>e.remove());
    clone.querySelectorAll('*').forEach(e=>Array.from(e.attributes).filter(a=>a.name.startsWith('on')).forEach(a=>e.removeAttribute(a.name)));
    await invoke('wallpaper_mirror',{frame:{html:clone.innerHTML,styles:Array.from(document.head.querySelectorAll('style,link[rel="stylesheet"]')).map(e=>e.outerHTML).join(''),bodyClass:document.body.className,rootClass:document.documentElement.className}});
@@ -20,14 +22,21 @@
  setInterval(()=>mirror().catch(()=>{}),1000);
  listen('wallpaper:mirror-request',()=>mirror().catch(()=>{}));
  const bar=document.createElement('aside');bar.className='wallpaper-toolbar';bar.setAttribute('aria-label','Режим рабочего стола');
- bar.innerHTML='<strong>DEKA · Wallpaper <small>0.1.2 · RC2</small></strong><select id="wallMonitor" aria-label="Монитор"></select><button id="wallActive">Активно</button><button id="wallBackground">Фон</button><button id="wallNormal">Обычное окно · Esc</button><button id="wallReport">Сохранить отчёт</button><output id="wallState">Обычное окно</output>';
+ bar.innerHTML='<strong>DEKA · Wallpaper <small>0.1.2 · RC3</small></strong><select id="wallMonitor" aria-label="Монитор"></select><button id="wallActive">Активно</button><button id="wallBackground">Фон</button><button id="wallNormal">Обычное окно · Esc</button><button id="wallReport">Сохранить отчёт</button><output id="wallState">Обычное окно</output>';
  document.body.prepend(bar);const $=id=>document.getElementById(id);
+ function backgroundHint(){
+  return api.state?.hotkey_registered ? 'Ctrl + Alt + F9 — открыть пульт' : 'Открыть пульт: Deka в трее → Активно';
+ }
  function render(s){const previous=api.mode;api.state={...api.state,...s};api.mode=s.mode||api.mode;api.quiet=!!s.quiet;if(api.mode!==previous&&api.mode!=='normal')window.scrollTo(0,0);document.documentElement.dataset.wallpaperMode=api.mode;document.documentElement.classList.toggle('wallpaper-quiet',api.quiet);
   document.querySelector('.wrap').inert=api.mode==='background';bar.inert=api.mode==='background';
   if(s.monitors){$('wallMonitor').replaceChildren(...s.monitors.map((m,i)=>{const o=document.createElement('option');o.value=m.name;o.textContent=`${i+1} · ${m.width}×${m.height} · ${Math.round(m.scale*100)}%`;return o;}));}
   if(s.selected)$('wallMonitor').value=s.selected;
   for(const [id,mode]of[['wallActive','active'],['wallBackground','background'],['wallNormal','normal']])$(id).setAttribute('aria-pressed',String(api.mode===mode));
-  $('wallState').textContent=s.error||({normal:'Обычное окно',active:'Активно · Esc — в окно',background:'Фон · управление в трее'}[api.mode]);
+  const hotkey = api.state.hotkey_registered;
+  const labels = {normal:'Обычное окно', active:'Активно · Esc — в окно', background:backgroundHint()};
+  $('wallState').textContent = s.error || (labels[api.mode] + (api.mode==='background' ? '' :
+   hotkey ? ' · Ctrl + Alt + F9 — '+(api.mode==='active'?'в фон':'открыть пульт') :
+   hotkey===false ? ' · Ctrl + Alt + F9 недоступно, используйте трей' : ''));
   if(api.mode==='background')requestAnimationFrame(()=>mirror().catch(()=>{}));
  }
  async function set(mode){try{render(await invoke('wallpaper_set',{mode,monitor:$('wallMonitor').value||null}));}catch(e){$('wallState').textContent=String(e);}}

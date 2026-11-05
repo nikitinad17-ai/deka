@@ -210,7 +210,7 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  report_lines = Path(saved).read_text(encoding='utf-8').splitlines()
  rows = [json.loads(line) for line in report_lines[1:] if line.strip()]
  background_rows = [row for row in rows if row['event'] == 'background' and
-                    row['state'].get('version') == '0.1.2-rc.2' and row['state']['placement_verified']]
+                    row['state'].get('version') == '0.1.2-rc.3' and row['state']['placement_verified']]
  recorded = background_rows[-1]['state'] if background_rows else {}
  expected_step = 'host-to-desktop' if state['raised'] else 'create-in-worker'
  check('Save report writes native placement diagnostics',
@@ -222,6 +222,8 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  # A second launch must hand back to the existing instance, never make another player.
  copied=Path(os.environ['DEKA_EXE']) if os.environ.get('DEKA_EXE') else next(Path(os.environ['PUBLIC']).glob('DekaCI*/Deka.exe'));second=subprocess.Popen([str(copied)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);second.wait(timeout=12);page.wait_for_timeout(300)
  check('A second EXE exits and focuses the existing experiment',second.returncode==0 and page.evaluate('__dj===__sameEngine&&!__dj.state.B.paused'))
+ from wallpaper_controls import verify_controls
+ verify_controls(page,context,native,check,ROOT)
  page.evaluate("__dj.pause('A');__dj.pause('B');clearInterval(__shellTimer)");samples=page.evaluate('__shellSamples');check('Mode-switching and Explorer test produced no runtime exceptions',not errors,errors=errors)
  (OUT/'wallpaper-resource-report.json').write_text(json.dumps({'conditions':'Same two local MP3s, key lock on, A +4%, fixed independent EQ/gain/cross; 3 seconds per mode, process tree sum, CPU 100%=one core, aggregate RSS may include shared pages. GPU counters unavailable. Short CI comparison is not a desktop-PC performance guarantee.','samples':resources},indent=2))
  (OUT/'wallpaper-native-report.json').write_text(json.dumps({'tests':results,'resources':resources,'environment':environment,'source':'Actual built Windows EXE in the recorded CI shell. Physical Windows 10, multi-monitor, DPI/hotplug and tray mouse clicks require manual validation.'},ensure_ascii=False,indent=2))

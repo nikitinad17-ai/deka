@@ -136,3 +136,7 @@ body.dj-open .wrap>section:not(#desktopDJ),body.dj-open .keys{display:none}
 .dj-brake[data-side=A]{order:0}.dj-deck[data-side=A]{order:1}.dj-mixer{order:2}.dj-deck[data-side=B]{order:3}.dj-brake[data-side=B]{order:4}
 @media(min-width:621px) and (max-width:1120px){.dj-console{grid-template-columns:60px minmax(0,1fr) 96px minmax(0,1fr) 60px;gap:6px}.dj-deck{padding:9px}.dj-transport{gap:5px}.dj-brake .btn{font-size:9px}.dj-transport .dj-effective{font-size:10px;min-width:68px}}
 @media(max-width:620px){.dj-console{grid-template-columns:54px minmax(0,1fr)}.dj-brake{display:flex;padding:6px 0}.dj-brake[data-side=A]{order:0}.dj-deck[data-side=A]{order:1}.dj-mixer{order:2;grid-column:1/-1}.dj-brake[data-side=B]{order:3}.dj-deck[data-side=B]{order:4}.dj-brake .btn{height:44px}}
+
+.dj-view-tabs{display:flex;gap:4px}
+.dj-view-tabs [aria-selected=true]{color:var(--cyan);border-color:var(--cyan)}
+#djSetsPanel{min-height:200px}

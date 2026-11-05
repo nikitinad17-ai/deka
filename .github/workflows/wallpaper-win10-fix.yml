@@ -1,11 +1,11 @@
-name: Wallpaper RC2 native child
+name: Wallpaper RC3 global shortcut and DJ sets
 on:
   push:
-    branches: [fix/wallpaper-native-child-rc2]
+    branches: [fix/wallpaper-hotkey-sets-rc3]
 permissions:
   contents: read
 concurrency:
-  group: wallpaper-native-child-rc2
+  group: wallpaper-hotkey-sets-rc3
   cancel-in-progress: true
 jobs:
   shell:
@@ -49,12 +49,12 @@ jobs:
       - name: Package tested portable executable
         shell: pwsh
         run: |
-          $dir = 'Deka-Wallpaper-0.1.2-RC2'
+          $dir = 'Deka-Wallpaper-0.1.2-RC3'
           New-Item -ItemType Directory -Path $dir | Out-Null
           Copy-Item Deka-Wallpaper.exe "$dir/Deka-Wallpaper.exe"
           (Get-FileHash Deka-Wallpaper.exe -Algorithm SHA256).Hash + "  Deka-Wallpaper.exe" | Set-Content "$dir/SHA256SUMS.txt"
       - uses: actions/upload-artifact@v4
         with:
-          name: Deka-Wallpaper-0.1.2-RC2-Windows
-          path: Deka-Wallpaper-0.1.2-RC2/
+          name: Deka-Wallpaper-0.1.2-RC3-Windows
+          path: Deka-Wallpaper-0.1.2-RC3/
           if-no-files-found: error

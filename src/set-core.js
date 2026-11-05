@@ -24,7 +24,8 @@
     if (!/^[a-z]+:\/\//i.test(raw)) raw = 'https://' + raw;
     var u; try { u = new URL(raw); } catch (_) { return null; }
     if (!/^https?:$/.test(u.protocol) || !HOSTS.test(u.hostname)) return null;
-    var hay = u.pathname + ' ' + decodeURIComponent(u.search || '');
+    var hay;
+    try { hay = u.pathname + ' ' + decodeURIComponent(u.search || ''); } catch (_) { return null; }
     var m = hay.match(/(?:^|[\/=\s])(video|clip)(-?\d+_\d+)(?![\w-])/);
     if (!m) return null;
     return { kind: m[1], id: m[2], url: 'https://vkvideo.ru/' + m[1] + m[2] };
