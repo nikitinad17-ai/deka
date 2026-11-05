@@ -296,7 +296,8 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
  }
  s.quiet=s.mode=="background";save(app,&s);notify(app,&s);let interactive = s.mode != "background";drop(s);
  if interactive {
-     if let Some(view) = app.get_webview("main") { let _ = view.set_focus(); }
+     let view: &tauri::Webview = w.as_ref();
+     let _ = view.set_focus();
  }
  let result=snapshot(app)?;record(app,requested,result.clone());Ok(result)
 }
