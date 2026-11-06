@@ -87,6 +87,11 @@ def verify_controls(page, context, native, check, root):
         click(x, y)
 
     state = native()
+    # The preceding shell suite ran Auto Mix for over a minute. Establish the
+    # manual two-source session before testing a silent load into the idle A;
+    # otherwise a legitimate automatic handoff can occupy A and show Replace.
+    page.evaluate("__dj.setAutoMix(false);__dj.pause('A');__dj.setRepeat(true);__dj.seek('B',5);__dj.play('B')")
+    page.wait_for_function("__dj.state.A.paused&&!__dj.state.B.paused")
     check('System-wide mode shortcut registered',state['hotkey_registered'])
     page.locator('#wallActive').click()
     page.wait_for_function("DekaWallpaper.mode==='active'")
@@ -119,8 +124,9 @@ def verify_controls(page, context, native, check, root):
     check('Adding a set in the DJ source list does not navigate or stop the local deck',
           vk.url=='https://vk.ru/audio' and page.evaluate('!__dj.state.B.paused'))
     page.locator('#djList .dj-row button').first.click()
+    loaded=page.evaluate("({kind:__dj.state.A.track?.kind,aPaused:__dj.state.A.paused,bPaused:__dj.state.B.paused,message:document.querySelector('#djMessage').textContent})")
     check('Loading a saved set into A is silent and leaves B running',
-          page.evaluate("__dj.state.A.track.kind==='set' && __dj.state.A.paused && !__dj.state.B.paused"))
+          loaded['kind']=='set' and loaded['aPaused'] and not loaded['bPaused'],**loaded)
     page.locator('#djPlayA').click()
     vk.wait_for_url(url)
     vk.wait_for_function("document.querySelector('video')?.currentTime > .4")
