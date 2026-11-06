@@ -1,0 +1,60 @@
+name: Wallpaper RC3 global shortcut and DJ sets
+on:
+  push:
+    branches: [fix/wallpaper-hotkey-sets-rc3]
+permissions:
+  contents: read
+concurrency:
+  group: wallpaper-hotkey-sets-rc3
+  cancel-in-progress: true
+jobs:
+  shell:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+      - run: npm install
+      - run: npm test
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - run: npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/requirements.txt psutil pillow
+      - name: Actual existing shell, visible icon, input, audio and Explorer restart
+        run: python scripts/native-wallpaper-shell-ci.py Deka-Wallpaper.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wallpaper-win10-fix-evidence
+          path: |
+            test-output/*.json
+            test-output/*.txt
+            test-output/*.png
+      - name: Package tested portable executable
+        shell: pwsh
+        run: |
+          $dir = 'Deka-Wallpaper-0.1.2-RC3'
+          New-Item -ItemType Directory -Path $dir | Out-Null
+          Copy-Item Deka-Wallpaper.exe "$dir/Deka-Wallpaper.exe"
+          (Get-FileHash Deka-Wallpaper.exe -Algorithm SHA256).Hash + "  Deka-Wallpaper.exe" | Set-Content "$dir/SHA256SUMS.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Deka-Wallpaper-0.1.2-RC3-Windows
+          path: Deka-Wallpaper-0.1.2-RC3/
+          if-no-files-found: error

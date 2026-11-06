@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Deka",
-  "version": "0.18.0",
+  "version": "0.19.0-preview.1",
   "identifier": "ru.volna.player",
   "build": {
     "frontendDist": "../src"
@@ -11,11 +11,11 @@
     "windows": [
       {
         "label": "main",
-        "title": "Дека",
+        "title": "Deka · 0.19.0 Preview · Плеер / DJ / Фон",
         "width": 1120,
         "height": 780,
         "minWidth": 420,
-        "minHeight": 560,
+        "minHeight": 320,
         "backgroundColor": "#101216",
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion,IntensiveWakeUpThrottling --autoplay-policy=no-user-gesture-required --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows",
         "dragDropEnabled": false

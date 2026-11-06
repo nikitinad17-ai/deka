@@ -1,6 +1,6 @@
 [package]
 name = "deka"
-version = "0.18.0"
+version = "0.19.0-preview.1"
 description = "Дека — ретро-плеер с поддержкой VK Музыки"
 edition = "2021"
 
@@ -12,8 +12,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["devtools"] }
+tauri = { version = "2", features = ["devtools", "tray-icon"] }
 serde_json = "1"
+tauri-plugin-single-instance = "2"
+
+[target.'cfg(windows)'.dependencies]
+tauri-plugin-global-shortcut = "2"
 
 [profile.release]
 codegen-units = 1

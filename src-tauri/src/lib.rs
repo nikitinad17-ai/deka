@@ -1,3 +1,5 @@
+#[cfg(windows)]
+mod wallpaper;
 // Windows: local player + VK window. Android: VK with Deka's isolated UI overlay.
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
@@ -177,7 +179,13 @@ fn percent_decode(s: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app,_,_| wallpaper::action(app,"open")))
+        .invoke_handler(tauri::generate_handler![vk_show, vk_cmd, vk_reload, vk_login, save_export, show_export, wallpaper::wallpaper_state, wallpaper::wallpaper_set, wallpaper::wallpaper_exit, wallpaper::wallpaper_report, wallpaper::wallpaper_mirror, wallpaper::wallpaper_display_ready]);
+    #[cfg(not(windows))]
+    let builder = builder.invoke_handler(tauri::generate_handler![vk_show, vk_cmd, vk_reload, vk_login, save_export, show_export]);
+    builder
         .setup(|app| {
             #[cfg(desktop)]
             {
@@ -188,6 +196,8 @@ pub fn run() {
                 #[cfg(windows)]
                 let builder = builder.additional_browser_args(BROWSER_ARGS);
                 builder.build()?;
+                #[cfg(windows)]
+                wallpaper::setup(app.handle())?;
             }
             #[cfg(mobile)]
             {
@@ -210,7 +220,6 @@ pub fn run() {
                 } else if window.label() == "main" { window.app_handle().exit(0); }
             }
         })
-        .invoke_handler(tauri::generate_handler![vk_show, vk_cmd, vk_reload, vk_login, save_export, show_export])
         .run(tauri::generate_context!())
         .expect("не удалось запустить приложение");
 }

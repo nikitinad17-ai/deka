@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Дека</title>
+<title>Deka</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=VT323&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -185,12 +185,13 @@
 </style>
 
 <link rel="stylesheet" href="desktop-dj.css">
+<link rel="stylesheet" href="wallpaper.css">
 </head>
 <body>
 <div class="wrap">
   <!-- MAIN -->
   <section class="win win-main" aria-label="Плеер">
-    <div class="bar"><div class="brand">ДЕ<b>КА</b></div><svg class="reels" id="reels" viewBox="0 0 44 18" aria-hidden="true"><g class="reel" style="transform-origin:9px 9px"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9" r="2.2" fill="currentColor"/><path d="M9 4.2v2.2M9 11.6v2.2M4.2 9h2.2M11.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><g class="reel" style="transform-origin:35px 9px"><circle cx="35" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="35" cy="9" r="2.2" fill="currentColor"/><path d="M35 4.2v2.2M35 11.6v2.2M30.2 9h2.2M37.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><path d="M9 16h26" stroke="var(--cyan)" stroke-width="1.2"/></svg><div class="spacer"></div><h2>ретро-дека · v0.18.0</h2><button class="btn dj-launch" id="djToggle" title="Открыть DJ-пульт с двумя деками">◉ DJ · A/B</button></div>
+    <div class="bar"><div class="brand">ДЕ<b>КА</b></div><svg class="reels" id="reels" viewBox="0 0 44 18" aria-hidden="true"><g class="reel" style="transform-origin:9px 9px"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9" r="2.2" fill="currentColor"/><path d="M9 4.2v2.2M9 11.6v2.2M4.2 9h2.2M11.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><g class="reel" style="transform-origin:35px 9px"><circle cx="35" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="35" cy="9" r="2.2" fill="currentColor"/><path d="M35 4.2v2.2M35 11.6v2.2M30.2 9h2.2M37.6 9h2.2" stroke="currentColor" stroke-width="1.4"/></g><path d="M9 16h26" stroke="var(--cyan)" stroke-width="1.2"/></svg><div class="spacer"></div><h2>ретро-дека · 0.19.0 Preview</h2><button class="btn dj-launch" id="djToggle" title="Открыть DJ-пульт с двумя деками">◉ DJ · A/B</button></div>
     <div class="body">
       <div class="lcd">
         <div>
@@ -307,6 +308,7 @@
         <div id="setNow" hidden>
           <div class="vk-bar">
             <span class="vk-status ok" id="setNowTitle">Сет</span><span class="spacer"></span>
+            <button class="btn" id="setPlayback">Слушать</button>
             <button class="btn" id="setPrev" title="Предыдущий трек сета">⏮ Трек</button>
             <button class="btn" id="setNext" title="Следующий трек сета">Трек ⏭</button>
             <button class="btn" id="setRestart" hidden>С начала</button>
@@ -713,11 +715,12 @@
   }
 
   // ---------- VK Музыка (только в приложении) ----------
+  let desktopSets = { items: () => [], add: () => null };
   const T = window.__TAURI__;
   // На телефоне окна ВК пока нет: вкладка «VK Музыка» показывает пояснение.
   const IS_ANDROID = /Android/i.test(navigator.userAgent);
   if (IS_ANDROID) document.documentElement.classList.add("android");
-  function vk(cmd){ if (T) T.core.invoke("vk_cmd", {cmd}).catch(()=>{}); }
+  function vk(cmd){ return T ? T.core.invoke("vk_cmd", {cmd}).then(()=>true).catch(()=>false) : Promise.resolve(false); }
   function vkNow(){ return vkS.paused ? vkS.currentTime : Math.min(vkS.duration||Infinity, vkS.currentTime + (performance.now()-vkAt)/1000); }
   let vkItems = [], vkTitleKey = "", vkSection = store.get("vkSection", "");
   const ALL = "__all__";
@@ -896,7 +899,7 @@
     });
     T.event.listen("vk:playlist", e=>{ if (vkLibraryReady) return; vkItems = (e.payload&&e.payload.items)||[]; $("vkPage").textContent = (e.payload&&e.payload.page)||"—"; renderVk(); window.dispatchEvent(new Event('deka:library')); });
     T.event.listen('vk:ended',()=>{
-      window.dispatchEvent(new Event('deka:vk:ended'));
+      window.dispatchEvent(new CustomEvent('deka:vk:ended', {detail:{setId:vkS.setId||''}}));
       if(document.body.classList.contains('dj-open')||mode!=='vk'||vkS.setId)return;
       if(repeatTrack){vk({type:'playKey',key:vkCurrentKey});}else step(1);
     });
@@ -916,6 +919,16 @@
       let liveId = "", savedAt = 0, chapSig = "", chapCur = -2;
       const chaptersOf = id => (setManual[id] && setManual[id].length ? setManual[id] : setAuto[id]) || [];
       const saveSets = () => store.set("sets", sets);
+      const setItems = () => sets.map(x => ({key:'set:'+x.kind+':'+x.id, kind:'set', setId:x.id,
+        setKind:x.kind, url:x.url, title:x.title||'Сет VK Видео '+x.id, artist:'VK Видео',
+        duration:x.duration||0, position:x.pos||0}));
+      function addSet(url){
+        const link=S.parseLink(url); if(!link)return null;
+        let x=sets.find(y=>y.id===link.id && y.kind===link.kind);
+        if(!x){x={url:link.url,id:link.id,kind:link.kind,title:'',duration:0,pos:0};sets.push(x);saveSets();}
+        renderSets(); return setItems().find(t=>t.setId===x.id && t.setKind===x.kind);
+      }
+      desktopSets={items:setItems,add:addSet};
       const setStatus = (t, ok) => { $("setStatus").textContent = t; $("setStatus").classList.toggle("ok", !!ok); };
       function renderSets(){
         const ol = $("setList"); ol.innerHTML = "";
@@ -932,8 +945,17 @@
           ol.appendChild(li);
         });
         $("setCount").textContent = sets.length+" "+plural(sets.length,["сет","сета","сетов"]);
+        window.dispatchEvent(new Event('deka:sets'));
+      }
+      function prepareSetPlayback() {
+        window.dispatchEvent(new Event('deka:set-play'));
+        mode = 'vk';
+        applyVol();
+        sendFx();
+        vk({type:'rate', value:1, preservePitch:true});
       }
       function openSet(x){
+        prepareSetPlayback();
         if (!audio.paused) audio.pause();
         mode="vk"; setState("ЗАГРУЗКА"); $("tKbps").textContent="VK";
         setMarquee(`СЕТ · ${x.title||"VK Видео"}${x.pos?" · продолжаю с "+S.fmt(x.pos):""}`);
@@ -958,13 +980,14 @@
         list.forEach((t,i)=>{
           const li=document.createElement("li"); li.className="item chap"; li.tabIndex=0; li.setAttribute("role","button"); li.dataset.index=i;
           li.innerHTML=`<span class="n">${S.fmt(t.time)}</span><span class="t"></span>`; li.querySelector(".t").textContent=t.title;
-          const go=()=>{ seekSet(t.time); if (vkS.paused) vk({type:"play"}); };
+          const go=()=>{ if (vkS.paused) prepareSetPlayback(); seekSet(t.time); if (vkS.paused) vk({type:"play"}); };
           li.addEventListener("click",go); li.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); go(); } });
           ol.appendChild(li);
         });
       }
       function renderNow(){
         const id = vkS.setId; $("setNow").hidden = !id; if (!id) return;
+        $("setPlayback").textContent = vkS.paused ? "Слушать" : "Пауза";
         const list = chaptersOf(id), t = vkNow(), i = S.chapterAt(list, t);
         $("setNowTitle").textContent = (vkS.title||"Сет")+" · "+S.fmt(t)+" / "+(vkS.duration?S.fmt(vkS.duration):"—");
         $("setNowTrack").textContent = i>=0 ? (i+1)+". "+list[i].title : "";
@@ -978,6 +1001,10 @@
         const to = S.stepTime(list, vkNow(), d);
         if (to===null){ setStatus("Это последний трек сета", true); return; }
         seekSet(to);
+      };
+      $("setPlayback").onclick = () => {
+        if (vkS.paused) prepareSetPlayback();
+        vk({type: vkS.paused ? "play" : "pause"});
       };
       $("setPrev").onclick = ()=>setStep(-1);
       $("setNext").onclick = ()=>setStep(1);
@@ -1046,6 +1073,8 @@
   window.DekaDesktopPlayer = {
     files: () => tracks.filter(t => t.key && t.url && !t.isDemo).map(t => ({ key:t.key, title:t.title, artist:t.artist, kind:'file', url:t.url, duration:t.dur, file:t.file, size:t.size })),
     vkItems: () => vkItems.map(t=>({...t,kind:'vk'})),
+    sets: () => desktopSets.items(),
+    addSet: url => desktopSets.add(url),
     command: command => vk(command),
     collect: () => { if($('vkLoad').onclick)$('vkLoad').click(); },
     settings: () => ({shuffle,repeatTrack}),
@@ -1060,5 +1089,6 @@
 })();
 </script>
 <script src="desktop-dj.js"></script>
+<script src="wallpaper.js"></script>
 </body>
 </html>
