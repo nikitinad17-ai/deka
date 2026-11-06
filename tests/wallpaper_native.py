@@ -76,7 +76,7 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
   return True
  enum_windows(minimize_runner_terminal,0);page.wait_for_timeout(300)
  state=native();initial_settings=state['settings_file'];h=state['hwnd'];identity=json.loads((OUT/'native-integrity.json').read_text());process=psutil.Process(identity['pid']);environment=identity.get('environment',{})
- check('Separate Wallpaper identity, ordinary window, tray, no autostart',state['mode']=='normal'and state['tray']and 'ru.volna.deka.wallpaper'in initial_settings and not state['autostart'],settings=initial_settings,monitors=state['monitors'],tray_rect=state['tray_rect'])
+ check('Unified Desktop profile, ordinary window, tray, no autostart',state['mode']=='normal'and state['tray']and 'ru.volna.player'in initial_settings and not state['autostart'],settings=initial_settings,monitors=state['monitors'],tray_rect=state['tray_rect'])
  for i,hz in enumerate([440,660,440,660]):
   path=Path(td)/f'Wallpaper-{i}.mp3';path.write_bytes((ROOT/'tests/fixtures'/f'dj-{hz}.mp3').read_bytes())
  page.click('#djToggle');page.set_input_files('#file',list(map(str,Path(td).glob('*.mp3'))))
@@ -86,7 +86,7 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  # window. Wait for both tones, rather than testing the second decoder
  # immediately after the first decoder becomes audible.
  page.wait_for_function("()=>!__dj.state.A.paused&&!__dj.state.B.paused&&amp(440)>.02&&amp(660)>.02",timeout=10000)
- check('Two actual MP3 sources are audible; scratching is disabled',page.evaluate("amp(440)>.02&&amp(660)>.02&&!__djopts.vinyl&&document.getElementById('djDiscA').disabled"),signal=page.evaluate('({a:amp(440),b:amp(660),rms:outputStats().rms})'))
+ check('Two actual MP3 sources are audible; Desktop scratching remains enabled',page.evaluate("amp(440)>.02&&amp(660)>.02&&__djopts.vinyl&&!document.getElementById('djDiscA').disabled"),signal=page.evaluate('({a:amp(440),b:amp(660),rms:outputStats().rms})'))
  # A temporary render canary proves that the actual desktop displays our
  # WebView below the real icons, not just that its HWND has a shell parent.
  page.evaluate("""()=>{const p=document.createElement('div');p.id='shellRenderProbe';p.style.cssText='position:fixed;left:85%;top:80%;width:32px;height:32px;z-index:2147483647;background:rgb(217,31,193);pointer-events:none';document.body.append(p);}""")
