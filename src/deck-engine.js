@@ -22,7 +22,7 @@
     var state = {}, elements = {}, nodes = {}, vinyl = {}, preparing = {}, aborts = {};
     // A video set owns the same single remote WebView as VK music. Loading is
     // silent; only Play may navigate it. Late states must match that request.
-    var remoteKey = '', remoteSetId = '', remoteWanted = false, remoteSeen = false, remoteTimer = null;
+    var remoteKey = '', remoteWanted = false, remoteSeen = false, remoteTimer = null;
     function stopRemoteTimer() { if(remoteTimer!==null){clearTimeout(remoteTimer);remoteTimer=null;} }
     var mix = null, reverseMix = null, lastReverse = null, starting = null, autoSerial = 0, autoCross = null, manualOverlap=false, manualUntil=0, failed = new Set(),phaseTimer=null,rateRamps={},brakeSerial=0;
     function resetMixTone(preserve){ ['A','B'].forEach(function(side){var s=state[side];if(s){if(preserve){if(s.autoRate!==null)s.rate=elements[side]?elements[side].playbackRate:s.autoRate;s.eq=s.eq.map(function(v,j){return clamp(v+s.autoEQ[j],-12,12);});}s.autoEQ=[0,0,0];s.autoRate=null;rate(side);}}); apply(); }
@@ -220,7 +220,6 @@
           var resumeSet=s.track.kind==='set'&&remoteKey===s.track.key&&remoteSeen;
           remoteWanted=true;
           if(remoteKey!==s.track.key){remoteKey=s.track.key;remoteSeen=false;}
-          remoteSetId=s.track.kind==='set'?s.track.setId:'';
           var command=s.track.kind==='set'?(resumeSet?{type:'play'}:{type:'openSet',id:s.track.setId,kind:s.track.setKind}):s.track.key==='live-vk'?{type:'play'}:{type:'playKey',key:s.track.key};
           var ok = await vk(command);
           if(generation!==s.generation)return false;
@@ -611,7 +610,7 @@
         if(!remoteWanted){if(!data.paused)vk({type:'pause'});return;}
         if(!remoteSeen){remoteSeen=true;apply();rate(vkSide);}
         if(s.remoteSeek!==null){vk({type:'seek',time:s.remoteSeek});data={...data,currentTime:s.remoteSeek};s.remoteSeek=null;}
-        if(data.title)s.track={...s.track,title:data.title,artist:data.artist||'VK Видео'};
+        if(data.title){s.track.title=data.title;s.track.artist=data.artist||'VK Видео';}
         s.pending=false;stopRemoteTimer();
       }else if(data.setId){
         // Never adopt a delayed video navigation as an unrelated music/file deck.

@@ -42,3 +42,8 @@ test('failed remote invocation releases the play button',async()=>{
  const e=create({djMode:true,vk:async()=>false});e.load('A',[set('-1_2')],0);
  assert.equal(await e.play('A'),false);assert.equal(e.state.A.pending,false);assert.equal(e.state.A.paused,true);
 });
+test('metadata arriving with ended does not cancel the set completion',async()=>{
+ const {engine:e}=rig();e.load('A',[set('-1_2')],0);await e.play('A');state(e,'-1_2');
+ e.endedVK({setId:'-1_2'});state(e,'-1_2',{paused:true,currentTime:600});
+ await new Promise(r=>setTimeout(r,75));assert.equal(e.state.A.status,'ended');e.pause('A');
+});

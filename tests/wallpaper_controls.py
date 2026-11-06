@@ -77,6 +77,7 @@ def verify_controls(page, context, native, check, root):
         raise AssertionError('The native Active menu item did not appear')
 
     def click_tab(id):
+        page.locator('#'+id).scroll_into_view_if_needed()
         state = native()
         rect = page.locator('#'+id).bounding_box()
         scale = page.evaluate('devicePixelRatio')
