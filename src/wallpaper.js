@@ -22,7 +22,7 @@
  setInterval(()=>mirror().catch(()=>{}),1000);
  listen('wallpaper:mirror-request',()=>mirror().catch(()=>{}));
  const bar=document.createElement('aside');bar.className='wallpaper-toolbar';bar.setAttribute('aria-label','Режим рабочего стола');
- bar.innerHTML='<strong>DEKA · Wallpaper <small>0.1.2 · RC3</small></strong><select id="wallMonitor" aria-label="Монитор"></select><button id="wallActive">Активно</button><button id="wallBackground">Фон</button><button id="wallNormal">Обычное окно · Esc</button><button id="wallReport">Сохранить отчёт</button><output id="wallState">Обычное окно</output>';
+ bar.innerHTML='<strong>DEKA <small>0.19.0 · Preview</small></strong><select id="wallMonitor" aria-label="Монитор"></select><button id="wallActive">Активно</button><button id="wallBackground">Фон</button><button id="wallNormal">Обычное окно · Esc</button><button id="wallReport">Сохранить отчёт</button><output id="wallState">Обычное окно</output>';
  document.body.prepend(bar);const $=id=>document.getElementById(id);
  function backgroundHint(){
   return api.state?.hotkey_registered ? 'Ctrl + Alt + F9 — открыть пульт' : 'Открыть пульт: Deka в трее → Активно';

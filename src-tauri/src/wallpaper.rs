@@ -304,14 +304,14 @@ fn place(app:&AppHandle,requested:&str,monitor:Option<String>)->Result<Value,Str
 fn tray_registered(app:&AppHandle)->bool{
  // NIM_MODIFY succeeds for an existing icon even when Explorer puts it in
  // the closed overflow area, where Shell_NotifyIconGetRect can return None.
- app.tray_by_id("deka-wallpaper").map(|t|t.set_tooltip(Some("Deka Desktop Wallpaper · режимы и выход")).is_ok()).unwrap_or(false)
+ app.tray_by_id("deka-wallpaper").map(|t|t.set_tooltip(Some("Deka · Плеер / DJ / Фон")).is_ok()).unwrap_or(false)
 }
 fn snapshot(app:&AppHandle)->Result<Value,String>{
  let w=main_window(app)?;let h=hwnd(&w)?;let state=app.state::<Wallpaper>();let s=state.0.lock().map_err(|_|"Состояние занято")?;
  let engine_h=h;let h=if s.mode=="background"{s.display}else{engine_h};
  let all=screens(app);let mut r=Rect::default();unsafe{GetWindowRect(h,&mut r);}
  let tray=app.tray_by_id("deka-wallpaper").is_some();let tray_rect=app.tray_by_id("deka-wallpaper").and_then(|t|t.rect().ok().flatten()).map(|r|format!("{r:?}"));
- Ok(json!({"version":"0.1.2-rc.3","hotkey_registered":s.hotkey_registered,"foreground":unsafe{GetForegroundWindow()},"mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"engine_hwnd":engine_h,"engine_parent":unsafe{GetParent(engine_h)},"engine_visible":unsafe{IsWindowVisible(engine_h)!=0},"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_registered":tray_registered(app),"tray_rect":tray_rect,"attachment":s.attachment,"engine_native":window_details(engine_h),"display_native":window_details(h),"tray_shell":s.tray_shell,"tray_attempts":s.tray_attempts,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
+ Ok(json!({"version":app.package_info().version.to_string(),"hotkey_registered":s.hotkey_registered,"foreground":unsafe{GetForegroundWindow()},"mode":s.mode,"selected":s.selected,"monitors":all.iter().map(screen_json).collect::<Vec<_>>(),"engine_hwnd":engine_h,"engine_parent":unsafe{GetParent(engine_h)},"engine_visible":unsafe{IsWindowVisible(engine_h)!=0},"hwnd":h,"parent":unsafe{GetParent(h)},"host":s.host,"shell":s.shell,"shell_class":class_of(s.shell),"icons":s.icons,"icon_root":s.icon_root,"raised":s.raised,"placement_verified":s.mode=="background"&&attached(h,&s),"shell_pid":s.shell_pid,"style":unsafe{GetWindowLongPtrW(h,-16)},"ex_style":unsafe{GetWindowLongPtrW(h,-20)},"rect":{"x":r.left,"y":r.top,"width":r.right-r.left,"height":r.bottom-r.top},"tray":tray,"tray_registered":tray_registered(app),"tray_rect":tray_rect,"attachment":s.attachment,"engine_native":window_details(engine_h),"display_native":window_details(h),"tray_shell":s.tray_shell,"tray_attempts":s.tray_attempts,"error":s.error,"recoveries":s.recoveries,"settings_file":configuration(app),"autostart":false,"quiet":s.quiet}))
 }
 pub fn action(app:&AppHandle,id:&str){
  if id=="exit"{let _=place(app,"normal",None);app.exit(0);return;}
@@ -326,7 +326,7 @@ fn install_tray(app:&AppHandle)->tauri::Result<()>{
  let monitors=Submenu::new(app,"Выбор монитора",true)?;
  for(i,m)in screens(app).iter().enumerate(){monitors.append(&MenuItem::with_id(app,format!("monitor:{}",m.name),format!("{} · {} · {}×{} · {}%",i+1,m.name,m.width,m.height,(m.scale*100.)as u32),true,None::<&str>)?)?;}
  menu.append(&monitors)?;menu.append(&MenuItem::with_id(app,"exit","Выход",true,None::<&str>)?)?;
- let mut builder=TrayIconBuilder::with_id("deka-wallpaper").menu(&menu).tooltip("Deka Desktop Wallpaper · режимы и выход").show_menu_on_left_click(true);
+ let mut builder=TrayIconBuilder::with_id("deka-wallpaper").menu(&menu).tooltip("Deka · Плеер / DJ / Фон").show_menu_on_left_click(true);
  if let Some(icon)=app.default_window_icon(){builder=builder.icon(icon.clone());}builder.build(app)?;Ok(())
 }
 fn install_mode_shortcut(app: &AppHandle) -> tauri::Result<bool> {
@@ -408,7 +408,7 @@ pub async fn wallpaper_report(app:AppHandle,window:WebviewWindow)->Result<String
  let source=journal(&app).ok_or("Папка отчёта недоступна")?;
  let data=std::fs::read_to_string(source).map_err(|e|e.to_string())?;
  let target=app.path().download_dir().map_err(|e|e.to_string())?.join("Deka-Wallpaper-diagnostics.txt");
- std::fs::write(&target,format!("Deka Wallpaper 0.1.2-rc.3 — размещение окна и слои Explorer; без списка музыки.\n{data}")).map_err(|e|e.to_string())?;
+ std::fs::write(&target,format!("Deka 0.19.0 Preview — размещение окна и слои Explorer; без списка музыки.\n{data}")).map_err(|e|e.to_string())?;
  Ok(target.to_string_lossy().into_owned())
 }
 #[tauri::command]

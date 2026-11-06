@@ -140,3 +140,8 @@ body.dj-open .wrap>section:not(#desktopDJ),body.dj-open .keys{display:none}
 .dj-view-tabs{display:flex;gap:4px}
 .dj-view-tabs [aria-selected=true]{color:var(--cyan);border-color:var(--cyan)}
 #djSetsPanel{min-height:200px}
+
+.dj-set-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px;background:#101318}
+.dj-set-form[hidden],#desktopDJ [hidden]{display:none!important}
+.dj-set-form label{font-size:12px}.dj-set-form input{flex:1;min-width:200px;background:#171d24;color:var(--ink);border:1px solid #444b56;border-radius:5px;padding:9px}
+#djEmpty{padding:12px;color:var(--ink-2);font-size:12px}

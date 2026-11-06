@@ -210,7 +210,7 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  report_lines = Path(saved).read_text(encoding='utf-8').splitlines()
  rows = [json.loads(line) for line in report_lines[1:] if line.strip()]
  background_rows = [row for row in rows if row['event'] == 'background' and
-                    row['state'].get('version') == '0.1.2-rc.3' and row['state']['placement_verified']]
+                    row['state'].get('version') == json.loads((ROOT/'package.json').read_text())['version'] and row['state']['placement_verified']]
  recorded = background_rows[-1]['state'] if background_rows else {}
  expected_step = 'host-to-desktop' if state['raised'] else 'create-in-worker'
  check('Save report writes native placement diagnostics',

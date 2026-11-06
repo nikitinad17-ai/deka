@@ -20,6 +20,10 @@
     opts = opts || {};
     var ctx, output, compressor, safety, masterMeter, cross = 0, master = 0.8, vkSide = 'A', awake = null, destroyed = false;
     var state = {}, elements = {}, nodes = {}, vinyl = {}, preparing = {}, aborts = {};
+    // A video set owns the same single remote WebView as VK music. Loading is
+    // silent; only Play may navigate it. Late states must match that request.
+    var remoteKey = '', remoteSetId = '', remoteWanted = false, remoteSeen = false, remoteTimer = null;
+    function stopRemoteTimer() { if(remoteTimer!==null){clearTimeout(remoteTimer);remoteTimer=null;} }
     var mix = null, reverseMix = null, lastReverse = null, starting = null, autoSerial = 0, autoCross = null, manualOverlap=false, manualUntil=0, failed = new Set(),phaseTimer=null,rateRamps={},brakeSerial=0;
     function resetMixTone(preserve){ ['A','B'].forEach(function(side){var s=state[side];if(s){if(preserve){if(s.autoRate!==null)s.rate=elements[side]?elements[side].playbackRate:s.autoRate;s.eq=s.eq.map(function(v,j){return clamp(v+s.autoEQ[j],-12,12);});}s.autoEQ=[0,0,0];s.autoRate=null;rate(side);}}); apply(); }
     function cancelAuto() {
@@ -166,7 +170,7 @@
       if (s.held) { s.held = false; if (vinyl[side]) vinyl[side].release(); if (elements[side]) elements[side].currentTime = s.time; }
       s.generation++; s.pending = false;
       if (s.track && s.track.kind === 'file') { if (elements[side]) elements[side].pause(); }
-      else if (side === vkSide) vk({ type: 'pause' });
+      else if (side === vkSide) { remoteWanted=false;stopRemoteTimer();vk({ type: 'pause' }); }
       s.paused = true; if (s.track && s.status !== 'error') s.status = s.completed?'ended':'paused';apply(); changed();
     }
     function load(side, list, index, automatic) {
@@ -175,7 +179,7 @@
       list = (Array.isArray(list) ? list : []).filter(function (t) { return t && t.key; });
       if (!list.length) { tell('Список пуст'); return; }
       pause(side, true); release(side); s.list = list.slice(); s.index = Math.floor(clamp(index, 0, list.length - 1));
-      s.track = s.list[s.index]; s.time = 0; s.duration = s.track.duration || 0; s.cue = 0;s.cueActive=false;s.cueStage=0;s.syncBPM=null;s.manualStopped=false; s.rate = 1; s.nudge = 0; s.bpm = null; s.taps = []; s.error = ''; s.status = 'loading';
+      s.track = s.list[s.index]; s.remoteSeek=null;s.time = 0; s.duration = s.track.duration || 0; s.cue = 0;s.cueActive=false;s.cueStage=0;s.syncBPM=null;s.manualStopped=false; s.rate = 1; s.nudge = 0; s.bpm = null; s.taps = []; s.error = ''; s.status = s.track.kind==='set'?'ready':'loading';
       s.autoLoaded = !!automatic;s.lastReverse=null;
       s.autoGain=1;s.autoEQ=[0,0,0];s.autoRate=null;s.analysis=null;s.analysisStatus='idle';s.rateTouched=false;s.actualRate=null;s.endedGeneration=-1;s.completed=false;
       s.autoBlocked = false;
@@ -212,8 +216,22 @@
           if (vkSide !== side) { var other = state[vkSide]; if (other.track && other.track.kind !== 'file') { if(!other.paused||other.pending)other.generation++;other.paused = true; other.pending = false; tell('VK: переключён один общий поток на деку ' + side); } vkSide = side; }
           apply();
           rate(side);
-          var ok = s.track.key === 'live-vk' ? await vk({ type: 'play' }) : await vk({ type: 'playKey', key: s.track.key });
-          if (ok === false) { s.pending = false; s.paused = true; tell('VK не нашёл выбранный трек. Другой трек вместо него не включён.'); return false; }
+          stopRemoteTimer();
+          var resumeSet=s.track.kind==='set'&&remoteKey===s.track.key&&remoteSeen;
+          remoteWanted=true;
+          if(remoteKey!==s.track.key){remoteKey=s.track.key;remoteSeen=false;}
+          remoteSetId=s.track.kind==='set'?s.track.setId:'';
+          var command=s.track.kind==='set'?(resumeSet?{type:'play'}:{type:'openSet',id:s.track.setId,kind:s.track.setKind}):s.track.key==='live-vk'?{type:'play'}:{type:'playKey',key:s.track.key};
+          var ok = await vk(command);
+          if(generation!==s.generation)return false;
+          if (ok === false) { remoteWanted=false;s.pending = false; s.paused = true; s.status='error';tell('VK не нашёл выбранный трек. Другой трек вместо него не включён.'); changed();return false; }
+          if(s.track.kind==='set'&&s.pending){
+            remoteTimer=setTimeout(function(){remoteTimer=null;if(s.generation!==generation||!s.pending)return;
+              remoteWanted=false;s.pending=false;s.paused=true;s.status='error';
+              tell('Сет не загрузился. Откройте окно VK и проверьте доступ к видео, затем повторите запуск.');changed();
+            },20000);
+            if(remoteTimer.unref)remoteTimer.unref();
+          }
         }
       } catch (_) { if (generation === s.generation) { s.pending = false; s.paused = true; s.status = 'error'; s.error = 'Не удалось воспроизвести файл'; tell('Не удалось запустить деку ' + side); } }
       changed();
@@ -226,6 +244,10 @@
       var s = state[side]; time = clamp(time, 0, s.duration || 0);
       if(time<s.duration-.005)s.completed=false;
       if (s.track && s.track.kind === 'file' && elements[side]) elements[side].currentTime = time;
+      else if (s.track && s.track.kind==='set') {
+        s.remoteSeek=time;
+        if(side===vkSide && remoteKey===s.track.key && remoteSeen){vk({type:'seek',time:time});s.remoteSeek=null;}
+      }
       else if (side === vkSide) vk({ type: 'seek', time: time }); s.time = time; changed();
     }
     async function scratchBegin(side) {
@@ -295,7 +317,7 @@
       if (b.track && !b.completed && b.status !== 'error' && b.status !== 'ended' && (b.status === 'loading' || b.time < b.duration - .05) &&
           (b.track.key !== a.track.key || b.autoLoaded)) return to;
       // A remote track has no metadata event until it is actually started.
-      if (b.track && b.track.kind !== 'file' && b.status === 'loading' && b.track.key !== a.track.key) return to;
+      if (b.track && b.track.kind !== 'file' && ['loading','ready'].includes(b.status) && b.track.key !== a.track.key) return to;
       var index = successor(from);
       if (index >= 0) load(to, a.list, index, true);
       return to;
@@ -583,6 +605,18 @@
     var autoTimer = win && win.setInterval(autoTick, 60);
     function noteVK(data) {
       var s = state[vkSide];
+      if(s.track&&s.track.kind==='set'){
+        if(remoteKey!==s.track.key || data.setId!==s.track.setId)return;
+        if(!data.hasMedia)return;
+        if(!remoteWanted){if(!data.paused)vk({type:'pause'});return;}
+        if(!remoteSeen){remoteSeen=true;apply();rate(vkSide);}
+        if(s.remoteSeek!==null){vk({type:'seek',time:s.remoteSeek});data={...data,currentTime:s.remoteSeek};s.remoteSeek=null;}
+        if(data.title)s.track={...s.track,title:data.title,artist:data.artist||'VK Видео'};
+        s.pending=false;stopRemoteTimer();
+      }else if(data.setId){
+        // Never adopt a delayed video navigation as an unrelated music/file deck.
+        if(!remoteWanted&&!data.paused)vk({type:'pause'});return;
+      }
       if (!s.track || s.track.kind === 'file') {
         // Playback started in the visible VK page, not a deck. Adopt it explicitly.
         if (!data.paused && data.title && !s.track) s.track = { key: 'live-vk', title: data.title, artist: data.artist, kind: 'vk' }; else return;
@@ -594,9 +628,11 @@
       if (!data.paused && data.title === s.track.title) s.pending = false;
       changed();
     }
-    function endedVK() {
+    function endedVK(data) {
       var side = vkSide, s = state[side], generation = s.generation, track=s.track;
       if(!track||track.kind==='file')return;
+      if(track.kind==='set' && (!data||data.setId!==track.setId||remoteKey!==track.key||!remoteWanted))return;
+      if(track.kind!=='set'&&data&&data.setId)return;
       setTimeout(function () { if (!destroyed && generation === s.generation && s.track===track && s.endedGeneration!==generation) { s.endedGeneration=generation;s.paused=true; s.pending=false; s.status='ended'; finish(side); } }, 50);
     }
     return { state: state, setDJMode: function (on) { cancelAuto(); opts.djMode=!!on; if(!on)cross=-1; apply(); }, load: load, play: play, pause: pause, toggle: toggle, seek: seek, step: step,
@@ -630,7 +666,7 @@
       setGain: function (side, x) { state[side].gain = clamp(x, 0, 1); apply(); },
       setEQ: function (side, band, value) { if (band >= 0 && band < 3) {if(mix)mix.eqManual[side][band]=true;if(reverseMix)reverseMix.eqManual[side][band]=true;state[side].autoEQ[band]=0;state[side].eq[band] = clamp(value, -12, 12);} apply(); },
       setEffect: function(side,name,on,amount){var s=state[side],n=nodes[side];if(!s.effects[name]||!s.track||s.track.kind!=='file'||!n||!n.fx)return false;s.effects[name]={on:!!on,amount:clamp(amount,0,1)};var ok=n.fx.set(name,on,amount);if(!ok)tell(name+': обработка недоступна в этом WebView');changed();return ok;},
-      destroy: function () { win.clearInterval(autoTimer); pause('A'); pause('B'); destroyed = true; release('A'); release('B'); if (ctx && !opts.context) ctx.close(); },
+      destroy: function () { stopRemoteTimer();win.clearInterval(autoTimer); pause('A'); pause('B'); destroyed = true; release('A'); release('B'); if (ctx && !opts.context) ctx.close(); },
       diagnostics: function () { return { cross: cross, weights: weights(cross), master: master, vkSide: vkSide, localPlayers: Object.keys(elements).length, djMode:!!opts.djMode, shuffle:!!opts.shuffle, repeatTrack:!!opts.repeatTrack, autoMix:!!opts.autoMix, mixing:!!mix,lastReverse:lastReverse,reverse:reverseMix?{from:reverseMix.from,to:reverseMix.to,duration:reverseMix.duration,elapsed:ctx.currentTime-reverseMix.start}:null,preparing:!!starting,phaseTimer:phaseTimer!==null,rateRamps:Object.keys(rateRamps).length,transition:mix?{from:mix.from,to:mix.to,duration:mix.duration,elapsed:ctx.currentTime-mix.start,mode:mix.beat?'beat':mix.sweep?'sweep':'balance',matched:!!(mix.plan&&mix.plan.matched),reason:mix.plan&&mix.plan.reason,targetBPM:mix.plan&&mix.plan.targetBPM}:null,effects:Object.fromEntries(['A','B'].map(function(side){return [side,nodes[side]&&nodes[side].fx?nodes[side].fx.diagnostics():null];})) }; }
     };
     function emptyState(side,blocked){

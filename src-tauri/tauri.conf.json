@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Deka Desktop Wallpaper",
-  "version": "0.1.2",
-  "identifier": "ru.volna.deka.wallpaper",
+  "productName": "Deka",
+  "version": "0.19.0-preview.1",
+  "identifier": "ru.volna.player",
   "build": {
     "frontendDist": "../src"
   },
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Deka Desktop Wallpaper · 0.1.2 RC2",
+        "title": "Deka · 0.19.0 Preview · Плеер / DJ / Фон",
         "width": 1120,
         "height": 780,
         "minWidth": 420,

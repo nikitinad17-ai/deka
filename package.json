@@ -1,13 +1,13 @@
 {
-  "name": "deka-wallpaper",
+  "name": "deka",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.19.0-preview.1",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build && node scripts/copy-exe.js",
     "icon": "tauri icon app-icon.png",
-    "test": "node scripts/smoke-test.js && node --test tests/library.test.js tests/sets.test.js tests/vinyl.test.js tests/queue.test.js tests/mix-analysis.test.js tests/mix-envelope.test.js tests/effects.test.js tests/transport-events.test.js tests/brake.test.js tests/beat-sync.test.js",
+    "test": "node scripts/smoke-test.js && node --test tests/library.test.js tests/sets.test.js tests/vinyl.test.js tests/queue.test.js tests/mix-analysis.test.js tests/mix-envelope.test.js tests/effects.test.js tests/transport-events.test.js tests/brake.test.js tests/beat-sync.test.js tests/dj-sets.test.js",
     "test:browser": "python tests/browser.py"
   },
   "devDependencies": {

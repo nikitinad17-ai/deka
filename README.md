@@ -2,6 +2,10 @@
 
 Музыкальный плеер на Tauri 2 для Windows и Android: локальные файлы и управление VK во встроенном WebView.
 
+## 0.18.0 — Desktop: Реверс A/B и SHUF
+
+[Скачать Desktop 0.18.0 для Windows](https://github.com/nikitinad17-ai/deka/releases/tag/v0.18.0). Независимые панели реверса 1,5 / 2,5 / 3,5 с, плавная передача звука другой подготовленной деке при AUTO MIX и исправленный SHUF. [Реализация, проверки и ограничения](docs/RELEASE-0.18.0.md).
+
 ## 0.17.0 — Desktop: BPM SYNC, CUE и три торможения
 
 [**Скачать Desktop 0.17.0 для Windows**](https://github.com/nikitinad17-ai/deka/releases/tag/v0.17.0) — EXE, установщик и ZIP.

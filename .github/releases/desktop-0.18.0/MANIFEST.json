@@ -1,0 +1,57 @@
+{
+  "product": "Deka Desktop",
+  "version": "0.18.0",
+  "platform": "Windows x64",
+  "source_commit": "7844358154a7a9122cb2a47a3b691d20b4d8269b",
+  "branch": "feature/desktop-reverse-0.18.0",
+  "workflow_run": 41284682646,
+  "pull_request": "https://github.com/nikitinad17-ai/deka/pull/15",
+  "checks": {
+    "quality_passed": 419,
+    "quality_node_passed": 44,
+    "quality_desktop_passed": 154,
+    "native_desktop_passed": 138,
+    "local_reverse_soak_passed": 6,
+    "total": 563,
+    "runtime": "Edg/156.0.4314.50",
+    "standard_user": true,
+    "synthetic_audio": true,
+    "live_vk_account_tested": false,
+    "user_audio_device_tested": false
+  },
+  "files": {
+    "Deka.exe": {
+      "size": 4487168,
+      "sha256": "e70546544b9543fd99bf4219b4240fcc55808ac46743eb626bbeb7b79968ed59",
+      "pe_machine": "0x8664",
+      "version": "0.18.0"
+    },
+    "Deka-setup.exe": {
+      "size": 1561246,
+      "sha256": "ae4cd1f172aaafa451f94c62b6873df5afe4bfc5eae89905f17107b90830b005",
+      "pe_machine": "0x14c",
+      "version": "0.18.0"
+    }
+  },
+  "artifact_digests": {
+    "quality": "412b700c2025694a09be49f087923d5c3a0515ef76c5e451bea4348fff255070",
+    "native": "de5d0a73228d2d154ca6195fa2e29118d72a10dc08c25531ff576d869be2d92f",
+    "windows": "cf367df81a6335c13e3f7599aac953c8cfd947897d15cc9aa5341ae69f650644"
+  },
+  "quality_reports": {
+    "report.json": 78,
+    "desktop-dj-report.json": 30,
+    "desktop-vinyl-report.json": 26,
+    "android-dj-report.json": 24,
+    "continuous-report.json": 29,
+    "automix-report.json": 19,
+    "mp3-transport-report.json": 15,
+    "desktop-session-report.json": 154
+  },
+  "soak_source_commit": "7844358154a7a9122cb2a47a3b691d20b4d8269b",
+  "application_objects": {
+    "src": "c5849b2ab2d6bac9bad2f9a1fafc1da100328c9e",
+    "src-tauri": "4863611619204a3148f7a9b261789297dc90efb0",
+    "package.json": "673177e60daae95a486a45955e13a24ec801ffb5"
+  }
+}
