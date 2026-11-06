@@ -38,7 +38,7 @@
   const fmt = seconds => { const n = Math.floor(Math.max(0, Number(seconds) || 0)); return String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0'); };
   let lastPaint=0,paintTimer=null;
   function render() {
-    const now=performance.now(),wait=(window.DekaWallpaper?.quiet?1000:100)-(now-lastPaint);if(lastPaint&&wait>0){if(paintTimer===null)paintTimer=setTimeout(()=>{paintTimer=null;render();},wait);return;}if(paintTimer!==null){clearTimeout(paintTimer);paintTimer=null;}lastPaint=now;
+    const now=performance.now(),wait=window.DekaWallpaper?.quiet?1000-(now-lastPaint):0;if(lastPaint&&wait>0){if(paintTimer===null)paintTimer=setTimeout(()=>{paintTimer=null;render();},wait);return;}if(paintTimer!==null){clearTimeout(paintTimer);paintTimer=null;}lastPaint=now;
     const d=engine.diagnostics();
     $('djShuffle').setAttribute('aria-pressed',String(d.shuffle));
     $('djRepeat').setAttribute('aria-pressed',String(d.repeatTrack));
