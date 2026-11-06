@@ -22,7 +22,7 @@
     var state = {}, elements = {}, nodes = {}, vinyl = {}, preparing = {}, aborts = {};
     // A video set owns the same single remote WebView as VK music. Loading is
     // silent; only Play may navigate it. Late states must match that request.
-    var remoteKey = '', remoteWanted = false, remoteSeen = false, remoteTimer = null;
+    var remoteKey = '', remoteSetId = '', remoteWanted = false, remoteSeen = false, remoteTimer = null;
     function stopRemoteTimer() { if(remoteTimer!==null){clearTimeout(remoteTimer);remoteTimer=null;} }
     var mix = null, reverseMix = null, lastReverse = null, starting = null, autoSerial = 0, autoCross = null, manualOverlap=false, manualUntil=0, failed = new Set(),phaseTimer=null,rateRamps={},brakeSerial=0;
     function resetMixTone(preserve){ ['A','B'].forEach(function(side){var s=state[side];if(s){if(preserve){if(s.autoRate!==null)s.rate=elements[side]?elements[side].playbackRate:s.autoRate;s.eq=s.eq.map(function(v,j){return clamp(v+s.autoEQ[j],-12,12);});}s.autoEQ=[0,0,0];s.autoRate=null;rate(side);}}); apply(); }
@@ -219,6 +219,7 @@
           stopRemoteTimer();
           var resumeSet=s.track.kind==='set'&&remoteKey===s.track.key&&remoteSeen;
           remoteWanted=true;
+          remoteSetId=s.track.kind==='set'?s.track.setId:'';
           if(remoteKey!==s.track.key){remoteKey=s.track.key;remoteSeen=false;}
           var command=s.track.kind==='set'?(resumeSet?{type:'play'}:{type:'openSet',id:s.track.setId,kind:s.track.setKind}):s.track.key==='live-vk'?{type:'play'}:{type:'playKey',key:s.track.key};
           var ok = await vk(command);
@@ -614,7 +615,7 @@
         s.pending=false;stopRemoteTimer();
       }else if(data.setId){
         // Never adopt a delayed video navigation as an unrelated music/file deck.
-        if(!remoteWanted&&!data.paused)vk({type:'pause'});return;
+        if(data.setId===remoteSetId&&!remoteWanted&&!data.paused)vk({type:'pause'});return;
       }
       if (!s.track || s.track.kind === 'file') {
         // Playback started in the visible VK page, not a deck. Adopt it explicitly.

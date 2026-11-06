@@ -47,3 +47,12 @@ test('metadata arriving with ended does not cancel the set completion',async()=>
  e.endedVK({setId:'-1_2'});state(e,'-1_2',{paused:true,currentTime:600});
  await new Promise(r=>setTimeout(r,75));assert.equal(e.state.A.status,'ended');e.pause('A');
 });
+test('a video opened outside the deck is not paused or adopted by an idle DJ engine',()=>{
+ const {engine:e,commands:c}=rig();state(e,'-8_9');
+ assert.equal(c.length,0);assert.equal(e.state.A.track,null);assert.equal(e.state.B.track,null);
+});
+test('clearing a managed set blocks its late autoplay without stopping an unrelated video',async()=>{
+ const {engine:e,commands:c}=rig();e.load('A',[set('-1_2')],0);await e.play('A');e.clear('A');
+ const n=c.length;state(e,'-8_9');assert.equal(c.length,n);
+ state(e,'-1_2');assert.equal(c.length,n+1);assert.equal(c.at(-1).type,'pause');
+});
