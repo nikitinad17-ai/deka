@@ -122,6 +122,7 @@ body.dj-open .wrap{max-width:1560px}
 [data-theme=editorial] .dj-theme-swatch i{background:#101112;border-color:#101112}
 [data-theme=editorial] .dj-theme-swatch i:nth-child(2){background:#e94b0c}
 .dj-theme-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+@media(max-width:1120px){#desktopDJ .dj-console{grid-template-columns:52px minmax(0,1fr) 108px minmax(0,1fr) 52px;gap:7px;padding:10px}#desktopDJ .dj-deck{padding:9px}#desktopDJ .dj-disc{width:124px;height:124px}#desktopDJ .dj-brake .btn{font-size:9px}}
 @media(min-width:761px) and (max-height:760px){
   #desktopDJ .bar{padding:8px 12px}#desktopDJ .brand{font-size:16px}#desktopDJ .brand b{font-size:9px;margin-top:3px}
   #desktopDJ .dj-intro{padding:4px 12px;font-size:9px}
@@ -136,6 +137,5 @@ body.dj-open .wrap{max-width:1560px}
   #desktopDJ .dj-eq{margin-top:3px;padding-top:0;gap:8px}#desktopDJ .dj-eq label{font-size:9px}
   #desktopDJ .dj-label{margin-top:5px}#desktopDJ .dj-mixer{gap:7px;padding-top:7px}
 }
-@media(max-width:1120px){#desktopDJ .dj-console{grid-template-columns:52px minmax(0,1fr) 108px minmax(0,1fr) 52px;gap:7px;padding:10px}#desktopDJ .dj-deck{padding:9px}#desktopDJ .dj-disc{width:124px;height:124px}#desktopDJ .dj-brake .btn{font-size:9px}}
 @media(max-width:760px){.dj-view-label{display:none}#desktopDJ .bar{padding:10px}#desktopDJ .brand{font-size:16px}#desktopDJ .dj-console,#desktopDJ.dj-compact .dj-console{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}#desktopDJ .dj-brake{display:none}#desktopDJ .dj-mixer{grid-column:1/-1;order:5;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;padding:10px;gap:10px}#desktopDJ .dj-mixer>small:not(#djAutoState),#desktopDJ .dj-mixer>b,#desktopDJ .dj-mixer>meter,#desktopDJ #djPeak{display:none}#desktopDJ .dj-cross{margin:0;padding:0;border:0}#desktopDJ #djList{height:320px}#desktopDJ .dj-cuefx{grid-template-columns:1fr}#desktopDJ .dj-cue{flex-direction:row;align-items:center}#desktopDJ .dj-fx{grid-template-columns:repeat(3,minmax(0,1fr))}.wallpaper-toolbar{position:relative!important}[data-wallpaper-mode] body{padding:10px!important}}
 @media(max-width:480px){body.dj-open{padding:8px}#desktopDJ .dj-console,#desktopDJ.dj-compact .dj-console{grid-template-columns:1fr}#desktopDJ .dj-deck[data-side=B]{order:3}#desktopDJ .dj-mixer{grid-template-columns:repeat(2,minmax(0,1fr))}#desktopDJ .brand{font-size:14px}#desktopDJ .bar{gap:6px}#desktopDJ .bar .btn{font-size:10px;padding-inline:7px}.dj-theme-options{grid-template-columns:1fr}.dj-theme-swatch{height:50px}.dj-theme-dialog{padding:16px}}
