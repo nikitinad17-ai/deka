@@ -78,7 +78,8 @@ body.dj-open .wrap{max-width:1560px}
 #djVKTools .vk-bar{padding-inline:0}
 #djVKTools input{min-width:0}
 #djVKTools .vk-status{color:var(--ink-2)}
-.wallpaper-toolbar{background:var(--chassis);border-color:var(--edge);color:var(--ink);font-family:var(--f-ui);box-sizing:border-box}
+/* Keep the toolbar in flow in every mode so it cannot cover the DJ header. */
+.wallpaper-toolbar{position:relative;background:var(--chassis);border-color:var(--edge);color:var(--ink);font-family:var(--f-ui);box-sizing:border-box}
 .wallpaper-toolbar strong{color:var(--amber)}
 .wallpaper-toolbar strong small,.wallpaper-toolbar output{color:var(--ink-2)}
 .wallpaper-toolbar select{background:var(--field);color:var(--ink);border-color:var(--edge)}

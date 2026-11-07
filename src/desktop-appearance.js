@@ -28,9 +28,9 @@
       b.onclick=()=>select(theme.id);dialog.querySelector('.dj-theme-options').appendChild(b);
     }
     document.getElementById('djStyle').onclick=()=>{select(saved);dialog.showModal();};
-    document.getElementById('djThemeCancel').onclick=()=>dialog.close();
+    document.getElementById('djThemeCancel').onclick=()=>{apply(saved);dialog.close();};
     document.getElementById('djThemeSave').onclick=()=>{saved=pending;try{localStorage.setItem(key,saved);}catch{}dialog.close();};
-    dialog.addEventListener('close',()=>{apply(saved);document.getElementById('djStyle').focus();});
+    dialog.addEventListener('close',()=>{if(dialog.open)return;apply(saved);document.getElementById('djStyle').focus();});
     dialog.addEventListener('cancel',()=>apply(saved));
   }};
 })();
