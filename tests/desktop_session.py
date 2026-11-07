@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
         browser=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH'),args=['--no-sandbox','--autoplay-policy=no-user-gesture-required'])
         context=browser.new_context(viewport={'width':1120,'height':780});context.add_init_script(HOOK);context.route('https://**',lambda r:r.abort());page=context.new_page();page.goto(f'http://127.0.0.1:{server.server_port}/index.html')
     errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-    page.click('#djToggle');page.set_input_files('#file',[{'name':f.name,'mimeType':'audio/mpeg','buffer':f.read_bytes()}for f in files])
+    page.locator('#desktopDJ').wait_for(state='visible');page.set_input_files('#file',[{'name':f.name,'mimeType':'audio/mpeg','buffer':f.read_bytes()}for f in files])
     def load(side,i):page.get_by_role('button',name=f'В {side}: Track-{i:02}',exact=True).click()
     load('A',0);load('B',1);page.wait_for_function('__dj.state.A.duration>40&&__dj.state.B.duration>40&&__dj.state.A.fxStatus==="ready"&&__dj.state.B.fxStatus==="ready"&&__dj.state.A.brakeStatus==="ready"&&__dj.state.B.brakeStatus==="ready"')
     check('Two real MP3 decoders and both Roll worklets initialize')

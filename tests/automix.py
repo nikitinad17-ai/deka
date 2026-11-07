@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
         browser=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH'),args=['--no-sandbox','--autoplay-policy=no-user-gesture-required'])
         ctx=browser.new_context(viewport={'width':1360,'height':1100});ctx.add_init_script(HOOK);page=ctx.new_page();page.goto((ROOT/'src/index.html').as_uri())
     errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-    page.click('#djToggle');page.set_input_files('#file',[{'name':Path(f).name,'mimeType':'audio/wav','buffer':Path(f).read_bytes()} for f in paths]if native else paths)
+    page.locator('#desktopDJ').wait_for(state='visible');page.set_input_files('#file',[{'name':Path(f).name,'mimeType':'audio/wav','buffer':Path(f).read_bytes()} for f in paths]if native else paths)
     if native:print('Local WAV files imported',flush=True)
     page.evaluate("window.__oldVKItems=DekaDesktopPlayer.vkItems;DekaDesktopPlayer.vkItems=()=>[{key:'late-vk',title:'Late VK update',artist:'Fixture',kind:'vk'}];window.dispatchEvent(new Event('deka:library'));DekaDesktopPlayer.vkItems=__oldVKItems")
     check('Late VK library updates preserve explicitly imported local-file source',page.locator('#djSource').input_value()=='files'and page.get_by_role('button',name='В A: Beat120',exact=True).count()==1)

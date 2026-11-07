@@ -79,7 +79,7 @@ with sync_playwright()as p,tempfile.TemporaryDirectory()as td:
  check('Unified Desktop profile, ordinary window, tray, no autostart',state['mode']=='normal'and state['tray']and 'ru.volna.player'in initial_settings and not state['autostart'],settings=initial_settings,monitors=state['monitors'],tray_rect=state['tray_rect'])
  for i,hz in enumerate([440,660,440,660]):
   path=Path(td)/f'Wallpaper-{i}.mp3';path.write_bytes((ROOT/'tests/fixtures'/f'dj-{hz}.mp3').read_bytes())
- page.click('#djToggle');page.set_input_files('#file',list(map(str,Path(td).glob('*.mp3'))))
+ page.locator('#desktopDJ').wait_for(state='visible');page.set_input_files('#file',list(map(str,Path(td).glob('*.mp3'))))
  page.get_by_role('button',name='В A: Wallpaper-0',exact=True).click();page.get_by_role('button',name='В B: Wallpaper-1',exact=True).click();page.wait_for_function("()=>['A','B'].every(s=>__dj.state[s].duration>40&&__dj.state[s].analysisStatus==='ready')")
  page.evaluate("__dj.setAutoMix(false);__dj.setRepeat(true);__dj.setBPM('A',120);__dj.setBPM('B',125);__dj.setRate('A',1.04);__dj.setGain('A',.72);__dj.setGain('B',.85);__dj.setEQ('A',0,-3);__dj.setEQ('B',2,2);__dj.setCross(.15);__dj.play('A');__dj.play('B');window.__sameEngine=__dj;window.__sameContext=__measure.context;window.__sourceRefs=[currentAudio('A'),currentAudio('B')];window.__shellSamples=[];window.__shellTimer=setInterval(()=>__shellSamples.push(outputStats().rms),60);window.__saved=JSON.stringify(['A','B'].map(s=>{const x=__dj.state[s];return {key:x.track.key,rate:x.rate,eq:x.eq,gain:x.gain,cue:x.cue,keyLock:x.keyLock};}));")
  # A playing event and the first nonzero PCM block precede the full FFT

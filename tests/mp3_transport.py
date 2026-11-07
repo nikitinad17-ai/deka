@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory() as td,sync_playwright() as p:
     browser=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH'),args=['--no-sandbox','--autoplay-policy=no-user-gesture-required'])
     context=browser.new_context(viewport={'width':1360,'height':1100});context.add_init_script(hook);page=context.new_page();page.goto((ROOT/'src/index.html').as_uri())
     errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-    page.click('#djToggle');page.set_input_files('#file',paths)
+    page.locator('#desktopDJ').wait_for(state='visible');page.set_input_files('#file',paths)
     page.get_by_role('button',name='В A: Queue-00',exact=True).click();page.click('#djPlayA')
     for i in range(1,12):
         old='A'if i%2 else'B';new='B'if i%2 else'A'

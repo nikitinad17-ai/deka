@@ -4,7 +4,7 @@
   const player = window.DekaDesktopPlayer;
   if (!player || !window.DekaDecks) return;
   const root = document.createElement('section');
-  root.id = 'desktopDJ'; root.className = 'win'; root.hidden = true;
+  root.id = 'desktopDJ'; root.className = 'win';
   root.setAttribute('aria-label', 'DJ-пульт: файлы и библиотека VK');
   const fxNames=['Flanger','Echo','Reverb','Filter','Phaser','Roll'];
   const deckHTML = side => `<section class="dj-deck" data-side="${side}" aria-label="Дека ${side}">
@@ -20,7 +20,7 @@
     <meter id="djMeter${side}" min="0" max="1" value="0" aria-label="Пиковый уровень ${side}"></meter>
   </section>`;
   const brakeHTML=side=>`<aside class="dj-brake" data-side="${side}" aria-label="Реверс деки ${side}"><b>РЕВЕРС</b><strong>Дека ${side}</strong>${[[1.5,'Быстро','1,5'],[2.5,'Средне','2,5'],[3.5,'Плавно','3,5']].map(([time,name,label])=>`<button class="btn" data-brake="${time}" data-side="${side}" aria-label="Реверс ${side} ${label} секунды"><b>${name}</b><small>${label} с</small></button>`).join('')}<small id="djBrakeStatus${side}">До паузы</small></aside>`;
-  root.innerHTML = `<div class="bar"><div class="brand">ДЕ<b>КА</b> · DJ</div><span class="spacer"></span><button class="btn toggle" id="djShuffle" aria-pressed="false" title="Случайный следующий трек">SHUF</button><button class="btn toggle" id="djRepeat" aria-pressed="false" title="Повтор текущего трека">REP 1</button><button class="btn" id="djClose">← Плеер</button></div>
+  root.innerHTML = `<div class="bar"><div class="brand">DEKA <b>DESKTOP</b></div><span class="dj-view-label" id="djViewLabel">Вертушки A / B</span><span class="spacer"></span><button class="btn toggle" id="djShuffle" aria-pressed="false" title="Случайный следующий трек">SHUF</button><button class="btn toggle" id="djRepeat" aria-pressed="false" title="Повтор текущего трека">REP 1</button><button class="btn" id="djStyle" aria-haspopup="dialog">Стиль</button><button class="btn" id="djCompact" aria-expanded="true" aria-controls="djDeckPanel">Свернуть деки</button></div>
     <div id="djDeckPanel"><div class="dj-intro">AUTO MIX · 17 секунд: BPM SYNC + частоты + громкость · FX отдельно для A / B</div>
     <div class="dj-console">${brakeHTML('A')}${deckHTML('A')}<section class="dj-mixer" aria-label="Микшер">
       <b>MASTER</b><meter id="djMeterMaster" min="0" max="1" value="0" aria-label="Пиковый уровень Master"></meter><span id="djPeak">−∞ dBFS</span>
@@ -33,6 +33,20 @@
     <section class="dj-library" aria-label="Библиотека DJ"><div class="dj-drop-hint">↓ Файлы или папка сюда · трек из списка — на пластинку A / B</div><div class="dj-tools"><select id="djSource" aria-label="Источник треков DJ"><option value="files">Мои файлы</option><option value="vk">Мои треки VK</option><option value="sets">Сеты</option></select><button class="btn" id="djSync">Загрузить VK</button><button class="btn open" id="djAdd">＋ Файлы</button><button class="btn open" id="djAddSet">＋ Сет</button><input type="search" id="djSearch" placeholder="Название или исполнитель" aria-label="Поиск треков и сетов"><span id="djCount"></span></div><form id="djSetForm" class="dj-set-form" hidden><label for="djSetLink">Ссылка на сет VK Видео</label><input id="djSetLink" type="url" placeholder="https://vkvideo.ru/video-…" required><button class="btn" type="submit">Добавить</button><button class="btn" type="button" id="djSetCancel">Отмена</button></form><div id="djList"></div><p id="djEmpty" hidden></p><small id="djSourceHint">Файлы остаются на компьютере. После закрытия приложения выберите их снова.</small></section></div>`;
   document.querySelector('.wrap').appendChild(root);
   const $ = id => document.getElementById(id);
+  // Keep the existing library/login services, but expose only the unified DJ screen.
+  document.body.classList.add('dj-open');
+  const vkTools=document.createElement('details');vkTools.id='djVKTools';
+  vkTools.innerHTML='<summary>Аккаунт VK и управление библиотекой</summary>';
+  document.querySelectorAll('#vkApp > .vk-bar, #vkLibraryStatus').forEach(el=>vkTools.appendChild(el));
+  document.querySelector('.dj-library').insertBefore(vkTools,$('djList'));
+  ['A','B'].forEach(side=>{
+    const transport=$('djPlay'+side).parentElement;
+    for(const [direction,label] of [[-1,'Предыдущий'],[1,'Следующий']]){
+      const b=document.createElement('button');b.className='btn dj-step';b.dataset.step=side;b.dataset.direction=direction;
+      b.textContent=direction<0?'⏮':'⏭';b.setAttribute('aria-label',label+' трек '+side);
+      transport.insertBefore(b,direction<0?$('djPlay'+side):$('djPlay'+side).nextSibling);
+    }
+  });
   const engine = DekaDecks.create({ djMode: true, continuous:true, autoMix:true, smartMix:true,beatMix:true,cueCycle:true,brake:true,reverseMix:true,effects:true, externalTempo:true, analysis:DekaMixAnalysis.create(), fadeSeconds:17, ...player.settings(), vinyl:true, vk: c => player.command(c), change: render, message: text => { $('djMessage').textContent = text; } });
   const status = { empty:'Пусто', loading:'Загрузка…', ready:'Готово', playing:'Играет', paused:'Пауза', ended:'Конец', error:'Ошибка', held:'Пластинка удерживается' };
   const fmt = seconds => { const n = Math.floor(Math.max(0, Number(seconds) || 0)); return String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0'); };
@@ -40,6 +54,7 @@
   function render() {
     const now=performance.now(),wait=window.DekaWallpaper?.quiet?1000-(now-lastPaint):0;if(lastPaint&&wait>0){if(paintTimer===null)paintTimer=setTimeout(()=>{paintTimer=null;render();},wait);return;}if(paintTimer!==null){clearTimeout(paintTimer);paintTimer=null;}lastPaint=now;
     const d=engine.diagnostics();
+    if(!$('djMaster').matches(':active'))$('djMaster').value=d.master*100;
     $('djShuffle').setAttribute('aria-pressed',String(d.shuffle));
     $('djRepeat').setAttribute('aria-pressed',String(d.repeatTrack));
     $('djAutoMix').setAttribute('aria-pressed',String(d.autoMix));
@@ -62,6 +77,7 @@
       marker.hidden=!s.cueActive;marker.style.left=`calc(${ratio*100}% + ${8-16*ratio}px)`;marker.title='CUE '+fmt(s.cue);
       $('djPlay'+side).textContent = s.paused ? '▶ Играть '+side : 'Ⅱ Пауза '+side;
       $('djPlay'+side).disabled = !s.track || s.pending;
+      root.querySelectorAll('[data-step="'+side+'"]').forEach(b=>b.disabled=!s.track||s.pending);
       const disc = $('djDisc'+side);
       disc.classList.toggle('playing', !s.paused && s.status === 'playing');
       disc.classList.toggle('held', s.held);
@@ -117,6 +133,7 @@
   listElement.addEventListener('scroll', renderRows, { passive: true });
   function library() {
     const source=$('djSource').value, sets=source==='sets';
+    vkTools.hidden=source==='files';
     $('djSync').hidden=source!=='vk';
     $('djAdd').hidden=sets; $('djAddSet').hidden=!sets;
     $('djSetForm').hidden=!sets||$('djSetForm').dataset.open!=='true';
@@ -133,16 +150,17 @@
     engine.load(side, list, index); $('djRate'+side).value = 0;
     $('djMessage').textContent = 'Дека '+side+': загружен «'+list[index].title+'». Нажмите «Играть».';
   }
-  $('djToggle').onclick = () => {
-    player.pauseForDJ(); document.body.classList.add('dj-open'); root.hidden = false; library(); render(); window.dispatchEvent(new Event('resize'));
-  };
-  $('djClose').onclick = () => {
-    engine.pause('A'); engine.pause('B');
-    player.command({type:'rate', value:1, preservePitch:true});
-    root.hidden = true;
-    document.body.classList.remove('dj-open');
+  function setCompact(compact){
+    root.classList.toggle('dj-compact',!!compact);
+    $('djCompact').textContent=compact?'Показать деки':'Свернуть деки';
+    $('djCompact').setAttribute('aria-expanded',String(!compact));
+    $('djViewLabel').textContent=compact?'Треки и эквалайзер':'Вертушки A / B';
+    renderRows();
     window.dispatchEvent(new Event('resize'));
-  };
+  }
+  $('djCompact').onclick=()=>setCompact(!root.classList.contains('dj-compact'));
+  window.DekaDesktop={engine,setCompact,get compact(){return root.classList.contains('dj-compact');}};
+  window.DekaAppearance.init(root);
   $('djAdd').onclick = () => { $('djSource').value='files'; sourceChosen=true; player.openFiles(); };
   $('djAddSet').onclick=()=>{ $('djSetForm').dataset.open='true';library();$('djSetLink').focus(); };
   $('djSetCancel').onclick=()=>{ $('djSetForm').dataset.open='false';library(); };
@@ -183,6 +201,7 @@
   root.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
     if(d.brake)engine.brake(d.side,+d.brake);
+    if(d.step)engine.step(d.step,+d.direction);
     if (d.play) engine.toggle(d.play);
     if (d.cue) engine.cue(d.cue);
     if (d.reset) { engine.setRate(d.reset, 1); $('djRate'+d.reset).value = 0; }
@@ -239,5 +258,5 @@
     const peak = levels.master && levels.master.peak;
     $('djPeak').textContent = peak > 0.00001 ? (20*Math.log10(peak)).toFixed(1)+' dBFS' : '−∞ dBFS';
   }, 70);
-  render();
+  library();render();
 })();

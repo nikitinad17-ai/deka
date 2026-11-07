@@ -1,0 +1,140 @@
+/* Three visual treatments of the same live controls. No animated backgrounds. */
+:root.deka-theme-aurora{
+  color-scheme:dark;--desk:#0a1827;--chassis:#162b42;--chassis-hi:#233f57;--edge:#48637f;
+  --ink:#f0f7ff;--ink-2:#b4c7d9;--amber:#5ce8d4;--cyan:#d3a7ff;--hot:#ffb692;
+  --surface:linear-gradient(135deg,#254354e8,#23334deb);--field:#11273b;--button:#284258;--button-hover:#355970;
+  --selected:#244956;--track:#496079;--disc:#182c43;--disc-line:#32455d;--radius:17px;--shadow:0 10px 28px #0003;
+  --page:radial-gradient(ellipse at 10% 8%,#17515b 0,transparent 44%),radial-gradient(ellipse at 95% 60%,#3c2a62 0,transparent 50%),#0a1827;
+  --f-ui:'Segoe UI',system-ui,sans-serif;--f-brand:'Segoe UI',system-ui,sans-serif;--f-mono:Consolas,monospace;
+}
+:root.deka-theme-acid{
+  color-scheme:dark;--desk:#070907;--chassis:#0c100b;--chassis-hi:#151b10;--edge:#526522;
+  --ink:#eff4e5;--ink-2:#b2bda4;--amber:#c8f500;--cyan:#e8fda2;--hot:#ffb15c;
+  --surface:linear-gradient(145deg,#11170d,#080b07);--field:#070a05;--button:#18200f;--button-hover:#2b3819;
+  --selected:#273512;--track:#465334;--disc:#090b08;--disc-line:#242b1b;--radius:2px;--shadow:none;--page:#070907;
+  --f-ui:Consolas,'Courier New',monospace;--f-brand:Consolas,'Courier New',monospace;--f-mono:Consolas,'Courier New',monospace;
+}
+:root.deka-theme-editorial{
+  color-scheme:light;--desk:#eee9df;--chassis:#faf6ee;--chassis-hi:#fffdf8;--edge:#87847d;
+  --ink:#171715;--ink-2:#575650;--amber:#b83a00;--cyan:#263c7c;--hot:#b62520;
+  --surface:#faf6ee;--field:#fffdf8;--button:#eee9df;--button-hover:#ded7c9;
+  --selected:#fbe0cc;--track:#a29c91;--disc:#101112;--disc-line:#292b2c;--radius:0px;--shadow:none;--page:#eee9df;
+  --f-ui:'Segoe UI',Arial,sans-serif;--f-brand:'Arial Black',Arial,sans-serif;--f-mono:Consolas,monospace;
+}
+html{min-height:100%;background:var(--desk)}
+body.dj-open{margin:0;padding:12px 18px 24px;background:var(--page);background-attachment:fixed;min-height:100vh;box-sizing:border-box}
+body.dj-open .wrap{max-width:1560px}
+#desktopDJ{background:var(--surface);border-color:var(--edge);box-shadow:var(--shadow);overflow:hidden}
+#desktopDJ .bar{padding:14px 18px;border-color:var(--edge);gap:9px}
+#desktopDJ .brand{font-size:20px;letter-spacing:.035em;white-space:nowrap}
+#desktopDJ .brand b{font-size:10px;letter-spacing:.12em;display:block;margin-top:5px}
+.dj-view-label{color:var(--ink-2);font-size:11px;margin-left:10px}
+#desktopDJ .dj-intro{padding:7px 18px;font-size:10px;letter-spacing:.025em}
+#desktopDJ .dj-console{background:transparent;padding:16px;gap:12px;grid-template-columns:65px minmax(0,1fr) 128px minmax(0,1fr) 65px}
+#desktopDJ .dj-deck{background:var(--surface);border:1px solid var(--edge);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px}
+#desktopDJ .dj-track{background:var(--field);border-color:var(--edge);border-radius:calc(var(--radius) / 2);padding:10px;min-height:57px}
+#desktopDJ .dj-track b{font-size:15px;color:var(--ink)}
+#desktopDJ .dj-disc{width:150px;height:150px;margin:15px auto;border:4px solid var(--accent);box-shadow:0 0 0 5px var(--field),0 0 22px color-mix(in srgb,var(--accent) 17%,transparent);background:repeating-radial-gradient(circle,var(--disc) 0 3px,var(--disc-line) 4px 5px)}
+#desktopDJ .dj-disc span{color:var(--accent);background:radial-gradient(circle,var(--disc) 0 25%,transparent 26%)}
+#desktopDJ .dj-disc:disabled{opacity:.8}
+#desktopDJ .dj-fx{background:var(--field);border-color:var(--edge);border-radius:calc(var(--radius) / 2)}
+#desktopDJ .btn,.wallpaper-toolbar button{background:var(--button);border:1px solid var(--edge);color:var(--ink);box-shadow:none;border-radius:calc(var(--radius) / 2 + 2px)}
+#desktopDJ .btn:hover,.wallpaper-toolbar button:hover{background:var(--button-hover)}
+#desktopDJ .btn:disabled{opacity:.45;cursor:default}
+#desktopDJ .btn.play{color:var(--accent);border-color:var(--accent)}
+#desktopDJ .btn.open{background:var(--amber);color:var(--desk);border-color:var(--amber)}
+#desktopDJ .toggle[aria-pressed=true]{background:var(--selected);color:var(--amber);border-color:var(--amber);box-shadow:inset 0 -2px var(--amber)}
+#desktopDJ input[type=search],#desktopDJ input[type=number],#desktopDJ input[type=url],#desktopDJ select{background:var(--field);color:var(--ink);border-color:var(--edge);border-radius:calc(var(--radius) / 2);font-family:var(--f-ui)}
+#desktopDJ input[type=range]::-webkit-slider-runnable-track{background:var(--track);box-shadow:none;border:0}
+#desktopDJ input[type=range]::-webkit-slider-thumb{background:var(--accent,var(--amber));border:1px solid var(--desk);box-shadow:none}
+#desktopDJ input[type=range]::-moz-range-track{background:var(--track);box-shadow:none}
+#desktopDJ input[type=range]::-moz-range-thumb{background:var(--accent,var(--amber));border-color:var(--desk);box-shadow:none}
+#desktopDJ .dj-seek::-webkit-slider-runnable-track{background:linear-gradient(to right,var(--accent) 0 var(--progress),var(--track) var(--progress) 100%)}
+#desktopDJ .dj-seek::-webkit-slider-thumb{background:var(--ink);border-color:var(--accent)}
+#desktopDJ meter{accent-color:var(--accent,var(--amber))}
+#desktopDJ meter::-webkit-meter-bar{background:var(--field);border:1px solid var(--edge);border-radius:3px}
+#desktopDJ meter::-webkit-meter-optimum-value{background:var(--accent,var(--amber))}
+#desktopDJ .dj-step{min-width:31px;padding-inline:6px}
+#desktopDJ .dj-eq{gap:14px;margin-top:8px}
+#desktopDJ .dj-eq label{font-size:11px}
+#desktopDJ .dj-mixer{justify-content:flex-start;gap:12px;padding-top:14px}
+#desktopDJ .dj-cross{margin-top:12px}
+#desktopDJ .dj-mixer>.btn{width:100%;font-size:10px}
+#desktopDJ .dj-mixer>small{font-size:10px}
+#desktopDJ #djAutoState{min-height:35px;font-size:10px}
+#desktopDJ #djMessage{background:var(--field);color:var(--ink-2);border-block:1px solid var(--edge);font-size:11px}
+#desktopDJ .dj-library{padding:16px 18px}
+#desktopDJ .dj-drop-hint{padding:7px;font-size:10px;border-radius:calc(var(--radius) / 2)}
+#desktopDJ .dj-tools{gap:8px;flex-wrap:wrap}
+#desktopDJ .dj-tools input{min-width:150px}
+#desktopDJ #djList{height:280px;border-color:var(--edge)}
+#desktopDJ .dj-row{border-color:var(--edge);padding-inline:8px}
+#desktopDJ .dj-row:hover{background:var(--button)}
+#desktopDJ .dj-row .btn:first-of-type{color:var(--amber)}
+#desktopDJ .dj-row .btn:last-of-type{color:var(--cyan)}
+#desktopDJ .dj-set-form{background:var(--field);border-radius:var(--radius)}
+#djVKTools{margin:8px 0 14px;padding:10px;border:1px solid var(--edge);border-radius:calc(var(--radius) / 2);background:var(--field)}
+#djVKTools summary{cursor:pointer;color:var(--ink-2);font-size:12px}
+#djVKTools .vk-bar{padding-inline:0}
+#djVKTools input{min-width:0}
+#djVKTools .vk-status{color:var(--ink-2)}
+.wallpaper-toolbar{background:var(--chassis);border-color:var(--edge);color:var(--ink);font-family:var(--f-ui);box-sizing:border-box}
+.wallpaper-toolbar strong{color:var(--amber)}
+.wallpaper-toolbar strong small,.wallpaper-toolbar output{color:var(--ink-2)}
+.wallpaper-toolbar select{background:var(--field);color:var(--ink);border-color:var(--edge)}
+.wallpaper-toolbar button[aria-pressed=true]{border-color:var(--amber);color:var(--amber)}
+/* The same A/B nodes remain mounted: only vinyl, FX, tempo and Reverse fold away. */
+#desktopDJ.dj-compact .dj-disc,#desktopDJ.dj-compact .dj-vinyl-help,#desktopDJ.dj-compact .dj-cuefx,#desktopDJ.dj-compact .dj-deck>.dj-label,#desktopDJ.dj-compact .dj-brake,#desktopDJ.dj-compact .dj-intro,#desktopDJ.dj-compact .dj-drop-hint{display:none}
+#desktopDJ.dj-compact .dj-transport>label,#desktopDJ.dj-compact .dj-transport>[data-tap],#desktopDJ.dj-compact .dj-effective,#desktopDJ.dj-compact .dj-mixer>small:not(#djAutoState){display:none}
+#desktopDJ.dj-compact .dj-console{grid-template-columns:minmax(0,1fr) 128px minmax(0,1fr);padding:12px 16px}
+#desktopDJ.dj-compact .dj-mixer{gap:7px;padding:0}
+#desktopDJ.dj-compact .dj-cross{margin-top:0;padding:5px 0}
+#desktopDJ.dj-compact .dj-deck{padding:12px}
+#desktopDJ.dj-compact .dj-deck h2{margin-bottom:8px}
+#desktopDJ.dj-compact #djList{height:clamp(280px,calc(100dvh - 515px),720px)}
+.deka-theme-editorial #desktopDJ .bar{border-bottom:3px solid var(--ink)}
+.deka-theme-editorial #desktopDJ .brand{font-size:26px;font-weight:900}
+.deka-theme-editorial #desktopDJ .brand b{color:var(--amber)}
+.deka-theme-editorial #desktopDJ .dj-deck{border:2px solid var(--ink)}
+.deka-theme-editorial #desktopDJ .dj-disc span{background:radial-gradient(circle,#faf6ee 0 25%,transparent 26%);color:#171715}
+.deka-theme-editorial #desktopDJ .btn.open{color:#fff}
+.deka-theme-acid #desktopDJ .bar{border-bottom-color:var(--amber)}
+.deka-theme-acid #desktopDJ .brand{color:var(--amber);font-weight:900}
+.deka-theme-acid #desktopDJ .dj-deck h2{border-bottom:1px dashed var(--edge);padding-bottom:8px}
+.dj-theme-dialog{background:var(--chassis);color:var(--ink);border:1px solid var(--edge);border-radius:var(--radius);padding:24px;width:min(700px,calc(100vw - 36px));max-height:85vh;box-sizing:border-box;box-shadow:0 24px 90px #0008}
+.dj-theme-dialog::backdrop{background:#0009}
+.dj-theme-dialog h2{margin:0 0 8px;font-size:22px}
+.dj-theme-dialog p{color:var(--ink-2);font-size:12px;margin-bottom:20px}
+.dj-theme-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.dj-theme-card{background:var(--field);color:var(--ink);border:2px solid var(--edge);border-radius:8px;padding:9px;cursor:pointer;text-align:left;font:inherit}
+.dj-theme-card[aria-pressed=true]{border-color:var(--amber);outline:1px solid var(--amber)}
+.dj-theme-card strong,.dj-theme-card small{display:block;margin-top:10px}
+.dj-theme-card strong{font-size:13px}.dj-theme-card small{font-size:11px;line-height:1.5;color:var(--ink-2)}
+.dj-theme-swatch{display:flex;align-items:center;justify-content:space-evenly;height:80px;background:linear-gradient(120deg,#19555d,#36305b);border-radius:4px}
+.dj-theme-swatch i{width:33px;height:33px;border:2px solid #62e8d5;border-radius:50%;background:#102030}
+.dj-theme-swatch i:nth-child(2){width:6px;height:37px;border:0;border-radius:1px;background:#cad4f1}
+.dj-theme-swatch i:last-child{border-color:#c2a3ef}
+[data-theme=acid] .dj-theme-swatch{background:#090c07;border:1px solid #c8f500}
+[data-theme=acid] .dj-theme-swatch i{background:#151a0e;border-color:#c8f500}
+[data-theme=acid] .dj-theme-swatch i:nth-child(2){background:#c8f500}
+[data-theme=editorial] .dj-theme-swatch{background:#f4efe6}
+[data-theme=editorial] .dj-theme-swatch i{background:#101112;border-color:#101112}
+[data-theme=editorial] .dj-theme-swatch i:nth-child(2){background:#e94b0c}
+.dj-theme-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+@media(min-width:761px) and (max-height:760px){
+  #desktopDJ .bar{padding:8px 12px}#desktopDJ .brand{font-size:16px}#desktopDJ .brand b{font-size:9px;margin-top:3px}
+  #desktopDJ .dj-intro{padding:4px 12px;font-size:9px}
+  #desktopDJ .dj-deck{padding:8px}#desktopDJ .dj-deck h2{font-size:12px;margin-bottom:5px}
+  #desktopDJ .dj-track{padding:6px;min-height:43px}#desktopDJ .dj-track b{font-size:12px}
+  #desktopDJ .dj-disc{width:68px;height:68px;margin:7px auto;font-size:21px}
+  #desktopDJ .dj-vinyl-help{margin:0 0 3px;font-size:9px}
+  #desktopDJ .dj-transport{gap:4px;margin:3px 0 5px}#desktopDJ .dj-transport .btn{height:27px;min-height:27px;font-size:10px}
+  #desktopDJ .dj-transport input[type=number]{font-size:11px;width:54px;padding:3px}
+  #desktopDJ .dj-transport .dj-effective{font-size:9px;min-width:58px}
+  #desktopDJ .dj-cuefx{gap:5px}#desktopDJ .dj-fx{padding:4px;gap:3px}
+  #desktopDJ .dj-eq{margin-top:3px;padding-top:0;gap:8px}#desktopDJ .dj-eq label{font-size:9px}
+  #desktopDJ .dj-label{margin-top:5px}#desktopDJ .dj-mixer{gap:7px;padding-top:7px}
+}
+@media(max-width:1120px){#desktopDJ .dj-console{grid-template-columns:52px minmax(0,1fr) 108px minmax(0,1fr) 52px;gap:7px;padding:10px}#desktopDJ .dj-deck{padding:9px}#desktopDJ .dj-disc{width:124px;height:124px}#desktopDJ .dj-brake .btn{font-size:9px}}
+@media(max-width:760px){.dj-view-label{display:none}#desktopDJ .bar{padding:10px}#desktopDJ .brand{font-size:16px}#desktopDJ .dj-console,#desktopDJ.dj-compact .dj-console{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}#desktopDJ .dj-brake{display:none}#desktopDJ .dj-mixer{grid-column:1/-1;order:5;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;padding:10px;gap:10px}#desktopDJ .dj-mixer>small:not(#djAutoState),#desktopDJ .dj-mixer>b,#desktopDJ .dj-mixer>meter,#desktopDJ #djPeak{display:none}#desktopDJ .dj-cross{margin:0;padding:0;border:0}#desktopDJ #djList{height:320px}#desktopDJ .dj-cuefx{grid-template-columns:1fr}#desktopDJ .dj-cue{flex-direction:row;align-items:center}#desktopDJ .dj-fx{grid-template-columns:repeat(3,minmax(0,1fr))}.wallpaper-toolbar{position:relative!important}[data-wallpaper-mode] body{padding:10px!important}}
+@media(max-width:480px){body.dj-open{padding:8px}#desktopDJ .dj-console,#desktopDJ.dj-compact .dj-console{grid-template-columns:1fr}#desktopDJ .dj-deck[data-side=B]{order:3}#desktopDJ .dj-mixer{grid-template-columns:repeat(2,minmax(0,1fr))}#desktopDJ .brand{font-size:14px}#desktopDJ .bar{gap:6px}#desktopDJ .bar .btn{font-size:10px;padding-inline:7px}.dj-theme-options{grid-template-columns:1fr}.dj-theme-swatch{height:50px}.dj-theme-dialog{padding:16px}}

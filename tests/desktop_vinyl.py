@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
       return {amp:2*Math.hypot(re,im)/sum,peak:Math.max(...x.map(Math.abs))};};
     ''')
     page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-    page.goto(f'http://127.0.0.1:{server.server_port}/index.html');page.click('#djToggle')
+    page.goto(f'http://127.0.0.1:{server.server_port}/index.html');page.locator('#desktopDJ').wait_for(state='visible')
     def drop(selector, paths):
         # Actual HTML DataTransfer populated from bytes: executes the shipped drop pipeline.
         data=[{'name':path.name,'bytes':list(path.read_bytes())}for path in paths]
@@ -86,7 +86,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
     # Dispose a held source and ensure late decode cannot re-adopt it.
     page.evaluate("__dj.clear('A')");page.wait_for_timeout(200)
     check('Clearing a deck releases resources and leaves B intact',page.evaluate("!__dj.state.A.track && !__dj.state.A.held && !__dj.state.B.paused"))
-    page.click('#djClose');page.click('#tabVk');page.click('#vkLogin')
+    page.select_option('#djSource','vk');page.locator('#djVKTools summary').click();page.click('#vkLogin')
     check('VK login uses separate native plain-window command',page.evaluate("__calls.some(c=>c[0]==='vk_login')"))
     page.click('#vkLoad')
     check('Full music import uses the same collectMy command as APK',page.evaluate("__calls.some(c=>c[0]==='vk_cmd' && c[1].cmd.type==='collectMy')"))
@@ -96,9 +96,9 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
     check('Full VK list reaches desktop without unsolicited CSV export',page.locator('#vkList .item').count()==2 and not page.evaluate("__calls.some(c=>c[0]==='save_export')"))
     page.evaluate("emitFixture('vk:playlist',{items:[{key:'other_1',title:'Visible recommendation',artist:'Other'}]})")
     check('Legacy visible rows cannot truncate the full library or add recommendations',page.locator('#vkList .item').count()==2 and 'Last' in page.locator('#vkList').inner_text() and 'recommendation' not in page.locator('#vkList').inner_text())
-    page.locator('#vkList .item').last.click()
+    page.locator('#djList .dj-row button').last.click();page.click('#djPlayB')
     check('Selected VK track uses exact imported key',page.evaluate("__calls.some(c=>c[0]==='vk_cmd' && c[1].cmd.key==='42_2')"))
-    page.click('#djToggle');page.screenshot(path=str(OUT/'desktop-vinyl.png'),full_page=True)
+    page.locator('#desktopDJ').wait_for(state='visible');page.screenshot(path=str(OUT/'desktop-vinyl.png'),full_page=True)
     check('No browser runtime errors',not errors,errors=errors)
     browser.close()
 server.shutdown()

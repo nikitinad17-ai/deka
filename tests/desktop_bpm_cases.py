@@ -156,6 +156,6 @@ if __name__=='__main__':
         checks.append(dict(test=name,passed=bool(ok),**data));print(('PASS 'if ok else'FAIL ')+name,data,flush=True);assert ok,(name,data)
     try:
         with sync_playwright()as p:
-            b=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH'),args=['--no-sandbox','--autoplay-policy=no-user-gesture-required']);c=b.new_context(viewport={'width':1120,'height':780});c.add_init_script(hook);c.route('https://**',lambda r:r.abort());page=c.new_page();page.on('pageerror',lambda e:print('PAGE ERROR',str(e),flush=True));page.goto(f'http://127.0.0.1:{server.server_port}/index.html');page.click('#djToggle');run(page,check);b.close()
+            b=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH'),args=['--no-sandbox','--autoplay-policy=no-user-gesture-required']);c=b.new_context(viewport={'width':1120,'height':780});c.add_init_script(hook);c.route('https://**',lambda r:r.abort());page=c.new_page();page.on('pageerror',lambda e:print('PAGE ERROR',str(e),flush=True));page.goto(f'http://127.0.0.1:{server.server_port}/index.html');page.locator('#desktopDJ').wait_for(state='visible');run(page,check);b.close()
     finally:
         (ROOT/'test-output/bpm-development-report.json').write_text(json.dumps({'tests':checks},ensure_ascii=False,indent=2),encoding='utf-8');server.shutdown()

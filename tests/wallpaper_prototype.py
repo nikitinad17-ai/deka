@@ -21,7 +21,7 @@ with sync_playwright() as p,tempfile.TemporaryDirectory() as td:
  files=[]
  for i,hz in enumerate([440,660,440,660]):
   f=Path(td)/f'Prototype-{i}.mp3';f.write_bytes((ROOT/'tests/fixtures'/f'dj-{hz}.mp3').read_bytes());files.append(str(f))
- page.click('#djToggle');page.set_input_files('#file',files)
+ page.locator('#desktopDJ').wait_for(state='visible');page.set_input_files('#file',files)
  for side,i in [('A',0),('B',1)]:page.get_by_role('button',name=f'В {side}: Prototype-{i}',exact=True).click()
  page.wait_for_function("()=>['A','B'].every(s=>__dj.state[s].duration>40&&__dj.state[s].analysisStatus==='ready')")
  page.evaluate("__dj.setAutoMix(false);__dj.setRepeat(true);__dj.setBPM('A',120);__dj.setBPM('B',125);__dj.setRate('A',1.04);__dj.setCross(0);__dj.play('A');__dj.play('B');window.__engine=__dj;window.__ctx=__measure.context")

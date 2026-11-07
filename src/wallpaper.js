@@ -22,7 +22,7 @@
  setInterval(()=>mirror().catch(()=>{}),1000);
  listen('wallpaper:mirror-request',()=>mirror().catch(()=>{}));
  const bar=document.createElement('aside');bar.className='wallpaper-toolbar';bar.setAttribute('aria-label','Режим рабочего стола');
- bar.innerHTML='<strong>DEKA <small>0.19.0 · Preview</small></strong><select id="wallMonitor" aria-label="Монитор"></select><button id="wallActive">Активно</button><button id="wallBackground">Фон</button><button id="wallNormal">Обычное окно · Esc</button><button id="wallReport">Сохранить отчёт</button><output id="wallState">Обычное окно</output>';
+ bar.innerHTML='<strong>DEKA <small>0.20.0 · Preview</small></strong><select id="wallMonitor" aria-label="Монитор"></select><button id="wallActive">Активно</button><button id="wallBackground">Фон</button><button id="wallNormal">Обычное окно · Esc</button><button id="wallReport">Сохранить отчёт</button><output id="wallState">Обычное окно</output>';
  document.body.prepend(bar);const $=id=>document.getElementById(id);
  function backgroundHint(){
   return api.state?.hotkey_registered ? 'Ctrl + Alt + F9 — открыть пульт' : 'Открыть пульт: Deka в трее → Активно';
@@ -42,7 +42,7 @@
  async function set(mode){try{render(await invoke('wallpaper_set',{mode,monitor:$('wallMonitor').value||null}));}catch(e){$('wallState').textContent=String(e);}}
  $('wallReport').onclick=async()=>{try{$('wallState').textContent='Сохранено: '+await invoke('wallpaper_report');}catch(e){$('wallState').textContent=String(e);}};
  $('wallActive').onclick=()=>set('active');$('wallBackground').onclick=()=>set('background');$('wallNormal').onclick=()=>set('normal');$('wallMonitor').onchange=()=>set(api.mode);
- window.addEventListener('keydown',e=>{if(e.key==='Escape'&&api.mode!=='background'){e.preventDefault();set('normal');}},true);
+ window.addEventListener('keydown',e=>{if(e.key==='Escape'&&api.mode!=='background'&&!document.querySelector('dialog[open]')){e.preventDefault();set('normal');}},true);
  for(const name of['click','pointerdown','pointermove','pointerup','wheel','keydown','keyup','drop','dragover','input','change'])window.addEventListener(name,e=>{if(api.mode==='background'){e.preventDefault();e.stopImmediatePropagation();}},{capture:true,passive:false});
  listen('wallpaper:state',e=>render(e.payload));invoke('wallpaper_state').then(render).catch(e=>$('wallState').textContent=String(e));
 })();
