@@ -99,6 +99,8 @@ try:
                         el=surface(f'[data-eq={side}][data-band="{band}"]');el.scroll_into_view_if_needed();r=el.bounding_box()
                         check(theme+f' {side} EQ {band} is reachable without clipping at {width}',r['x']>=0 and r['x']+r['width']<=width+1 and r['width']>=32 and r['height']>=32)
                 if width<height:
+                    for side in ['A','B']:
+                        check(theme+f' {side} portrait title, platter and CUE stay clear of the heading and detail controls',q(f'.deck[data-side={side}]').evaluate('e=>{const header=e.querySelector("h2").getBoundingClientRect(),detail=e.querySelector(".deckcontrol").getBoundingClientRect(),parts=[...e.querySelector(".deckhead").children].filter(x=>!x.hidden).map(x=>x.getBoundingClientRect()).filter(r=>r.height);return Math.min(...parts.map(r=>r.top))>=header.bottom&&Math.max(...parts.map(r=>r.bottom))<=detail.top}'))
                     check(theme+' portrait mixer is between the decks without overlap',q('.console').evaluate('e=>{const a=e.querySelector(".deck[data-side=A]").getBoundingClientRect(),m=e.querySelector(".mixer").getBoundingClientRect(),b=e.querySelector(".deck[data-side=B]").getBoundingClientRect();return a.bottom<=m.top&&m.bottom<=b.top}'))
                 q('.console').evaluate('e=>e.scrollTop=0')
                 page.screenshot(path=str(OUT/f'console-mobile-{theme}-{width}.png'))
