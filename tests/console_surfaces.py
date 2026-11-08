@@ -56,6 +56,7 @@ try:
             page.mouse.move(*coords[0]);page.mouse.down()
             for xy in coords[1:]:page.mouse.move(*xy,steps=3);page.wait_for_timeout(20)
             page.mouse.up()
+    if MOBILE:root.evaluate("e=>{window.__touchLog=[];['touchstart','touchend','pointerdown','pointerup','click'].forEach(t=>e.addEventListener(t,v=>__touchLog.push({type:t,target:v.target.id||v.target.className,prevented:v.defaultPrevented,time:performance.now()}),true));}")
     for theme,kind in [('aurora','rotary'),('acid','vertical'),('editorial','encoder')]:
         activate(q('#djStyle'));activate(q('[data-theme='+theme+']'));activate(q('#djThemeSave'))
         check(theme+' selects a distinct physical interaction',q('[data-eq=A][data-band="0"]').locator('..').get_attribute('data-kind')==kind)
@@ -74,7 +75,8 @@ try:
             if MOBILE:page.set_viewport_size(dict(width=844,height=390));page.wait_for_timeout(350);activate(q('#djBtn'))
         page.evaluate("__dj.setEQ('A',0,0);__dj.setEQ('A',1,0);__dj.setEQ('A',2,0)")
         if MOBILE:
-            activate(q('#tabA3'));page.wait_for_timeout(80)
+            activate(q('#tabA3'));page.wait_for_timeout(400)
+            if q('#fxPanelA').evaluate('e=>e.hidden'):print('Touch trace',page.evaluate('__touchLog.slice(-35)'),flush=True)
             page.screenshot(path=str(OUT/f'console-mobile-{theme}-fx.png'))
             check(theme+' FX tab opens its mounted controls',not q('#fxPanelA').evaluate('e=>e.hidden'),geometry=q('#fxPanelA').evaluate('e=>({hidden:e.hidden,display:getComputedStyle(e).display,rect:e.getBoundingClientRect().toJSON(),children:[...e.querySelectorAll(".dc-control")].map(x=>({kind:x.dataset.kind,rect:x.getBoundingClientRect().toJSON()}))})'))
         fx=q('#amountAEcho' if MOBILE else '[data-effect-amount=A][data-name=Echo]');fx.fill('35')
