@@ -55,6 +55,12 @@
       if (surface.hasPointerCapture(id)) surface.releasePointerCapture(id);
       if (commit) input.dispatchEvent(new Event('change', { bubbles: true }));
     }
+    // A control drag owns its touch sequence as well as Pointer Events. Prevent
+    // a browser scroll/compatibility click from consuming the following tap.
+    for (const type of ['touchstart', 'touchmove', 'touchend']) surface.addEventListener(type, e => {
+      if (input.disabled) return;
+      e.preventDefault(); e.stopPropagation();
+    }, { passive: false });
     surface.addEventListener('pointerdown', e => {
       if (input.disabled || pointer !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
       e.preventDefault(); e.stopPropagation(); surface.focus({ preventScroll: true });
