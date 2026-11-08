@@ -155,7 +155,9 @@ def verify_controls(page, context, native, check, root):
     check('A set on deck A advances under icons and survives hotkey return',vk.evaluate("document.querySelector('video').currentTime")>before+.5)
     before=vk.evaluate("document.querySelector('video').currentTime")
     page.locator('#djCompact').click()
-    page.locator('#djStyle').click();page.locator('[data-theme=acid]').click();page.locator('#djThemeSave').click()
+    for theme in ['aurora','editorial','acid']:
+        page.locator('#djStyle').click();page.locator('[data-theme='+theme+']').click();page.locator('#djThemeSave').click()
+        check('Real EXE applies '+theme+' controls without replacing the running decoder',page.evaluate('!__dj.state.A.paused&&!__dj.state.B.paused') and page.locator('#desktopDJ').get_attribute('data-console-theme')==theme)
     page.wait_for_timeout(700)
     check('Native compact/theme switch preserves set playback and the local deck',vk.evaluate("document.querySelector('video').currentTime")>before+.3 and page.evaluate('!__dj.state.A.paused&&!__dj.state.B.paused') and page.locator('#djDiscA').is_hidden())
     chord('background')

@@ -1,0 +1,245 @@
+name: DEKA 0.21 - three control surfaces, Desktop and Android
+on:
+  push:
+    branches: [feature/deka-console-designs]
+permissions:
+  contents: read
+concurrency:
+  group: deka-console-designs
+  cancel-in-progress: true
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+  surfaces:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [desktop, mobile]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: python tests/console_surfaces.py ${{ matrix.mode == 'mobile' && '--mobile' || '' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: console-surfaces-${{ matrix.mode }}
+          path: test-output/
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        script: [desktop_appearance, desktop_session, android_dj, android018, browser, continuous, automix, mp3_transport, dj_sets, desktop_dj, desktop_vinyl]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: python tests/${{ matrix.script }}.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: console-regression-${{ matrix.script }}
+          path: test-output/
+  windows:
+    needs: [unit, surfaces]
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+      - run: npm install
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - run: npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/requirements.txt psutil pillow
+      - name: Real Windows EXE, shell, hotkeys, A/B and console selection
+        run: python scripts/native-wallpaper-shell-ci.py Deka.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: console-native-windows-evidence
+          path: |
+            test-output/*.json
+            test-output/*.txt
+            test-output/*.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: console-tested-windows
+          path: Deka.exe
+          if-no-files-found: error
+  android:
+    needs: [unit, surfaces]
+    runs-on: ubuntu-24.04
+    outputs:
+      kind: ${{ steps.signing.outputs.kind }}
+    env:
+      REPORT: bash scripts/ci-report.sh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Sign a separate Console Preview
+        id: signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/deka-signing.p12"
+          export ANDROID_KEY_ALIAS=preview
+          export ANDROID_KEYSTORE_PASSWORD="$(openssl rand -hex 32)"
+          echo "::add-mask::$ANDROID_KEYSTORE_PASSWORD"
+          keytool -genkeypair -noprompt -storetype PKCS12 -keystore "$ANDROID_KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" -keyalg RSA -keysize 3072 -validity 3650 -dname "CN=Deka Console Preview" -storepass:env ANDROID_KEYSTORE_PASSWORD -keypass:env ANDROID_KEYSTORE_PASSWORD
+          node -e "const fs=require('fs'),p='src-tauri/tauri.conf.json',c=JSON.parse(fs.readFileSync(p));c.identifier='ru.volna.player.consolepreview';c.productName='DEKA Console Preview';fs.writeFileSync(p,JSON.stringify(c,null,2));"
+          echo "kind=preview" >> "$GITHUB_OUTPUT"
+          echo "APK_NAME=Deka-Android-0.21.0-Console-Preview.apk" >> "$GITHUB_ENV"
+          echo "APK_PACKAGE=ru.volna.player.consolepreview" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PATH=$ANDROID_KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+      - name: Android SDK and NDK
+        run: |
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          ndk="${ANDROID_NDK_LATEST_HOME:-}"
+          if [ -z "$ndk" ]; then ndk=$(ls -d "$sdk"/ndk/* | sort -V | tail -n 1); fi
+          test -d "$sdk" && test -d "$ndk"
+          echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ndk" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+      - run: npm install
+      - name: Generate native project
+        run: |
+          $REPORT npx tauri android init --ci
+          $REPORT npx tauri icon app-icon.png
+          $REPORT node scripts/android-sign.js
+          $REPORT node scripts/android-webview.js
+      - name: Build and verify APK
+        run: |
+          $REPORT npx tauri android build --apk --target aarch64 --ci
+          # The screen-off fix must really be inside the built app, not only in the repo.
+          java=src-tauri/gen/android/app/src/main/java
+          grep -rlq "DEKA_KEEP_VISIBLE" "$java" || { echo "::error::RustWebView.kt was generated without DEKA_KEEP_VISIBLE (.cargo/config.toml not applied)"; exit 1; }
+          grep -rlq "DEKA_BACKGROUND_V4" "$java" || { echo "::error::MainActivity.kt is missing the background patch"; exit 1; }
+          grep -rl "DEKA_KEEP_VISIBLE" "$java"
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -n 1)
+          test -n "$apk"
+          cp "$apk" "$APK_NAME"
+          signer=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          aapt=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)
+          "$signer" verify --verbose --print-certs "$APK_NAME"
+          "$aapt" dump badging "$APK_NAME" > "$RUNNER_TEMP/deka-badging.txt"
+          python - "$APK_NAME" <<'PYVERIFY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              native = [n for n in z.namelist() if n.startswith('lib/arm64-v8a/') and n.endswith('.so')]
+              found = any(all(token in z.read(n) for token in [b'DEKA_ANDROID_VINYL_013', b'DekaVinylModuleSource', b'keyLock', b'DEKA_ANDROID_DJ_018', b'DekaBrakeModuleSource', b'DekaRollModuleSource', b'neutralMid', b'reverseMix', b'DEKA_CONSOLE_CONTROLS_021', b'DEKA_CONSOLE_DESIGNS_021']) for n in native)
+              assert found, 'APK does not contain the new Android Vinyl bundle'
+              assert any(b'onShowFileChooser' in z.read(n) for n in z.namelist() if n.endswith('.dex')), 'System file chooser handler missing'
+          print('Android Vinyl bundle and native file chooser found in APK')
+          PYVERIFY
+          mkdir -p test-output
+          cp "$RUNNER_TEMP/deka-badging.txt" test-output/android-badging.txt
+          "$signer" verify --verbose --print-certs "$APK_NAME" > test-output/android-signature.txt
+          sha256sum "$APK_NAME" > test-output/android-sha256.txt
+          head -n 1 "$RUNNER_TEMP/deka-badging.txt"
+          grep -m1 "^application-label:" "$RUNNER_TEMP/deka-badging.txt"
+          grep -q "package: name='$APK_PACKAGE'" "$RUNNER_TEMP/deka-badging.txt"
+          grep -q "versionName='$(node -p "require('./package.json').version")'" "$RUNNER_TEMP/deka-badging.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: console-tested-android
+          path: ${{ env.APK_NAME }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: console-android-verification
+          path: |
+            test-output/android-badging.txt
+            test-output/android-signature.txt
+            test-output/android-sha256.txt
+      - name: Remove ephemeral signing material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/deka-signing.p12" src-tauri/gen/android/keystore.properties
+  package:
+    needs: [unit, surfaces, regression, windows, android]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: console-tested-windows
+          path: Deka-Desktop-0.21.0-Console-Preview
+      - name: Package verified Windows build
+        run: |
+          python3 - <<'PYZIP'
+          from pathlib import Path
+          import hashlib
+          d=Path('Deka-Desktop-0.21.0-Console-Preview')
+          (d/'READ-ME.md').write_bytes(Path('docs/CONSOLE-0.21-PREVIEW.md').read_bytes())
+          (d/'SHA256SUMS.txt').write_text(hashlib.sha256((d/'Deka.exe').read_bytes()).hexdigest()+'  Deka.exe\n')
+          PYZIP
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Deka-Desktop-0.21.0-Console-Preview-Windows
+          path: Deka-Desktop-0.21.0-Console-Preview/
+          if-no-files-found: error
+      - uses: actions/download-artifact@v4
+        with:
+          name: console-tested-android
+          path: Deka-Android-0.21.0-Console-Preview
+      - run: cp docs/CONSOLE-0.21-PREVIEW.md Deka-Android-0.21.0-Console-Preview/READ-ME.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Deka-Android-0.21.0-Console-Preview
+          path: Deka-Android-0.21.0-Console-Preview/
+          if-no-files-found: error

@@ -44,5 +44,5 @@
     }
     registerProcessor('deka-roll',RollProcessor);
   }else if(typeof module==='object'&&module.exports)module.exports={RollTransport};
-  else root.DekaRollTransport=RollTransport;
+  else {root.DekaRollTransport=RollTransport;root.DekaRollModuleSource="("+installRoll.toString()+")(globalThis);";}
 })(globalThis);

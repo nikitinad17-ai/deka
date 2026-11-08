@@ -10,9 +10,9 @@
   const deckHTML = side => `<section class="dj-deck" data-side="${side}" aria-label="Дека ${side}">
     <h2>DECK ${side} <span id="djStatus${side}">Пусто</span></h2>
     <div class="dj-track"><b id="djTitle${side}">Загрузите трек из библиотеки</b><small id="djArtist${side}">Локальный файл</small></div>
-    <button class="dj-disc" id="djDisc${side}" aria-label="Дека ${side}" title="Дека ${side}"><span>${side}</span></button><small class="dj-vinyl-help" id="djVinyl${side}">BPM · локальный трек</small>
-    <div class="dj-times"><span id="djTime${side}">00:00 / 00:00</span><span id="djRemain${side}">−00:00</span></div>
-    <div class="dj-seek-wrap"><input class="dj-seek" type="range" id="djSeek${side}" min="0" max="1000" value="0" data-seek="${side}" aria-label="Позиция деки ${side}"><span class="dj-cue-marker" id="djCueMarker${side}" hidden title="Метка CUE">C</span></div>
+    <div class="dj-platter"><button class="dj-disc" id="djDisc${side}" aria-label="Дека ${side}" title="Дека ${side}"><span>${side}</span></button><small class="dj-vinyl-help" id="djVinyl${side}">BPM · локальный трек</small></div>
+    <div class="dj-position"><div class="dj-times"><span id="djTime${side}">00:00 / 00:00</span><span id="djRemain${side}">−00:00</span></div>
+    <div class="dj-seek-wrap"><input class="dj-seek" type="range" id="djSeek${side}" min="0" max="1000" value="0" data-seek="${side}" aria-label="Позиция деки ${side}"><span class="dj-cue-marker" id="djCueMarker${side}" hidden title="Метка CUE">C</span></div></div>
     <div class="dj-transport"><button data-play="${side}" id="djPlay${side}" class="btn play">▶ Играть ${side}</button><label>BPM <input type="number" min="30" max="300" step="0.1" id="djBPM${side}" data-bpm="${side}" aria-label="Ручной BPM ${side}" placeholder="—"></label><button data-tap="${side}" class="btn">TAP</button><output id="djEffectiveBPM${side}" class="dj-effective">→ — BPM</output></div>
     <div class="dj-cuefx"><div class="dj-cue"><button class="btn toggle" data-cue="${side}" aria-pressed="false" title="Поставить CUE">CUE</button><span id="djCue${side}">—</span><button id="djKeyLock${side}" data-keylock="${side}" class="btn toggle dj-keylock" aria-pressed="true" title="Key Lock — сохранять тональность">Key Lock</button></div><div class="dj-fx" aria-label="Эффекты деки ${side}">${fxNames.map(name=>`<div class="dj-fx-cell"><button class="btn toggle" id="djFX${side}${name}" data-effect="${side}" data-name="${name}" aria-pressed="false" aria-label="${name} деки ${side}">${name}</button><input type="range" min="0" max="100" value="35" data-effect-amount="${side}" data-name="${name}" aria-label="Интенсивность ${name} деки ${side}"></div>`).join('')}</div></div>
     <div class="dj-label"><div class="dj-rate-heading"><label for="djRate${side}">Темп</label><output id="djRateLabel${side}">0.0%</output><button data-reset="${side}" class="btn dj-rate-reset" title="Вернуть ручной темп к 0%">0%</button></div><input type="range" min="-8" max="8" step="0.1" value="0" id="djRate${side}" data-rate="${side}" aria-label="Темп деки ${side}"></div>
@@ -95,6 +95,7 @@
       if (document.activeElement !== $('djBPM'+side)) $('djBPM'+side).value = s.bpm || s.analysis?.bpm || '';
     });
     renderBrake();
+    window.DekaConsoleControls.sync(root);
   }
   function renderBrake(){
     ['A','B'].forEach(side=>{
