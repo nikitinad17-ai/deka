@@ -2,6 +2,7 @@ name: DEKA 0.21 - three control surfaces, Desktop and Android
 on:
   push:
     branches: [feature/deka-console-designs]
+    paths-ignore: ['docs/**']
 permissions:
   contents: read
 concurrency:

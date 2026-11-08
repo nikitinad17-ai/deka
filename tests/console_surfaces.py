@@ -94,6 +94,13 @@ try:
                 page.set_viewport_size(dict(width=width,height=height));page.wait_for_timeout(350);activate(q('#djBtn'))
                 q('.console').evaluate('e=>e.scrollTop=0');q('#message').evaluate('e=>e.hidden=true')
                 check(theme+f' mobile has no horizontal overflow {width}x{height}',root.evaluate('e=>e.scrollWidth<=e.clientWidth+1'))
+                for side in ['A','B']:
+                    for band in [0,2]:
+                        el=surface(f'[data-eq={side}][data-band="{band}"]');el.scroll_into_view_if_needed();r=el.bounding_box()
+                        check(theme+f' {side} EQ {band} is reachable without clipping at {width}',r['x']>=0 and r['x']+r['width']<=width+1 and r['width']>=32 and r['height']>=32)
+                if width<height:
+                    check(theme+' portrait mixer is between the decks without overlap',q('.console').evaluate('e=>{const a=e.querySelector(".deck[data-side=A]").getBoundingClientRect(),m=e.querySelector(".mixer").getBoundingClientRect(),b=e.querySelector(".deck[data-side=B]").getBoundingClientRect();return a.bottom<=m.top&&m.bottom<=b.top}'))
+                q('.console').evaluate('e=>e.scrollTop=0')
                 page.screenshot(path=str(OUT/f'console-mobile-{theme}-{width}.png'))
             page.set_viewport_size(dict(width=844,height=390));page.wait_for_timeout(350);activate(q('#djBtn'))
         else:

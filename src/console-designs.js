@@ -187,7 +187,7 @@
  .app[data-console-platform=mobile] .deck,.app[data-console-platform=mobile] .deck[data-side=B]{grid-template-columns:46px minmax(100px,1fr) minmax(126px,1.1fr);grid-template-rows:22px minmax(0,1fr) 40px;height:calc(100dvh - 96px);min-height:300px;padding:4px;gap:3px}
  .app[data-console-platform=mobile] .deck[data-side=B]{grid-template-columns:minmax(126px,1.1fr) minmax(100px,1fr) 46px}
  .app[data-console-platform=mobile] .deckhead{grid-column:2;grid-row:2;gap:4px;justify-content:center}
- .app[data-console-platform=mobile] .eqrail{grid-column:1;grid-row:2;gap:10px;flex-direction:column}.app[data-console-platform=mobile] .deck[data-side=B] .eqrail{grid-column:3;grid-row:2}
+ .app[data-console-platform=mobile] .eqrail{grid-column:1;grid-row:2;gap:10px;flex-direction:column}.app[data-console-platform=mobile] .deck[data-side=B] .eqrail{grid-column:3;grid-row:2;flex-direction:column}
  .app[data-console-platform=mobile] .eqrail .dc-surface{width:44px;height:44px}.app[data-console-platform=mobile] .eqrail .dc-value{font-size:8px}
  .app[data-console-platform=mobile] .deckcontrol{grid-column:3;grid-row:2;gap:4px;overflow:hidden}.app[data-console-platform=mobile] .deck[data-side=B] .deckcontrol{grid-column:1;grid-row:2}
  .app[data-console-platform=mobile] .decktransport{grid-column:1/-1;grid-row:3}.app[data-console-platform=mobile] .decktransport button{min-height:38px}
