@@ -100,7 +100,7 @@
       finish();
       kind = role === 'cross' ? 'horizontal' : role === 'tempo' ? theme === 'aurora' ? 'vertical' : 'horizontal' : role === 'gain' ? 'vertical' : theme === 'aurora' ? 'rotary' : theme === 'acid' ? role === 'fx' ? 'strip' : 'vertical' : role === 'fx' ? 'strip' : 'encoder';
       box.dataset.kind = kind; box.dataset.controlTheme = theme;
-      surface.setAttribute('aria-orientation', kind === 'vertical' ? 'vertical' : 'horizontal');
+      surface.setAttribute('aria-orientation', kind === 'vertical' || kind === 'encoder' ? 'vertical' : 'horizontal');
       surface.title = kind === 'rotary' ? 'Вращайте по кругу · двойной щелчок — сброс' : kind === 'encoder' ? 'Тяните вверх / вниз · Shift — точнее · двойной щелчок — сброс' : 'Перемещайте фейдер · двойной щелчок — сброс';
       sync();
     } };

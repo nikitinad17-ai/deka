@@ -281,7 +281,7 @@
       }
     });
     var gesture = null;
-    app.addEventListener('touchstart', function (e) { if (e.composedPath().some(function (el) { return el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'BUTTON' || (el.classList && (el.classList.contains('vlviewport') || el.classList.contains('perform'))); })) { gesture = null; return; } var t = e.touches[0]; gesture = { x: t.clientX, y: t.clientY }; }, { passive: true });
+    app.addEventListener('touchstart', function (e) { if (e.composedPath().some(function (el) { return el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'BUTTON' || (el.classList && (el.classList.contains('vlviewport') || el.classList.contains('perform') || el.classList.contains('dc-control'))); })) { gesture = null; return; } var t = e.touches[0]; gesture = { x: t.clientX, y: t.clientY }; }, { passive: true });
     app.addEventListener('touchend', function (e) { if (!gesture) return; var t = e.changedTouches[0], dx = t.clientX - gesture.x, dy = t.clientY - gesture.y; gesture = null; if (Math.abs(dy) > 30 || Math.abs(dx) < 80) return; if (dx < 0) setMode('dj'); else setMode('library'); }, { passive: true });
     window.addEventListener('deka:library', function (e) { library = e.detail; renderLibrary(); });
     window.addEventListener('deka:vk:state', function (e) { media = e.detail || media; engine.noteVK(media); renderSet(); });

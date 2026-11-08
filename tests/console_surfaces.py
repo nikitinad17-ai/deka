@@ -73,7 +73,10 @@ try:
             check('Precision plus advances by exactly one EQ step',page.evaluate('__dj.state.A.eq[0]')==before+1)
             if MOBILE:page.set_viewport_size(dict(width=844,height=390));page.wait_for_timeout(350);activate(q('#djBtn'))
         page.evaluate("__dj.setEQ('A',0,0);__dj.setEQ('A',1,0);__dj.setEQ('A',2,0)")
-        if MOBILE:activate(q('#tabA3'))
+        if MOBILE:
+            activate(q('#tabA3'));page.wait_for_timeout(80)
+            page.screenshot(path=str(OUT/f'console-mobile-{theme}-fx.png'))
+            check(theme+' FX tab opens its mounted controls',not q('#fxPanelA').evaluate('e=>e.hidden'),geometry=q('#fxPanelA').evaluate('e=>({hidden:e.hidden,display:getComputedStyle(e).display,rect:e.getBoundingClientRect().toJSON(),children:[...e.querySelectorAll(".dc-control")].map(x=>({kind:x.dataset.kind,rect:x.getBoundingClientRect().toJSON()}))})'))
         fx=q('#amountAEcho' if MOBILE else '[data-effect-amount=A][data-name=Echo]');fx.fill('35')
         fxsurf=fx.locator('..').locator('.dc-surface');fxkind=fx.locator('..').get_attribute('data-kind');gesture(fxsurf,fxkind)
         activate(q('#fxAEcho' if MOBILE else '#djFXAEcho'))
