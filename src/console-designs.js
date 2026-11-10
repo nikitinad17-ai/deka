@@ -233,7 +233,7 @@
 .app[data-console-theme=editorial] .dc-cap{box-shadow:inset 0 0 0 4px #dedbcf,inset 0 1px 2px white,0 2px 0 #a5a99a,0 4px 7px #28301e45}
 @media(orientation:portrait){
  .app[data-console-platform=mobile] .console{padding:5px;gap:8px}
- .app[data-console-platform=mobile] .console>.deck,.app[data-console-platform=mobile] .console>.deck[data-side=B]{grid-template-columns:44px minmax(96px,.9fr) minmax(130px,1.1fr);grid-template-rows:22px 292px 42px;min-height:0;height:auto;padding:5px;gap:3px}
+ .app[data-console-platform=mobile] .console>.deck,.app[data-console-platform=mobile] .console>.deck[data-side=B]{grid-template-columns:44px minmax(96px,.9fr) minmax(130px,1.1fr);grid-template-rows:22px 318px 42px;min-height:0;height:auto;padding:5px;gap:3px}
  .app[data-console-platform=mobile] .console>.deck[data-side=B]{grid-template-columns:minmax(130px,1.1fr) minmax(96px,.9fr) 44px}
  .app[data-console-platform=mobile] .deck h2{grid-column:1/-1;grid-row:1;font-size:10px}
  .app[data-console-platform=mobile] .deck h2 small{max-width:100px;font-size:8px}
@@ -249,11 +249,12 @@
  .app[data-console-theme=editorial] .eqrail .dc-control .dc-surface{grid-row:1;grid-column:1/-1}
  .app[data-console-theme=editorial] .eqrail .dc-step{display:block;grid-row:2;min-width:22px;min-height:24px;height:24px;font-size:14px}
  .app[data-console-theme=editorial] .eqrail .dc-value{grid-row:3;grid-column:1/-1}
- .app[data-console-platform=mobile] .deckcontrol,.app[data-console-platform=mobile] .deck[data-side=B] .deckcontrol{grid-column:3;grid-row:2;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:28px minmax(62px,1fr) 154px 32px;gap:4px;overflow:hidden;padding:0 0 4px}
+ .app[data-console-platform=mobile] .deckcontrol,.app[data-console-platform=mobile] .deck[data-side=B] .deckcontrol{grid-column:3;grid-row:2;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:28px minmax(88px,1fr) 154px 32px;gap:4px;overflow:hidden;padding:0 0 4px}
  .app[data-console-platform=mobile] .deck[data-side=B] .deckcontrol{grid-column:1}
  .app[data-console-platform=mobile] .deckTabs{grid-row:1;gap:3px}
  .app[data-console-platform=mobile] .deckTabs button{min-height:28px;font-size:9px;padding:1px}
  .app[data-console-platform=mobile] .deckpanel{grid-row:2;min-height:0;padding:0;overflow:auto}
+ .app[data-console-platform=mobile] .deckpanel .vlviewport{min-height:40px}
  .app[data-console-platform=mobile] .decktools select,.app[data-console-platform=mobile] .decktools input{font-size:9px;min-height:25px;height:25px}
  .app[data-console-platform=mobile] .fxblock{grid-row:3;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 3px;align-content:start;min-height:0;overflow:auto;padding:2px;background:linear-gradient(#0001,#0002);border-radius:5px}
  .app[data-console-platform=mobile] .fxcell{display:flex;min-width:0;gap:1px}.app[data-console-platform=mobile] .fxcell>button{height:28px;min-height:28px;font-size:8px;padding:1px 0}
