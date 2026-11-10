@@ -2,7 +2,7 @@
  * VK and local WAVs are explicit fixtures; no physical phone/account is claimed.
  */
 const { _android: android } = require('playwright');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..');
@@ -34,9 +34,11 @@ function tone(hz) {
   return { name: `Studio-${hz}.wav`, mimeType: 'audio/wav', buffer: b };
 }
 (async () => {
-  let device;
+  let device, logProcess, logFile;
   try {
     adb('install', '-r', path.resolve(process.argv[2]));
+    logFile = fs.openSync(path.join(OUT, 'android-live-logcat.txt'), 'w');
+    logProcess = spawn('adb', ['logcat', '-v', 'threadtime'], { stdio: ['ignore', logFile, logFile] });
     check('Native test runs on Android 16 / API 36', adb('shell', 'getprop', 'ro.build.version.sdk') === '36');
     adb('shell', 'cmd', 'overlay', 'enable-exclusive', '--category', 'com.android.internal.systemui.navbar.threebutton');
     adb('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0');
@@ -47,6 +49,8 @@ function tone(hz) {
     const webview = await device.webView({ pkg: PACKAGE }, { timeout: 90000 });
     const pid = webview.pid();
     const page = await webview.page();
+    page.on('crash', () => console.error('Android music WebView crashed'));
+    page.on('close', () => console.log('Android music WebView closed'));
     const context = page.context();
     await context.route('https://vk.ru/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: fs.readFileSync(path.join(ROOT, 'tests/fixtures/vk-music.html'), 'utf8') }));
     // Android WebView has one process-wide cookie store and no browser-context
@@ -108,6 +112,8 @@ function tone(hz) {
       save('android-final-screen.png', execFileSync('adb', ['exec-out', 'screencap', '-p'], { timeout: 15000 }));
       save('android-logcat.txt', adb('logcat', '-d', '-t', '500'));
     } catch (e) { console.error('Diagnostic capture:', e.message); }
+    if (logProcess) logProcess.kill();
+    if (logFile !== undefined) fs.closeSync(logFile);
     if (device) await device.close();
   }
 })().catch(e => { console.error(e); process.exitCode = 1; });
