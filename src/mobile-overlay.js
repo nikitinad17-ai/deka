@@ -24,7 +24,7 @@
   window.__dekaOverlay = true;
   var css = `
     :host{all:initial}*{box-sizing:border-box}[hidden]{display:none!important}
-    .app{--bg:#101318;--panel:#1b2029;--line:#343e4b;--a:#f5b44b;--b:#66d6e5;color:#e7ecf3;font:14px/1.3 system-ui,sans-serif;background:var(--bg);position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;overflow:hidden;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+    .app{--bg:#101318;--panel:#1b2029;--line:#343e4b;--a:#f5b44b;--b:#66d6e5;color:#e7ecf3;font:14px/1.3 system-ui,sans-serif;background:var(--bg);position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;overflow:hidden;inset:var(--deka-safe-top,env(safe-area-inset-top,0px)) var(--deka-safe-right,env(safe-area-inset-right,0px)) var(--deka-safe-bottom,env(safe-area-inset-bottom,0px)) var(--deka-safe-left,env(safe-area-inset-left,0px));padding:0}
     button,input,select{font:inherit}button{color:inherit;background:#262e3a;border:1px solid var(--line);border-radius:7px;min-height:36px;padding:5px 10px;cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--b);outline-offset:1px}button:disabled{opacity:.4;cursor:default}
     header{display:flex;align-items:center;gap:7px;padding:7px 10px;flex:none;min-height:48px;border-bottom:1px solid var(--line)}.brand{font-weight:900;color:var(--a);letter-spacing:.12em;margin-right:auto}.active{border-color:var(--a);color:var(--a)}
     .status{font-size:12px;color:#b4c4d6;min-height:26px;padding:4px 10px;background:#151c25;flex:none}.status.error{color:#ffc189}.status button{min-height:22px;padding:0 8px;margin-left:8px;font-size:11px}
@@ -84,7 +84,7 @@
     @media(max-width:700px) and (orientation:landscape){.console{grid-template-columns:minmax(0,1fr) 62px minmax(0,1fr)}.deck{grid-template-columns:28px minmax(88px,1fr) minmax(110px,1fr)}.deck[data-side=B]{grid-template-columns:minmax(110px,1fr) minmax(88px,1fr) 28px}.disc{width:110px}.deckTabs button{font-size:8px;padding-inline:1px}.fxcell button{font-size:8px}.decktransport button{font-size:11px}.eqrail input{width:26px}.mixer .fader{width:27px}.djinfo button{font-size:9px}}
   `;
   var library, files = [], urls = [], playlists = [], sets = [], messageTimer, vkView = false, rotationOpened = false;
-  var sh, $, app, mode = 'library', search = { main: '', A: '', B: '' }, source = { main: 'vk', A: 'vk', B: 'vk' }, lists = {}, sigs = {};
+  var sh, $, app, mode = 'library', search = { main: '', A: '', B: '' }, source = { main: 'vk', A: 'vk', B: 'vk' }, lists = {}, sigs = {}, panelTab = { A: 0, B: 0 };
   var media = { paused: true, currentTime: 0, duration: 0, title: '', artist: '' }, engine, savedScope = '';
   var SETS = window.DekaSets || null, setLink = SETS && (/vkvideo\.ru$/.test(location.hostname) || /^\/(video|clip)/.test(location.pathname)) ? SETS.parseLink(location.href) : null;
   var setAuto = [], setManual = null, setTitleText = '', setChapSig = '', setCurrent = -2;
@@ -108,6 +108,17 @@
     <section class="deckpanel fxblock" id="fxPanel${side}" hidden aria-label="Эффекты ${side}">${FX.map(function(name){return `<label class="fxcell"><button id="fx${side}${name}" data-fx="${side}" data-name="${name}" aria-pressed="false" aria-label="${name} ${side}">${name}</button><input id="amount${side}${name}" data-fxamount="${side}" data-name="${name}" type="range" min="0" max="100" value="35" aria-label="Уровень ${name} ${side}"></label>`;}).join('')}</section>
     <section class="reverseblock" aria-label="Реверс ${side}"><span>РЕВЕРС</span>${[1.5,2.5,3.5].map(function(seconds){return `<button data-brake="${side}" data-seconds="${seconds}" aria-label="Реверс ${side} ${seconds} с">${String(seconds).replace('.',',')} с</button>`;}).join('')}</section></div>
     <div class="decktransport"><button class="play" data-cmd="play" data-side="${side}" id="play${side}" aria-label="Играть ${side}">▶ Play</button><button data-cmd="next" data-side="${side}" aria-label="Следующий ${side}">Next ▶|</button><button id="cue${side}" data-cmd="cue" data-side="${side}" title="Поставить → вернуться → удалить CUE">CUE</button></div></section>`; }
+  function syncDeckPanels() {
+    var portrait=matchMedia('(orientation:portrait)').matches;
+    ['A','B'].forEach(function(side){
+      var active=portrait&&panelTab[side]===3?0:panelTab[side];
+      ['tracks','perform','eqPanel','fxPanel'].forEach(function(id,i){
+        $(id+side).hidden=!(i===active||(portrait&&i===3));
+        $('tab'+side+i).hidden=portrait&&i===3;
+        $('tab'+side+i).setAttribute('aria-selected',String(i===active));
+      });
+    });
+  }
   function mount() {
     if (!document.body) return setTimeout(mount, 100);
     var host = document.createElement('div'); host.id = 'deka-overlay'; document.documentElement.appendChild(host); sh = host.attachShadow({ mode: 'open' });
@@ -129,7 +140,7 @@
       },{loadActions:id==='main'});
     });
     ['A','B'].forEach(bindPlatter);
-    app.addEventListener('deka:console-layout',function(){Object.values(lists).forEach(function(list){list.render();});});
+    app.addEventListener('deka:console-layout',function(){syncDeckPanels();Object.values(lists).forEach(function(list){list.render();});});
     ['mainShuffle','djShuffle'].forEach(function(id){$(id).onclick=function(){var on=!engine.diagnostics().shuffle;saveSetting('shuffle',on);engine.setShuffle(on);};});
     ['mainRep','djRep'].forEach(function(id){$(id).onclick=function(){var on=!engine.diagnostics().repeatTrack;saveSetting('repeatTrack',on);engine.setRepeat(on);};});
     $('autoMix').onclick=function(){engine.setAutoMix(!engine.diagnostics().autoMix);};
@@ -252,7 +263,7 @@
       var button=e.target.closest('button');
       if(button){
         var d=button.dataset;
-        if(d.panel){['tracks','perform','eqPanel','fxPanel'].forEach(function(id,i){$(id+d.panel).hidden=i!==+d.tab;$('tab'+d.panel+i).setAttribute('aria-selected',String(i===+d.tab));});lists[d.panel].render();}
+        if(d.panel){panelTab[d.panel]=+d.tab;syncDeckPanels();lists[d.panel].render();}
         if(d.eqreset){engine.setEQ(d.eqreset,0,0);engine.setEQ(d.eqreset,2,0);renderPlayback();}
         if(d.brake)engine.brake(d.brake,+d.seconds);
         if(d.fx){var effect=engine.state[d.fx].effects[d.name];engine.setEffect(d.fx,d.name,!effect.on,effect.amount);}
@@ -290,7 +301,7 @@
     window.addEventListener('deka:vk:ended', function () { engine.endedVK(); });
     window.addEventListener('deka:vk:fx', function (e) { if (e.detail && !e.detail.ok && mode === 'dj') message('Для этого потока VK эквалайзер недоступен. Для файлов обе деки работают независимо.'); });
     var landscape = matchMedia('(orientation: landscape)');
-    function rotate() { cancelGestures(); if (vkView || setLink || (isGuest&&!files.length)) return; if (landscape.matches) { setMode('dj',true); rotationOpened = true; } else if (rotationOpened) { setMode('library',true); rotationOpened = false; } requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
+    function rotate() { cancelGestures(); syncDeckPanels(); if (vkView || setLink || (isGuest&&!files.length)) return; if (landscape.matches) { setMode('dj',true); rotationOpened = true; } else if (rotationOpened) { setMode('dj',true); rotationOpened = false; } requestAnimationFrame(function () { Object.values(lists).forEach(function (v) { v.render(); }); }); }
     var rotateFrame=null;
     function scheduleRotate(){if(rotateFrame!==null)cancelAnimationFrame(rotateFrame);rotateFrame=requestAnimationFrame(function(){rotateFrame=null;rotate();});}
     landscape.addEventListener('change',scheduleRotate);

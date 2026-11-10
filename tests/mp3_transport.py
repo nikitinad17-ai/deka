@@ -27,7 +27,12 @@ with tempfile.TemporaryDirectory() as td,sync_playwright() as p:
         old='A'if i%2 else'B';new='B'if i%2 else'A'
         page.wait_for_function(f"__dj.state.{new}.track?.title==='Queue-{i:02}'&&__dj.state.{new}.duration>1")
         page.evaluate(f"__dj.seek('{old}',__dj.state.{old}.duration-.55)")
-        page.wait_for_function(f"!__dj.state.{new}.paused&&__dj.state.{old}.paused",timeout=5000)
+        try:
+            page.wait_for_function(f"!__dj.state.{new}.paused&&__dj.state.{old}.paused",timeout=5000)
+        except Exception:
+            details=page.evaluate("({state:__dj.state,diagnostics:__dj.diagnostics(),audio:__audios.map(e=>({time:e.currentTime,duration:e.duration,paused:e.paused,ended:e.ended,readyState:e.readyState,error:e.error?.message})),errors:[]})")
+            (OUT/'mp3-timeout-state.json').write_text(json.dumps({'handoff':i,**details},indent=2))
+            raise
         page.evaluate('__dj.endedVK();window.dispatchEvent(new Event("deka:vk:ended"))');page.wait_for_timeout(220)
         value=page.evaluate(f"({{title:__dj.state.{new}.track.title,paused:__dj.state.{new}.paused,time:__dj.state.{new}.time,cross:__dj.diagnostics().cross}})")
         check(f'Local MP3 handoff {i}: no skip or premature stop after remote end',value['title']==f'Queue-{i:02}'and not value['paused']and value['time']>0,**value)

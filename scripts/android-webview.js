@@ -425,6 +425,48 @@ if (!activity.includes('DEKA_ROTATION_014')) {
   }
 `);
 }
+
+// Keep every interactive WebView inside native bars and cutouts, including Android 16.
+// Apply the insets once on the container; pass zeroed bar insets to WebView so
+// newer WebViews do not add a second CSS safe area. IME insets still propagate.
+if (!activity.includes('DEKA_SAFE_INSETS_0211')) {
+  activity = activity.replace('    dekaWebView = webView', `    dekaWebView = webView
+    webView.post { dekaInstallSafeInsets() }`);
+  activity = activity.replace('    dekaWebView?.requestLayout()', `    dekaWebView?.requestLayout()
+    androidx.core.view.ViewCompat.requestApplyInsets(findViewById(android.R.id.content))`);
+  activity = activity.replace(/class MainActivity\s*:\s*TauriActivity\(\)\s*\{/, m => m + `
+  // DEKA_SAFE_INSETS_0211: native sizing, independent of the installed WebView version.
+  private fun dekaPadSystemBars(view: android.view.View) {
+    androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(view) { target, windowInsets ->
+      val types = androidx.core.view.WindowInsetsCompat.Type.systemBars() or
+        androidx.core.view.WindowInsetsCompat.Type.displayCutout()
+      val safe = windowInsets.getInsets(types)
+      target.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+      androidx.core.view.WindowInsetsCompat.Builder(windowInsets)
+        .setInsets(types, androidx.core.graphics.Insets.NONE)
+        .setInsetsIgnoringVisibility(types, androidx.core.graphics.Insets.NONE)
+        .build()
+    }
+    androidx.core.view.ViewCompat.requestApplyInsets(view)
+  }
+
+  private fun dekaInstallSafeInsets() {
+    androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+    val content = findViewById<android.view.ViewGroup>(android.R.id.content)
+    content.setBackgroundColor(0xFF101318.toInt())
+    dekaPadSystemBars(content)
+    androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply {
+      isAppearanceLightStatusBars = false
+      isAppearanceLightNavigationBars = false
+    }
+  }
+`);
+  activity = activity.replace(`    root.setOnApplyWindowInsetsListener { v, insets ->
+      v.setPadding(0, insets.systemWindowInsetTop, 0, insets.systemWindowInsetBottom)
+      insets
+    }`, `    dekaPadSystemBars(root)`);
+}
+
 fs.writeFileSync(activityFile, activity);
 
 const serviceFile = path.join(path.dirname(activityFile), "DekaPlaybackService.kt");

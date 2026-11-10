@@ -99,8 +99,11 @@ try:
                         el=surface(f'[data-eq={side}][data-band="{band}"]');el.scroll_into_view_if_needed();r=el.bounding_box()
                         check(theme+f' {side} EQ {band} is reachable without clipping at {width}',r['x']>=0 and r['x']+r['width']<=width+1 and r['width']>=32 and r['height']>=32)
                 if width<height:
+                    check(theme+' rotation retains the portrait DJ console',q('#dj').evaluate('e=>e.classList.contains("open")'))
                     for side in ['A','B']:
-                        check(theme+f' {side} portrait title, platter and CUE stay clear of the heading and detail controls',q(f'.deck[data-side={side}]').evaluate('e=>{const header=e.querySelector("h2").getBoundingClientRect(),detail=e.querySelector(".deckcontrol").getBoundingClientRect(),parts=[...e.querySelector(".deckhead").children].filter(x=>!x.hidden).map(x=>x.getBoundingClientRect()).filter(r=>r.height);return Math.min(...parts.map(r=>r.top))>=header.bottom&&Math.max(...parts.map(r=>r.bottom))<=detail.top}'))
+                        check(theme+f' {side} portrait uses mirrored side-by-side panels and inline effects',q(f'.deck[data-side={side}]').evaluate('e=>{const h=e.querySelector(".deckhead").getBoundingClientRect(),p=e.querySelector(".deckcontrol").getBoundingClientRect(),r=e.querySelector(".eqrail").getBoundingClientRect(),fx=e.querySelector(".fxblock"),f=fx.getBoundingClientRect();return !fx.hidden&&Math.abs(h.top-p.top)<8&&(e.dataset.side==="A"?r.right<=h.left+1&&h.right<=p.left+1:p.right<=h.left+1&&h.right<=r.left+1)&&f.height>100}'))
+                    for side in ['A','B']:
+                        check(theme+f' {side} portrait title, platter and CUE stay clear of the heading and detail controls',q(f'.deck[data-side={side}]').evaluate('e=>{const header=e.querySelector("h2").getBoundingClientRect(),detail=e.querySelector(".deckcontrol").getBoundingClientRect(),parts=[...e.querySelector(".deckhead").children].filter(x=>!x.hidden).map(x=>x.getBoundingClientRect()).filter(r=>r.height);const transport=e.querySelector(".decktransport").getBoundingClientRect();return Math.min(...parts.map(r=>r.top))>=header.bottom&&Math.max(...parts.map(r=>r.bottom))<=transport.top}'))
                     check(theme+' portrait mixer is between the decks without overlap',q('.console').evaluate('e=>{const a=e.querySelector(".deck[data-side=A]").getBoundingClientRect(),m=e.querySelector(".mixer").getBoundingClientRect(),b=e.querySelector(".deck[data-side=B]").getBoundingClientRect();return a.bottom<=m.top&&m.bottom<=b.top}'))
                 q('.console').evaluate('e=>e.scrollTop=0')
                 page.screenshot(path=str(OUT/f'console-mobile-{theme}-{width}.png'))
@@ -114,6 +117,16 @@ try:
     activate(q('#djStyle'));activate(q('[data-theme=aurora]'));page.keyboard.press('Escape')
     check('Escape restores the saved design',root.get_attribute('data-console-theme')=='editorial')
     if MOBILE:
+        for edge in ['right','left']:
+            root.evaluate('(e,edge)=>{e.style.setProperty("--deka-safe-"+edge,"48px");e.style.setProperty("--deka-safe-top","24px");e.style.setProperty("--deka-safe-bottom","16px")}',edge)
+            page.wait_for_timeout(250)
+            for side in ['A','B']:
+                el=surface(f'[data-eq={side}][data-band="0"]');el.scroll_into_view_if_needed();r=el.bounding_box()
+                check(edge+f' navigation bar leaves {side} EQ exposed',r['x']>=(48 if edge=='left' else 0) and r['x']+r['width']<=844-(48 if edge=='right' else 0))
+            page.evaluate("__dj.setEQ('B',0,0)");gesture(surface('[data-eq=B][data-band="0"]'),'encoder')
+            check(edge+' system-bar spacing leaves B frequency gesture active',page.evaluate('__dj.state.B.eq[0]>2&&!__dj.state.A.paused&&!__dj.state.B.paused'))
+            page.screenshot(path=str(OUT/f'console-mobile-navigation-{edge}.png'))
+            root.evaluate('(e,edge)=>{e.style.removeProperty("--deka-safe-"+edge);e.style.removeProperty("--deka-safe-top");e.style.removeProperty("--deka-safe-bottom")}',edge)
         # Two fingers on different linear faders must never steal each other's state.
         activate(q('#djStyle'));activate(q('[data-theme=acid]'));activate(q('#djThemeSave'))
         page.evaluate("__dj.setEQ('A',0,0);__dj.setEQ('B',0,0)")

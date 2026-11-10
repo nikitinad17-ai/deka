@@ -132,10 +132,10 @@ jobs:
           export ANDROID_KEYSTORE_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$ANDROID_KEYSTORE_PASSWORD"
           keytool -genkeypair -noprompt -storetype PKCS12 -keystore "$ANDROID_KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" -keyalg RSA -keysize 3072 -validity 3650 -dname "CN=Deka Console Preview" -storepass:env ANDROID_KEYSTORE_PASSWORD -keypass:env ANDROID_KEYSTORE_PASSWORD
-          node -e "const fs=require('fs'),p='src-tauri/tauri.conf.json',c=JSON.parse(fs.readFileSync(p));c.identifier='ru.volna.player.consolepreview';c.productName='DEKA Console Preview';fs.writeFileSync(p,JSON.stringify(c,null,2));"
+          node -e "const fs=require('fs'),p='src-tauri/tauri.conf.json',c=JSON.parse(fs.readFileSync(p));c.identifier='ru.volna.player.consolepreview0211';c.productName='DEKA Preview 0.21.1';fs.writeFileSync(p,JSON.stringify(c,null,2));"
           echo "kind=preview" >> "$GITHUB_OUTPUT"
-          echo "APK_NAME=Deka-Android-0.21.0-Console-Preview.apk" >> "$GITHUB_ENV"
-          echo "APK_PACKAGE=ru.volna.player.consolepreview" >> "$GITHUB_ENV"
+          echo "APK_NAME=Deka-Android-0.21.1-Console-Preview.apk" >> "$GITHUB_ENV"
+          echo "APK_PACKAGE=ru.volna.player.consolepreview0211" >> "$GITHUB_ENV"
           echo "ANDROID_KEYSTORE_PATH=$ANDROID_KEYSTORE_PATH" >> "$GITHUB_ENV"
           echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
@@ -149,7 +149,7 @@ jobs:
           echo "NDK_HOME=$ndk" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android
+          targets: aarch64-linux-android, x86_64-linux-android
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
@@ -205,12 +205,57 @@ jobs:
             test-output/android-badging.txt
             test-output/android-signature.txt
             test-output/android-sha256.txt
+      - name: Build native emulator test APK from the same source
+        run: |
+          $REPORT npx tauri android build --debug --apk --target x86_64 --ci
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*debug*.apk' | head -n 1)
+          test -n "$apk"
+          cp "$apk" console-emulator.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: console-emulator-apk
+          path: console-emulator.apk
       - name: Remove ephemeral signing material
         if: always()
         run: |
           rm -f "$RUNNER_TEMP/deka-signing.p12" src-tauri/gen/android/keystore.properties
+  android_native:
+    needs: [android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: console-emulator-apk
+      - name: Enable emulator hardware acceleration
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -no-snapshot
+          script: python tests/android_insets_native.py console-emulator.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: console-native-android-evidence
+          path: test-output/
   package:
-    needs: [unit, surfaces, regression, windows, android]
+    needs: [unit, surfaces, regression, windows, android, android_native]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -219,28 +264,28 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: console-tested-windows
-          path: Deka-Desktop-0.21.0-Console-Preview
+          path: Deka-Desktop-0.21.1-Console-Preview
       - name: Package verified Windows build
         run: |
           python3 - <<'PYZIP'
           from pathlib import Path
           import hashlib
-          d=Path('Deka-Desktop-0.21.0-Console-Preview')
+          d=Path('Deka-Desktop-0.21.1-Console-Preview')
           (d/'READ-ME.md').write_bytes(Path('docs/CONSOLE-0.21-PREVIEW.md').read_bytes())
           (d/'SHA256SUMS.txt').write_text(hashlib.sha256((d/'Deka.exe').read_bytes()).hexdigest()+'  Deka.exe\n')
           PYZIP
       - uses: actions/upload-artifact@v4
         with:
-          name: Deka-Desktop-0.21.0-Console-Preview-Windows
-          path: Deka-Desktop-0.21.0-Console-Preview/
+          name: Deka-Desktop-0.21.1-Console-Preview-Windows
+          path: Deka-Desktop-0.21.1-Console-Preview/
           if-no-files-found: error
       - uses: actions/download-artifact@v4
         with:
           name: console-tested-android
-          path: Deka-Android-0.21.0-Console-Preview
-      - run: cp docs/CONSOLE-0.21-PREVIEW.md Deka-Android-0.21.0-Console-Preview/READ-ME.md
+          path: Deka-Android-0.21.1-Console-Preview
+      - run: cp docs/CONSOLE-0.21-PREVIEW.md Deka-Android-0.21.1-Console-Preview/READ-ME.md
       - uses: actions/upload-artifact@v4
         with:
-          name: Deka-Android-0.21.0-Console-Preview
-          path: Deka-Android-0.21.0-Console-Preview/
+          name: Deka-Android-0.21.1-Console-Preview
+          path: Deka-Android-0.21.1-Console-Preview/
           if-no-files-found: error
