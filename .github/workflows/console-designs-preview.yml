@@ -253,9 +253,20 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
+          ram-size: 2048M
+          heap-size: 256M
+          cores: 2
+          pre-emulator-launch-script: python tests/android_insets_native.avd.py
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -no-snapshot
+          emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim -camera-back none -camera-front none -no-snapshot -skin 720x1600
           script: python tests/android_insets_native.py console-emulator.apk
+      - name: Retain emulator host diagnostics
+        if: always()
+        run: |
+          mkdir -p test-output
+          sudo dmesg --ctime | tail -100 > test-output/host-kernel-tail.txt
+          free -m > test-output/host-memory.txt
+          if [ -d /tmp/android-runner ]; then cp -R /tmp/android-runner test-output/emulator-crash-data; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

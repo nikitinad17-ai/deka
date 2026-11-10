@@ -90,7 +90,7 @@ try:
         page.wait_for_timeout(800)
         check(theme+' retains both measured audio signals',page.evaluate('measure(440).amp>.02&&measure(660).amp>.02'))
         if MOBILE:
-            for width,height in [(844,390),(390,844)]:
+            for width,height in [(844,390),(688,336),(390,844)]:
                 page.set_viewport_size(dict(width=width,height=height));page.wait_for_timeout(350)
                 q('.console').evaluate('e=>e.scrollTop=0');q('#message').evaluate('e=>e.hidden=true')
                 check(theme+f' mobile has no horizontal overflow {width}x{height}',root.evaluate('e=>e.scrollWidth<=e.clientWidth+1'))
@@ -98,6 +98,10 @@ try:
                     for band in [0,2]:
                         el=surface(f'[data-eq={side}][data-band="{band}"]');el.scroll_into_view_if_needed();r=el.bounding_box()
                         check(theme+f' {side} EQ {band} is reachable without clipping at {width}',r['x']>=0 and r['x']+r['width']<=width+1 and r['width']>=32 and r['height']>=32)
+                if width>height:
+                    q('.console').evaluate('e=>e.scrollTop=0')
+                    for side in ['A','B']:
+                        check(theme+f' {side} platter and transport remain fully visible at {width}x{height}',q(f'.deck[data-side={side}]').evaluate('e=>[e.querySelector(".disc"),...e.querySelectorAll(".decktransport button")].every(x=>{const r=x.getBoundingClientRect();return r.x>=0&&r.y>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1})'))
                 if width<height:
                     check(theme+' rotation retains the portrait DJ console',q('#dj').evaluate('e=>e.classList.contains("open")'))
                     for side in ['A','B']:

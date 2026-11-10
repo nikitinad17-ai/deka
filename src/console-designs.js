@@ -184,8 +184,10 @@
 
 /* Keep Play/CUE and both platters on screen in landscape; the active detail panel scrolls independently. */
 @media(orientation:landscape) and (max-width:1100px){
- .app[data-console-platform=mobile] .console{align-items:stretch;grid-template-rows:minmax(300px,1fr)}
- .app[data-console-platform=mobile] .deck,.app[data-console-platform=mobile] .deck[data-side=B]{grid-template-columns:46px minmax(100px,1fr) minmax(126px,1.1fr);grid-template-rows:22px minmax(0,1fr) 40px;height:calc(100dvh - 96px);min-height:300px;padding:4px;gap:3px}
+ .app[data-console-platform=mobile] .console{align-items:stretch;align-content:stretch;grid-template-columns:minmax(0,1fr) 78px minmax(0,1fr);grid-template-rows:minmax(0,1fr);overflow:hidden}
+ .app[data-console-platform=mobile] .djinfo{flex-wrap:nowrap}.app[data-console-platform=mobile] .djinfo>.dc-control{flex-basis:auto;max-width:260px}
+ .app[data-console-platform=mobile] .deck[data-side=A]{grid-column:1;grid-row:1}.app[data-console-platform=mobile] .deck[data-side=B]{grid-column:3;grid-row:1}
+ .app[data-console-platform=mobile] .deck,.app[data-console-platform=mobile] .deck[data-side=B]{grid-template-columns:46px minmax(100px,1fr) minmax(126px,1.1fr);grid-template-rows:22px minmax(0,1fr) 40px;height:100%;min-height:0;padding:4px;gap:3px}
  .app[data-console-platform=mobile] .deck[data-side=B]{grid-template-columns:minmax(126px,1.1fr) minmax(100px,1fr) 46px}
  .app[data-console-platform=mobile] .deckhead{grid-column:2;grid-row:2;gap:4px;justify-content:center}
  .app[data-console-platform=mobile] .eqrail{grid-column:1;grid-row:2;gap:10px;flex-direction:column}.app[data-console-platform=mobile] .deck[data-side=B] .eqrail{grid-column:3;grid-row:2;flex-direction:column}
@@ -196,21 +198,34 @@
  .app[data-console-platform=mobile] .deckpanel{min-height:50px;flex:1;overflow:auto}.app[data-console-platform=mobile] .fxblock{align-content:start;padding:3px;gap:3px;display:grid;flex:1}
  .app[data-console-platform=mobile] .fxcell{align-self:start}.app[data-console-platform=mobile] .fxcell button{min-height:28px}.app[data-console-platform=mobile] .fxcell .dc-value{font-size:8px}
  .app[data-console-platform=mobile] .disc{width:112px;min-width:100px;max-width:calc(100% - 8px)}.app[data-console-platform=mobile] .decktitle{padding:4px 2px}.app[data-console-platform=mobile] .decktitle b{font-size:10px}.app[data-console-platform=mobile] .decktitle small{font-size:9px}
- .app[data-console-platform=mobile] .mixer{min-height:300px;height:calc(100dvh - 96px);gap:4px;padding:4px;overflow:auto}.app[data-console-platform=mobile] .mixer .dc-control[data-role=gain] .dc-surface{height:88px}.app[data-console-platform=mobile] .mixer .dc-control[data-role=master] .dc-surface{height:44px;width:44px}
+ .app[data-console-platform=mobile] .mixer{display:flex;grid-column:2;grid-row:1;min-height:0;height:100%;gap:4px;padding:4px;overflow:auto}.app[data-console-platform=mobile] .mixer .dc-control[data-role=gain] .dc-surface{height:88px}.app[data-console-platform=mobile] .mixer .dc-control[data-role=master] .dc-surface{height:44px;width:44px}
  .app[data-console-platform=mobile] .mixer button{min-height:32px;font-size:10px}.app[data-console-platform=mobile] .mixState{font-size:9px}
  .app[data-console-theme=acid] .eqrail .dc-surface{height:84px;width:34px}.app[data-console-theme=acid] .eqrail .dc-cap{left:1px}.app[data-console-theme=acid] .deckhead{padding:2px}
  .app[data-console-theme=editorial] .eqrail .dc-control{grid-template-columns:1fr}.app[data-console-theme=editorial] .eqrail .dc-step{display:none}.app[data-console-theme=editorial] .eqrail .dc-surface{width:44px;height:44px}
  .app[data-console-theme=editorial] .fxcell .dc-control{grid-template-columns:20px minmax(20px,1fr) 20px}.app[data-console-theme=editorial] .fxblock{grid-template-columns:minmax(0,1fr)}.app[data-console-theme=editorial] .fxcell{display:grid;grid-template-columns:48px minmax(0,1fr);gap:3px;align-items:center}.app[data-console-theme=editorial] .fxcell>button{min-height:44px}.app[data-console-theme=editorial] .fxcell .dc-control{grid-template-columns:20px minmax(44px,1fr) 20px}
 }
+/* A phone loses usable width/height to native bars and the display cutout. */
 @media(orientation:landscape) and (max-width:740px){
- .app[data-console-platform=mobile] .console{grid-template-columns:minmax(0,1fr) 72px minmax(0,1fr);gap:3px;padding:3px}
- .app[data-console-platform=mobile] .deck,.app[data-console-platform=mobile] .deck[data-side=B]{grid-template-columns:44px minmax(0,1fr);grid-template-rows:22px 155px minmax(100px,1fr) 40px;min-height:345px;height:auto}
- .app[data-console-platform=mobile] .deckhead{grid-column:2;grid-row:2}.app[data-console-platform=mobile] .deck[data-side=B] .eqrail{grid-column:1;grid-row:2}
- .app[data-console-platform=mobile] .deckcontrol,.app[data-console-platform=mobile] .deck[data-side=B] .deckcontrol{grid-column:1/-1;grid-row:3;display:grid;grid-template-columns:1fr;grid-template-rows:30px minmax(70px,1fr) 36px}
- .app[data-console-platform=mobile] .decktransport{grid-row:4}.app[data-console-platform=mobile] .decktitle small{display:none}
- .app[data-console-platform=mobile] .mixer{display:flex;grid-column:2;grid-row:1}.app[data-console-platform=mobile] .deck[data-side=B]{grid-column:3;grid-row:1}
- .app[data-console-platform=mobile] .fxblock{max-height:100px}.app[data-console-platform=mobile] .deckpanel{grid-row:2}.app[data-console-platform=mobile] .reverseblock{grid-row:3}
+ .app[data-console-platform=mobile] .console{grid-template-columns:minmax(0,1fr) 64px minmax(0,1fr);gap:3px;padding:3px}
+ .app[data-console-platform=mobile] .deck,.app[data-console-platform=mobile] .deck[data-side=B]{grid-template-columns:36px minmax(80px,.85fr) minmax(106px,1.15fr);grid-template-rows:18px minmax(0,1fr) 36px;min-height:0;height:100%;padding:3px;gap:2px}
+ .app[data-console-platform=mobile] .deck[data-side=B]{grid-template-columns:minmax(106px,1.15fr) minmax(80px,.85fr) 36px}
+ .app[data-console-platform=mobile] .deck h2{font-size:9px}.app[data-console-platform=mobile] .deck h2 small{display:none}
+ .app[data-console-platform=mobile] .deckhead{gap:2px;justify-content:space-evenly;padding:1px}
+ .app[data-console-platform=mobile] .decktitle{padding:2px 1px}.app[data-console-platform=mobile] .decktitle b{font-size:9px}.app[data-console-platform=mobile] .decktitle small{font-size:8px}
+ .app[data-console-platform=mobile] .disc{width:84px;min-width:0;max-width:calc(100% - 8px)}
+ .app[data-console-platform=mobile] .deckhead .seek input{height:20px}.app[data-console-platform=mobile] .cueStatus{font-size:8px;min-height:10px}
+ .app[data-console-platform=mobile] .eqrail{gap:6px}.app[data-console-platform=mobile] .eqrail .dc-surface{width:34px;height:34px}
+ .app[data-console-theme=acid] .eqrail .dc-surface{width:32px;min-width:32px;height:60px}
+ .app[data-console-platform=mobile] .deckcontrol{gap:3px}.app[data-console-platform=mobile] .deckTabs button{font-size:8px;min-height:28px}
+ .app[data-console-platform=mobile] .deckpanel{min-height:40px}.app[data-console-platform=mobile] .decktools select,.app[data-console-platform=mobile] .decktools input{font-size:9px}
+ .app[data-console-platform=mobile] .reverseblock button{min-height:28px;font-size:8px}
+ .app[data-console-platform=mobile] .decktransport button{min-height:32px;font-size:10px}
+ .app[data-console-platform=mobile] .mixer{gap:3px;padding:3px 2px}.app[data-console-platform=mobile] .mixer .dc-control[data-role=gain] .dc-surface{height:54px}
+ .app[data-console-platform=mobile] .mixer .dc-control[data-role=master] .dc-surface{width:34px;height:34px}.app[data-console-theme=acid] .mixer .dc-control[data-role=master] .dc-surface{height:40px}
+ .app[data-console-platform=mobile] .mixer #autoMix{min-height:30px;font-size:9px}.app[data-console-platform=mobile] .mixer #pauseBoth{min-height:28px;font-size:9px}
+ .app[data-console-platform=mobile] .mixState{min-height:22px;font-size:8px}
 }
+
 
 
 /* DEKA_MOBILE_LAYOUT_0211: the compact mirrored portrait console from the user's reference. */
@@ -229,6 +244,7 @@
 .app[data-console-theme=acid] .deck{background:repeating-linear-gradient(0deg,#ffffff03 0 1px,transparent 1px 4px),linear-gradient(150deg,#232b18,#10150b);border-radius:5px}
 .app[data-console-theme=acid] .dc-cap i{box-shadow:0 0 7px var(--accent,var(--a))}
 .app[data-console-theme=editorial]{--dc-button-top:#fffef7;--dc-button-bottom:#d1d0c5;--dc-bevel:#fff;--dc-shadow:#363c231f}
+.app[data-console-theme=editorial] .mixer #autoMix[aria-pressed=true]{color:#25476e;background:linear-gradient(#e5edf5,#c9d8e8);border-color:#5479a4;box-shadow:inset 0 1px #fff,0 2px 0 #a5b3c3}
 .app[data-console-theme=editorial] .deck{background:linear-gradient(130deg,#faf8ee,#e3e2d7 62%,#d7d8cc);box-shadow:inset 0 1px #fff,0 3px 0 #b4b7aa,0 7px 12px #29332226}
 .app[data-console-theme=editorial] .dc-cap{box-shadow:inset 0 0 0 4px #dedbcf,inset 0 1px 2px white,0 2px 0 #a5a99a,0 4px 7px #28301e45}
 @media(orientation:portrait){

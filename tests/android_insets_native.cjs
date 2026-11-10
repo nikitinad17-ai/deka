@@ -87,6 +87,12 @@ function tone(hz) {
       check(name + ' native inset callback reports applied offsets', await page.evaluate(() => DekaAndroid.readLog().includes('DEKA_SAFE_INSETS_0211')));
       for (const theme of ['aurora', 'acid', 'editorial']) {
         await q('#djStyle').click(); await q('[data-theme=' + theme + ']').click(); await q('#djThemeSave').click();
+        if ([1, 3].includes(rotation)) {
+          await q('.console').evaluate(e => e.scrollTop = 0);
+          for (const side of ['A', 'B']) {
+            check(`${name} ${theme} ${side} platter and transport stay fully visible`, await q(`.deck[data-side=${side}]`).evaluate(e => [e.querySelector('.disc'), ...e.querySelectorAll('.decktransport button')].every(x => { const r = x.getBoundingClientRect(); return r.x >= 0 && r.y >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; })));
+          }
+        }
         let box;
         for (const side of ['A', 'B']) {
           const control = q(`[data-eq=${side}][data-band="2"]`).locator('..').locator('.dc-surface');

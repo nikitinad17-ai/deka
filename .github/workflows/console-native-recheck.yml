@@ -1,8 +1,15 @@
 name: DEKA 0.21.1 - native Android verification of unchanged build
 on:
-  push:
-    branches: [feature/deka-console-designs]
-    paths: ['tests/android_insets_native.*', '.github/workflows/console-native-recheck.yml']
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: Verified build run with console-tested artifacts
+        required: true
+        type: string
+      source_sha:
+        description: Exact application source SHA from that build run
+        required: true
+        type: string
 permissions:
   contents: read
   actions: read
@@ -10,8 +17,8 @@ concurrency:
   group: deka-native-recheck
   cancel-in-progress: true
 env:
-  SOURCE_RUN: '42755964060'
-  SOURCE_SHA: '54f2d46caafa6e9674776f6418270ae24b29fe21'
+  SOURCE_RUN: ${{ inputs.source_run }}
+  SOURCE_SHA: ${{ inputs.source_sha }}
 jobs:
   verify_source:
     runs-on: ubuntu-24.04
