@@ -1,0 +1,121 @@
+name: DEKA 0.21.1 - native Android verification of unchanged build
+on:
+  push:
+    branches: [feature/deka-console-designs]
+    paths: ['tests/android_insets_native.*', '.github/workflows/console-native-recheck.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: deka-native-recheck
+  cancel-in-progress: true
+env:
+  SOURCE_RUN: '42755964060'
+  SOURCE_SHA: '54f2d46caafa6e9674776f6418270ae24b29fe21'
+jobs:
+  verify_source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require identical application and build-generator sources
+        run: git diff --exit-code "$SOURCE_SHA" HEAD -- src src-tauri scripts package.json package-lock.json .cargo
+      - name: Require all original build and functional jobs to have passed
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run_id = Number(process.env.SOURCE_RUN);
+            const { owner, repo } = context.repo;
+            const { data: run } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id });
+            if (run.head_sha !== process.env.SOURCE_SHA) throw new Error('Artifact source SHA mismatch');
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id, per_page: 100 });
+            const required = ['unit', 'surfaces (desktop)', 'surfaces (mobile)', 'windows', 'android', ...['desktop_appearance', 'desktop_session', 'android_dj', 'android018', 'browser', 'continuous', 'automix', 'mp3_transport', 'dj_sets', 'desktop_dj', 'desktop_vinyl'].map(n => `regression (${n})`)];
+            for (const name of required) {
+              if (!jobs.some(j => j.name === name && j.conclusion === 'success')) throw new Error(`Original job not verified: ${name}`);
+            }
+            core.info(`Verified ${required.length} original jobs and unchanged runtime source ${run.head_sha}`);
+  android_native:
+    needs: [verify_source]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Android WebView test driver
+        run: |
+          npm install --prefix "$RUNNER_TEMP/deka-native-test" --no-save playwright@1.57.0
+          echo "NODE_PATH=$RUNNER_TEMP/deka-native-test/node_modules" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          name: console-emulator-apk
+          run-id: ${{ env.SOURCE_RUN }}
+          github-token: ${{ github.token }}
+      - name: Enable emulator hardware acceleration
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -no-snapshot
+          script: python tests/android_insets_native.py console-emulator.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: console-native-android-evidence
+          path: test-output/
+  package:
+    needs: [android_native]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ env.SOURCE_SHA }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: console-tested-windows
+          run-id: ${{ env.SOURCE_RUN }}
+          github-token: ${{ github.token }}
+          path: Deka-Desktop-0.21.1-Console-Preview
+      - name: Package verified Windows build
+        run: |
+          python3 - <<'PYZIP'
+          from pathlib import Path
+          import hashlib
+          d=Path('Deka-Desktop-0.21.1-Console-Preview')
+          (d/'READ-ME.md').write_bytes(Path('docs/CONSOLE-0.21-PREVIEW.md').read_bytes())
+          (d/'SHA256SUMS.txt').write_text(hashlib.sha256((d/'Deka.exe').read_bytes()).hexdigest()+'  Deka.exe\n')
+          PYZIP
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Deka-Desktop-0.21.1-Console-Preview-Windows
+          path: Deka-Desktop-0.21.1-Console-Preview/
+          if-no-files-found: error
+      - uses: actions/download-artifact@v4
+        with:
+          name: console-tested-android
+          run-id: ${{ env.SOURCE_RUN }}
+          github-token: ${{ github.token }}
+          path: Deka-Android-0.21.1-Console-Preview
+      - run: cp docs/CONSOLE-0.21-PREVIEW.md Deka-Android-0.21.1-Console-Preview/READ-ME.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Deka-Android-0.21.1-Console-Preview
+          path: Deka-Android-0.21.1-Console-Preview/
+          if-no-files-found: error

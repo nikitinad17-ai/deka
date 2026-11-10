@@ -49,7 +49,10 @@ function tone(hz) {
     const page = await webview.page();
     const context = page.context();
     await context.route('https://vk.ru/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: fs.readFileSync(path.join(ROOT, 'tests/fixtures/vk-music.html'), 'utf8') }));
-    await context.addCookies([{ name: 'remixsid', value: 'ci-fixture', domain: '.vk.ru', path: '/', secure: true }]);
+    // Android WebView has one process-wide cookie store and no browser-context
+    // management. Use the page Network domain for this explicit fixture cookie.
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Network.setCookies', { cookies: [{ name: 'remixsid', value: 'ci-fixture', domain: '.vk.ru', path: '/', secure: true }] });
     await page.goto('https://vk.ru/audios42', { waitUntil: 'domcontentloaded' });
     await page.locator('#deka-overlay').waitFor();
     const q = s => page.locator('#deka-overlay ' + s);

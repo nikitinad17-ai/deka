@@ -2,7 +2,7 @@ name: DEKA 0.21 - three control surfaces, Desktop and Android
 on:
   push:
     branches: [feature/deka-console-designs]
-    paths-ignore: ['docs/**']
+    paths-ignore: ['docs/**', 'tests/android_insets_native.*', '.github/workflows/console-native-recheck.yml']
 permissions:
   contents: read
 concurrency:
