@@ -74,6 +74,7 @@ function tone(hz) {
       const web = webviews.map(rect).sort((a, b) => (b[2] - b[0]) * (b[3] - b[1]) - (a[2] - a[0]) * (a[3] - a[1]))[0];
       check(name + ' has the requested screen orientation', ((web[2] - web[0]) > (web[3] - web[1])) === [1, 3].includes(rotation), { webview: web });
       check(name + ' native navigation never overlaps the WebView', nav.every(n => !intersects(web, rect(n))), { webview: web, navigation: nav.map(rect) });
+      check(name + ' native inset callback reports applied offsets', await page.evaluate(() => DekaAndroid.readLog().includes('DEKA_SAFE_INSETS_0211')));
       for (const theme of ['aurora', 'acid', 'editorial']) {
         await q('#djStyle').click(); await q('[data-theme=' + theme + ']').click(); await q('#djThemeSave').click();
         let box;

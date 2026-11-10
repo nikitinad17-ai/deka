@@ -467,6 +467,19 @@ if (!activity.includes('DEKA_SAFE_INSETS_0211')) {
     }`, `    dekaPadSystemBars(root)`);
 }
 
+// Keep an observable runtime diagnostic in release builds: R8 may inline and
+// rename private helpers, so their source names are not reliable APK markers.
+if (!activity.includes('DekaLog.add("DEKA_SAFE_INSETS_0211')) {
+  activity = activity.replace('private fun dekaPadSystemBars(view: android.view.View) {',
+    'private fun dekaPadSystemBars(view: android.view.View) {\n    var reportedInsets = ""');
+  activity = activity.replace('target.setPadding(safe.left, safe.top, safe.right, safe.bottom)', `target.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+      val snapshot = safe.toString()
+      if (snapshot != reportedInsets) {
+        reportedInsets = snapshot
+        DekaLog.add("DEKA_SAFE_INSETS_0211 $snapshot")
+      }`);
+}
+
 fs.writeFileSync(activityFile, activity);
 
 const serviceFile = path.join(path.dirname(activityFile), "DekaPlaybackService.kt");

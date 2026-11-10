@@ -49,7 +49,8 @@ try {
   assert.equal((act.match(/DEKA_ROTATION_014/g)||[]).length,1,'rotation patch idempotent');
   assert.ok(act.includes('fun setOrientation(mode: String)') && act.includes('SCREEN_ORIENTATION_SENSOR_LANDSCAPE'));
   assert.ok(act.includes('override fun onConfigurationChanged') && act.includes("new Event('deka:orientation')"));
-  assert.equal((act.match(/DEKA_SAFE_INSETS_0211/g)||[]).length,1,'safe-area patch idempotent');
+  assert.equal((act.match(/\/\/ DEKA_SAFE_INSETS_0211:/g)||[]).length,1,'safe-area patch idempotent');
+  assert.equal((act.match(/DekaLog.add\("DEKA_SAFE_INSETS_0211/g)||[]).length,1,'release retains an observable inset diagnostic');
   assert.ok(act.includes('safe.left, safe.top, safe.right, safe.bottom') && act.includes('.setInsets(types, androidx.core.graphics.Insets.NONE)'), 'native container handles all four edges and clears handled bar insets');
   assert.ok(act.includes('webView.post { dekaInstallSafeInsets() }') && act.includes('dekaPadSystemBars(root)'), 'main and login windows receive native insets');
   // The WebView window must not report itself hidden when the screen turns off.
