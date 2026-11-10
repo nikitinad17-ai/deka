@@ -54,7 +54,8 @@ function tone(hz) {
     const cdp = await context.newCDPSession(page);
     await cdp.send('Network.setCookies', { cookies: [{ name: 'remixsid', value: 'ci-fixture', domain: '.vk.ru', path: '/', secure: true }] });
     await page.goto('https://vk.ru/audios42', { waitUntil: 'domcontentloaded' });
-    await page.locator('#deka-overlay').waitFor();
+    // The shadow host itself has zero size; its fixed-position app is visible.
+    await page.locator('#deka-overlay #djBtn').waitFor({ state: 'visible' });
     const q = s => page.locator('#deka-overlay ' + s);
     check('APK contains the mounted control surfaces', await page.evaluate(() => !!window.DekaConsoleDesigns && !!window.DekaConsoleControls));
     await q('#djBtn').click();
