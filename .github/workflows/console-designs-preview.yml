@@ -253,9 +253,9 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
-          ram-size: 2048M
-          heap-size: 256M
-          cores: 2
+          ram-size: 4096M
+          heap-size: 512M
+          cores: 4
           pre-emulator-launch-script: python tests/android_insets_native.avd.py
           disable-animations: true
           emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim -camera-back none -camera-front none -no-snapshot -skin 720x1600
