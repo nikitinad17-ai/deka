@@ -70,7 +70,8 @@ with sync_playwright() as p:
     page.locator('#deka-overlay #searchB').fill('')
     page.screenshot(path=str(OUT/'landscape.png'))
     page.set_viewport_size({'width':390,'height':844}); page.wait_for_timeout(300)
-    record('Rotation back restores portrait library', 'open' not in page.locator('#deka-overlay #dj').get_attribute('class'))
+    record('Rotation back retains the portrait DJ console', 'open' in page.locator('#deka-overlay #dj').get_attribute('class'))
+    record('Portrait keeps both track lists and inline effects visible', all(page.locator('#deka-overlay #'+prefix+side).is_visible() for side in ['A','B'] for prefix in ['list','fxPanel']))
     page.screenshot(path=str(OUT/'portrait.png'))
     page.on('dialog',lambda dialog:dialog.accept())
     # Two local audio files truly play simultaneously.

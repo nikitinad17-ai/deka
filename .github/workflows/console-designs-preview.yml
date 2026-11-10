@@ -180,9 +180,10 @@ jobs:
           import sys, zipfile
           with zipfile.ZipFile(sys.argv[1]) as z:
               native = [n for n in z.namelist() if n.startswith('lib/arm64-v8a/') and n.endswith('.so')]
-              found = any(all(token in z.read(n) for token in [b'DEKA_ANDROID_VINYL_013', b'DekaVinylModuleSource', b'keyLock', b'DEKA_ANDROID_DJ_018', b'DekaBrakeModuleSource', b'DekaRollModuleSource', b'neutralMid', b'reverseMix', b'DEKA_CONSOLE_CONTROLS_021', b'DEKA_CONSOLE_DESIGNS_021']) for n in native)
+              found = any(all(token in z.read(n) for token in [b'DEKA_ANDROID_VINYL_013', b'DekaVinylModuleSource', b'keyLock', b'DEKA_ANDROID_DJ_018', b'DekaBrakeModuleSource', b'DekaRollModuleSource', b'neutralMid', b'reverseMix', b'DEKA_CONSOLE_CONTROLS_021', b'DEKA_CONSOLE_DESIGNS_021', b'DEKA_MOBILE_LAYOUT_0211']) for n in native)
               assert found, 'APK does not contain the new Android Vinyl bundle'
               assert any(b'onShowFileChooser' in z.read(n) for n in z.namelist() if n.endswith('.dex')), 'System file chooser handler missing'
+              assert any(b'dekaInstallSafeInsets' in z.read(n) for n in z.namelist() if n.endswith('.dex')), 'Native system-bar inset handler missing'
           print('Android Vinyl bundle and native file chooser found in APK')
           PYVERIFY
           mkdir -p test-output
@@ -234,7 +235,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install -r tests/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Android WebView test driver
+        run: |
+          npm install --prefix "$RUNNER_TEMP/deka-native-test" --no-save playwright@1.57.0
+          echo "NODE_PATH=$RUNNER_TEMP/deka-native-test/node_modules" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           name: console-emulator-apk

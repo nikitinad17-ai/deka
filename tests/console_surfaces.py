@@ -91,7 +91,7 @@ try:
         check(theme+' retains both measured audio signals',page.evaluate('measure(440).amp>.02&&measure(660).amp>.02'))
         if MOBILE:
             for width,height in [(844,390),(390,844)]:
-                page.set_viewport_size(dict(width=width,height=height));page.wait_for_timeout(350);activate(q('#djBtn'))
+                page.set_viewport_size(dict(width=width,height=height));page.wait_for_timeout(350)
                 q('.console').evaluate('e=>e.scrollTop=0');q('#message').evaluate('e=>e.hidden=true')
                 check(theme+f' mobile has no horizontal overflow {width}x{height}',root.evaluate('e=>e.scrollWidth<=e.clientWidth+1'))
                 for side in ['A','B']:
@@ -102,6 +102,7 @@ try:
                     check(theme+' rotation retains the portrait DJ console',q('#dj').evaluate('e=>e.classList.contains("open")'))
                     for side in ['A','B']:
                         check(theme+f' {side} portrait uses mirrored side-by-side panels and inline effects',q(f'.deck[data-side={side}]').evaluate('e=>{const h=e.querySelector(".deckhead").getBoundingClientRect(),p=e.querySelector(".deckcontrol").getBoundingClientRect(),r=e.querySelector(".eqrail").getBoundingClientRect(),fx=e.querySelector(".fxblock"),f=fx.getBoundingClientRect();return !fx.hidden&&Math.abs(h.top-p.top)<8&&(e.dataset.side==="A"?r.right<=h.left+1&&h.right<=p.left+1:p.right<=h.left+1&&h.right<=r.left+1)&&f.height>100}'))
+                        check(theme+f' {side} portrait shows all six effect values without internal clipping',q('#fxPanel'+side).evaluate('e=>{const r=e.getBoundingClientRect();return e.scrollHeight<=e.clientHeight+1&&[...e.querySelectorAll(".dc-value")].every(v=>{const b=v.getBoundingClientRect();return b.top>=r.top&&b.bottom<=r.bottom})}'))
                     for side in ['A','B']:
                         check(theme+f' {side} portrait title, platter and CUE stay clear of the heading and detail controls',q(f'.deck[data-side={side}]').evaluate('e=>{const header=e.querySelector("h2").getBoundingClientRect(),detail=e.querySelector(".deckcontrol").getBoundingClientRect(),parts=[...e.querySelector(".deckhead").children].filter(x=>!x.hidden).map(x=>x.getBoundingClientRect()).filter(r=>r.height);const transport=e.querySelector(".decktransport").getBoundingClientRect();return Math.min(...parts.map(r=>r.top))>=header.bottom&&Math.max(...parts.map(r=>r.bottom))<=transport.top}'))
                     check(theme+' portrait mixer is between the decks without overlap',q('.console').evaluate('e=>{const a=e.querySelector(".deck[data-side=A]").getBoundingClientRect(),m=e.querySelector(".mixer").getBoundingClientRect(),b=e.querySelector(".deck[data-side=B]").getBoundingClientRect();return a.bottom<=m.top&&m.bottom<=b.top}'))

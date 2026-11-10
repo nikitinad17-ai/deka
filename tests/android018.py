@@ -36,7 +36,10 @@ with tempfile.TemporaryDirectory()as td,sync_playwright()as p:
         page.set_viewport_size(dict(width=size[0],height=size[1]));page.wait_for_timeout(300);ov('#djBtn').tap();page.wait_for_timeout(250)
         for side in ['A','B']:
             ov('#disc'+side).scroll_into_view_if_needed();box=ov('#disc'+side).bounding_box();assert box['width']>=100 and box['x']>=0 and box['x']+box['width']<=size[0]
-            ov('#tab'+side+'3').tap()
+            if size[0]>size[1]:
+                ov('#tab'+side+'3').tap()
+            else:
+                check(side+' portrait exposes effects beside the track list',ov('#tab'+side+'3').is_hidden() and ov('#fxPanel'+side).is_visible() and ov('#list'+side).is_visible())
             for selector in ['#play'+side,'[data-cmd=next][data-side='+side+']','#cue'+side,'#tab'+side+'1','#fx'+side+'Flanger','[data-brake='+side+'][data-seconds="3.5"]']:
                 el=ov(selector);el.scroll_into_view_if_needed();b=el.bounding_box();assert b['x']>=0 and b['x']+b['width']<=size[0] and b['height']>=28
         check(f'Touch controls and larger discs fit {size[0]}x{size[1]} with scroll access',disc_width=box['width'])

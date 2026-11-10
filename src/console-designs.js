@@ -222,6 +222,7 @@
 .app[data-console-platform=mobile] .deck{box-shadow:inset 0 1px 1px #ffffff20,0 4px 10px #0003}
 .app[data-console-platform=mobile] .dc-cap{box-shadow:inset 0 1px 2px #ffffff65,inset 0 -2px 2px #0005,0 3px 0 var(--dc-dark),0 5px 8px #0008}
 .app[data-console-platform=mobile] .dc-dragging .dc-track{filter:brightness(1.3)}
+.app[data-console-platform=mobile] .mixState{color:var(--dc-muted)}
 .app[data-console-theme=aurora] .deck{background:radial-gradient(ellipse at 5% 0%,#53dfc916,transparent 55%),linear-gradient(140deg,#273e50,#132431)}
 .app[data-console-theme=aurora] .deck[data-side=B]{background:radial-gradient(ellipse at 95% 0%,#b89aff1b,transparent 55%),linear-gradient(220deg,#2d354e,#162331)}
 .app[data-console-theme=aurora] .disc{box-shadow:inset 0 1px #ffffff35,0 0 0 4px #07121a,0 0 0 5px var(--dc-line),0 9px 14px #0008,0 0 24px color-mix(in srgb,var(--accent),transparent 82%)}
@@ -232,7 +233,7 @@
 .app[data-console-theme=editorial] .dc-cap{box-shadow:inset 0 0 0 4px #dedbcf,inset 0 1px 2px white,0 2px 0 #a5a99a,0 4px 7px #28301e45}
 @media(orientation:portrait){
  .app[data-console-platform=mobile] .console{padding:5px;gap:8px}
- .app[data-console-platform=mobile] .console>.deck,.app[data-console-platform=mobile] .console>.deck[data-side=B]{grid-template-columns:44px minmax(96px,.9fr) minmax(130px,1.1fr);grid-template-rows:22px 278px 42px;min-height:0;height:auto;padding:5px;gap:3px}
+ .app[data-console-platform=mobile] .console>.deck,.app[data-console-platform=mobile] .console>.deck[data-side=B]{grid-template-columns:44px minmax(96px,.9fr) minmax(130px,1.1fr);grid-template-rows:22px 292px 42px;min-height:0;height:auto;padding:5px;gap:3px}
  .app[data-console-platform=mobile] .console>.deck[data-side=B]{grid-template-columns:minmax(130px,1.1fr) minmax(96px,.9fr) 44px}
  .app[data-console-platform=mobile] .deck h2{grid-column:1/-1;grid-row:1;font-size:10px}
  .app[data-console-platform=mobile] .deck h2 small{max-width:100px;font-size:8px}
@@ -244,18 +245,18 @@
  .app[data-console-platform=mobile] .deck[data-side=B] .eqrail{grid-column:3}
  .app[data-console-platform=mobile] .eqrail .dc-surface{width:44px;height:44px}
  .app[data-console-theme=acid] .eqrail .dc-surface{width:34px;min-width:34px;height:82px}
- .app[data-console-theme=editorial] .eqrail .dc-control{grid-template-columns:22px 22px;gap:1px}
+ .app[data-console-theme=editorial] .eqrail .dc-control{grid-template-columns:22px 22px;gap:4px}
  .app[data-console-theme=editorial] .eqrail .dc-control .dc-surface{grid-row:1;grid-column:1/-1}
  .app[data-console-theme=editorial] .eqrail .dc-step{display:block;grid-row:2;min-width:22px;min-height:24px;height:24px;font-size:14px}
  .app[data-console-theme=editorial] .eqrail .dc-value{grid-row:3;grid-column:1/-1}
- .app[data-console-platform=mobile] .deckcontrol,.app[data-console-platform=mobile] .deck[data-side=B] .deckcontrol{grid-column:3;grid-row:2;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:28px minmax(62px,1fr) 134px 32px;gap:4px;overflow:hidden;padding:0 0 4px}
+ .app[data-console-platform=mobile] .deckcontrol,.app[data-console-platform=mobile] .deck[data-side=B] .deckcontrol{grid-column:3;grid-row:2;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:28px minmax(62px,1fr) 154px 32px;gap:4px;overflow:hidden;padding:0 0 4px}
  .app[data-console-platform=mobile] .deck[data-side=B] .deckcontrol{grid-column:1}
  .app[data-console-platform=mobile] .deckTabs{grid-row:1;gap:3px}
- .app[data-console-platform=mobile] .deckTabs button{min-height:26px;font-size:9px;padding:1px}
+ .app[data-console-platform=mobile] .deckTabs button{min-height:28px;font-size:9px;padding:1px}
  .app[data-console-platform=mobile] .deckpanel{grid-row:2;min-height:0;padding:0;overflow:auto}
  .app[data-console-platform=mobile] .decktools select,.app[data-console-platform=mobile] .decktools input{font-size:9px;min-height:25px;height:25px}
  .app[data-console-platform=mobile] .fxblock{grid-row:3;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 3px;align-content:start;min-height:0;overflow:auto;padding:2px;background:linear-gradient(#0001,#0002);border-radius:5px}
- .app[data-console-platform=mobile] .fxcell{display:flex;min-width:0;gap:1px}.app[data-console-platform=mobile] .fxcell>button{height:24px;min-height:24px;font-size:8px;padding:1px 0}
+ .app[data-console-platform=mobile] .fxcell{display:flex;min-width:0;gap:1px}.app[data-console-platform=mobile] .fxcell>button{height:28px;min-height:28px;font-size:8px;padding:1px 0}
  .app[data-console-platform=mobile] .fxcell .dc-control{grid-template-columns:1fr;gap:0;min-width:0}.app[data-console-platform=mobile] .fxcell .dc-step{display:none}
  .app[data-console-platform=mobile] .fxcell .dc-surface{width:32px;min-width:32px;height:32px;min-height:32px}
  .app[data-console-platform=mobile] .fxcell .dc-control[data-kind=strip] .dc-surface{width:100%}.app[data-console-platform=mobile] .fxcell .dc-control[data-kind=strip] .dc-track{inset:13px 6px}
