@@ -1,5 +1,8 @@
 name: DEKA 0.21.1 - native Android verification of unchanged build
 on:
+  push:
+    branches: [feature/deka-console-designs]
+    paths: ['tests/android_insets_native.*', '.github/workflows/console-native-recheck.yml']
   workflow_dispatch:
     inputs:
       source_run:
@@ -17,8 +20,8 @@ concurrency:
   group: deka-native-recheck
   cancel-in-progress: true
 env:
-  SOURCE_RUN: ${{ inputs.source_run }}
-  SOURCE_SHA: ${{ inputs.source_sha }}
+  SOURCE_RUN: ${{ inputs.source_run || '42761925018' }}
+  SOURCE_SHA: ${{ inputs.source_sha || '998d582ffdabc5949b47e52eb4cc7fb09f38fe9a' }}
 jobs:
   verify_source:
     runs-on: ubuntu-24.04
@@ -78,9 +81,9 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
-          ram-size: 2048M
-          heap-size: 256M
-          cores: 2
+          ram-size: 4096M
+          heap-size: 512M
+          cores: 4
           pre-emulator-launch-script: python tests/android_insets_native.avd.py
           disable-animations: true
           emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim -camera-back none -camera-front none -no-snapshot -skin 720x1600

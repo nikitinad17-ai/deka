@@ -43,6 +43,22 @@ function tone(hz) {
     adb('shell', 'cmd', 'overlay', 'enable-exclusive', '--category', 'com.android.internal.systemui.navbar.threebutton');
     adb('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0');
     adb('shell', 'settings', 'put', 'system', 'user_rotation', '0');
+    // A fresh Google APIs image runs first-boot package setup after boot_completed.
+    // Wait for measured CPU headroom before measuring the app; keep ANR limits intact.
+    const cpu = () => adb('shell', 'cat', '/proc/stat').split('\n')[0].trim().split(/\s+/).slice(1, 9).map(Number);
+    let previous = cpu(), stable = 0;
+    const bootSamples = [];
+    for (let i = 0; i < 36 && stable < 3; i++) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      const current = cpu(), total = current.reduce((a, n, j) => a + n - previous[j], 0);
+      const idle = total > 0 ? (current[3] - previous[3]) / total : 0;
+      bootSamples.push({ seconds: (i + 1) * 5, idle });
+      stable = idle >= 0.3 ? stable + 1 : 0;
+      previous = current;
+      console.log('Emulator first-boot CPU idle', Math.round(idle * 100) + '%');
+    }
+    save('android-boot-cpu.json', JSON.stringify(bootSamples, null, 2));
+    check('First-boot background setup leaves CPU headroom before launching DEKA', stable >= 3);
     [device] = await android.devices();
     if (!device) throw new Error('No Android device');
     adb('shell', 'am', 'start', '-n', PACKAGE + '/.MainActivity');
@@ -117,11 +133,13 @@ function tone(hz) {
       save(name + '-screen.png', execFileSync('adb', ['exec-out', 'screencap', '-p']));
     }
     check('Rotation retains the same process', adb('shell', 'pidof', PACKAGE).split(' ')[0] === String(pid));
+    check('Android reports no application ANR during the entire native run', !fs.readFileSync(path.join(OUT, 'android-live-logcat.txt'), 'utf8').includes('ANR in ' + PACKAGE));
     if (checks.some(c => !c.passed)) throw new Error('Native touch checks failed; see all recorded orientations and screenshots');
   } finally {
     try {
       save('android-final-screen.png', execFileSync('adb', ['exec-out', 'screencap', '-p'], { timeout: 15000 }));
       save('android-logcat.txt', adb('logcat', '-d', '-t', '500'));
+      save('android-last-anr.txt', adb('shell', 'dumpsys', 'activity', 'lastanr'));
     } catch (e) { console.error('Diagnostic capture:', e.message); }
     if (logProcess) logProcess.kill();
     if (logFile !== undefined) fs.closeSync(logFile);
