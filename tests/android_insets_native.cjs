@@ -12,11 +12,11 @@ fs.mkdirSync(OUT, { recursive: true });
 const checks = [];
 const adb = (...args) => execFileSync('adb', args, { encoding: 'utf8', timeout: 30000 }).trim();
 const save = (name, data) => fs.writeFileSync(path.join(OUT, name), data);
-function check(name, ok, facts = {}) {
+function check(name, ok, facts = {}, fatal = true) {
   checks.push({ test: name, passed: !!ok, ...facts });
   save('android-native-insets-report.json', JSON.stringify(checks, null, 2));
   console.log((ok ? 'PASS ' : 'FAIL ') + name, facts);
-  if (!ok) throw new Error(name);
+  if (!ok && fatal) throw new Error(name);
 }
 function nodes(xml) {
   return [...xml.matchAll(/<node\s+([^>]+)>/g)].map(m => Object.fromEntries(
@@ -78,7 +78,8 @@ function tone(hz) {
       const xml = adb('shell', 'cat', '/sdcard/deka-insets.xml'); save(name + '.xml', xml);
       const all = nodes(xml);
       const webviews = all.filter(n => n.class === 'android.webkit.WebView');
-      const nav = all.filter(n => n.package === 'com.android.systemui' && ['back', 'home', 'recent_apps'].includes((n['resource-id'] || '').split('/').pop()));
+      // Android 16's Google image delegates navigation buttons to Nexus Launcher.
+      const nav = all.filter(n => ['com.android.systemui', 'com.google.android.apps.nexuslauncher'].includes(n.package) && ['back', 'home', 'recent_apps'].includes((n['resource-id'] || '').split('/').pop()));
       check(name + ' exposes WebView and three native navigation buttons', webviews.length && nav.length >= 3);
       const web = webviews.map(rect).sort((a, b) => (b[2] - b[0]) * (b[3] - b[1]) - (a[2] - a[0]) * (a[3] - a[1]))[0];
       check(name + ' has the requested screen orientation', ((web[2] - web[0]) > (web[3] - web[1])) === [1, 3].includes(rotation), { webview: web });
@@ -101,13 +102,16 @@ function tone(hz) {
         const coords = [...start, ...end].map((v, i) => String(Math.round(web[i % 2] + v * scale)));
         adb('shell', 'input', 'swipe', ...coords, '450');
         await page.waitForTimeout(150);
-        check(`${name} ${theme} native touch adjusts B high EQ independently`, await q('[data-eq=B][data-band="2"]').inputValue() !== before && await q('[data-eq=A][data-band="2"]').inputValue() === untouched);
+        const after = await q('[data-eq=B][data-band="2"]').inputValue();
+        const other = await q('[data-eq=A][data-band="2"]').inputValue();
+        check(`${name} ${theme} native touch adjusts B high EQ independently`, after !== before && other === untouched, { before, after, otherBefore: untouched, otherAfter: other, coordinates: coords }, false);
         await q('.console').evaluate(e => e.scrollTop = 0);
         await page.screenshot({ path: path.join(OUT, `${name}-${theme}-webview.png`) });
       }
       save(name + '-screen.png', execFileSync('adb', ['exec-out', 'screencap', '-p']));
     }
     check('Rotation retains the same process', adb('shell', 'pidof', PACKAGE).split(' ')[0] === String(pid));
+    if (checks.some(c => !c.passed)) throw new Error('Native touch checks failed; see all recorded orientations and screenshots');
   } finally {
     try {
       save('android-final-screen.png', execFileSync('adb', ['exec-out', 'screencap', '-p'], { timeout: 15000 }));
