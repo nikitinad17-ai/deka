@@ -73,7 +73,8 @@ function tone(hz) {
       await page.waitForTimeout(2000);
       check(name + ' retains the existing music WebView', await page.evaluate(() => window.__nativeRotationSentinel === true));
       check(name + ' keeps DJ open after rotation', await q('#dj').evaluate(e => e.classList.contains('open')));
-      adb('shell', 'uiautomator', 'dump', '/sdcard/deka-insets.xml');
+      // System bars are separate windows; the default dump only includes the app.
+      adb('shell', 'uiautomator', 'dump', '--windows', '/sdcard/deka-insets.xml');
       const xml = adb('shell', 'cat', '/sdcard/deka-insets.xml'); save(name + '.xml', xml);
       const all = nodes(xml);
       const webviews = all.filter(n => n.class === 'android.webkit.WebView');
