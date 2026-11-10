@@ -74,18 +74,9 @@ jobs:
           ram-size: 2048M
           heap-size: 256M
           cores: 2
-          pre-emulator-launch-script: |
-            python - <<'PY'
-            import os,re
-            from pathlib import Path
-            p=Path(os.environ['ANDROID_AVD_HOME'])/'test.avd/config.ini'
-            s=p.read_text()
-            for key,value in {'hw.lcd.width':'720','hw.lcd.height':'1600','hw.lcd.density':'320'}.items():
-                s=re.sub(r'^'+re.escape(key)+r'=.*\n?', '', s, flags=re.M)+key+'='+value+'\n'
-            p.write_text(s)
-            PY
+          pre-emulator-launch-script: python tests/android_insets_native.avd.py
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -feature -Vulkan -noaudio -no-boot-anim -camera-back none -camera-front none -no-snapshot
+          emulator-options: -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none -no-snapshot -skin 720x1600
           script: python tests/android_insets_native.py console-emulator.apk
       - name: Retain emulator host diagnostics
         if: always()
