@@ -207,12 +207,12 @@
 /* A phone loses usable width/height to native bars and the display cutout. */
 @media(orientation:landscape) and (max-width:740px){
  .app[data-console-platform=mobile] .console{grid-template-columns:minmax(0,1fr) 64px minmax(0,1fr);gap:3px;padding:3px}
- .app[data-console-platform=mobile] .deck,.app[data-console-platform=mobile] .deck[data-side=B]{grid-template-columns:36px minmax(80px,.85fr) minmax(106px,1.15fr);grid-template-rows:18px minmax(0,1fr) 36px;min-height:0;height:100%;padding:3px;gap:2px}
- .app[data-console-platform=mobile] .deck[data-side=B]{grid-template-columns:minmax(106px,1.15fr) minmax(80px,.85fr) 36px}
+ .app[data-console-platform=mobile] .deck,.app[data-console-platform=mobile] .deck[data-side=B]{grid-template-columns:36px minmax(112px,.85fr) minmax(106px,1.15fr);grid-template-rows:18px minmax(0,1fr) 36px;min-height:0;height:100%;padding:3px;gap:2px}
+ .app[data-console-platform=mobile] .deck[data-side=B]{grid-template-columns:minmax(106px,1.15fr) minmax(112px,.85fr) 36px}
  .app[data-console-platform=mobile] .deck h2{font-size:9px}.app[data-console-platform=mobile] .deck h2 small{display:none}
  .app[data-console-platform=mobile] .deckhead{gap:2px;justify-content:space-evenly;padding:1px}
  .app[data-console-platform=mobile] .decktitle{padding:2px 1px}.app[data-console-platform=mobile] .decktitle b{font-size:9px}.app[data-console-platform=mobile] .decktitle small{font-size:8px}
- .app[data-console-platform=mobile] .disc{width:84px;min-width:0;max-width:calc(100% - 8px)}
+ .app[data-console-platform=mobile] .disc{width:100px;min-width:0;max-width:calc(100% - 8px)}
  .app[data-console-platform=mobile] .deckhead .seek input{height:20px}.app[data-console-platform=mobile] .cueStatus{font-size:8px;min-height:10px}
  .app[data-console-platform=mobile] .eqrail{gap:6px}.app[data-console-platform=mobile] .eqrail .dc-surface{width:34px;height:34px}
  .app[data-console-theme=acid] .eqrail .dc-surface{width:32px;min-width:32px;height:60px}
